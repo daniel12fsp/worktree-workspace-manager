@@ -47,6 +47,11 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       } else if (message?.type === 'select') {
         this.activeSessionId = String(message.id);
         this.renderSessions();
+      } else if (message?.type === 'collapse') {
+        if (this.activeSessionId === String(message.id)) {
+          this.activeSessionId = undefined;
+          this.renderSessions();
+        }
       } else if (message?.type === 'input') {
         this.sessions.get(String(message.id))?.process.write(String(message.data));
       } else if (message?.type === 'resize') {
@@ -146,7 +151,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     .wt:hover, .terminalLeaf:hover, .wt.active, .terminalLeaf.active { background: var(--vscode-list-hoverBackground); }
     .terminalIcon { color: var(--vscode-terminal-ansiGreen); }
     .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-    .terminalInline { margin: 4px 0 8px 44px; height: min(360px, 55vh); border: 1px solid var(--vscode-panel-border); padding: 4px; background: #000; }
+    .terminalInline { margin: 4px 0 8px 0; width: 100%; height: min(420px, 65vh); border: 1px solid var(--vscode-panel-border); padding: 4px; background: #000; box-sizing: border-box; }
     #terminal { height: 100%; }
     .badge { margin-left: auto; opacity: 0.7; font-size: 11px; }
   </style>
@@ -204,11 +209,11 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
             terminal.className = 'terminalLeaf' + (wt.sessionId === activeSessionId ? ' active' : '');
             terminal.onclick = event => {
               event.stopPropagation();
-              vscode.postMessage({ type: 'select', id: wt.sessionId });
+              vscode.postMessage({ type: wt.sessionId === activeSessionId ? 'collapse' : 'select', id: wt.sessionId });
             };
             const icon = document.createElement('span');
             icon.className = 'terminalIcon';
-            icon.textContent = '▸';
+            icon.textContent = wt.sessionId === activeSessionId ? '▾' : '▸';
             const terminalLabel = document.createElement('span');
             terminalLabel.textContent = wt.name + ' terminal';
             terminal.append(icon, terminalLabel);
