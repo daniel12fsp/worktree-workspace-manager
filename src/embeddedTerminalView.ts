@@ -10,6 +10,8 @@ interface EmbeddedSession {
   readonly worktree: Worktree;
   readonly process: pty.IPty;
   readonly output: string[];
+  inputBuffer: string;
+  runningCommand?: string;
 }
 
 export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -58,7 +60,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         this.activeSessionId = undefined;
         this.renderSessions();
       } else if (message?.type === 'input') {
-        this.sessions.get(String(message.id))?.process.write(String(message.data));
+        this.writeInput(String(message.id), String(message.data));
       } else if (message?.type === 'resize') {
         const session = this.sessions.get(String(message.id));
         if (session) {
@@ -85,8 +87,12 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       cols: 80,
       rows: 24
     });
-    const session: EmbeddedSession = { id, label, worktree, process: proc, output: [] };
+    const session: EmbeddedSession = { id, label, worktree, process: proc, output: [], inputBuffer: '' };
     proc.onData(data => {
+      if (session.runningCommand && looksLikePrompt(data)) {
+        session.runningCommand = undefined;
+        void this.renderSessions();
+      }
       session.output.push(data);
       if (session.output.length > 500) {
         session.output.splice(0, session.output.length - 500);
@@ -104,6 +110,31 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     return session;
   }
 
+  private writeInput(id: string, data: string): void {
+    const session = this.sessions.get(id);
+    if (!session) return;
+
+    session.process.write(data);
+    for (const char of data) {
+      if (char === '\r' || char === '\n') {
+        const command = session.inputBuffer.trim();
+        if (command) {
+          session.runningCommand = command;
+          void this.renderSessions();
+        }
+        session.inputBuffer = '';
+      } else if (char === '\u0003') {
+        session.runningCommand = undefined;
+        session.inputBuffer = '';
+        void this.renderSessions();
+      } else if (char === '\u007f') {
+        session.inputBuffer = session.inputBuffer.slice(0, -1);
+      } else if (char >= ' ') {
+        session.inputBuffer += char;
+      }
+    }
+  }
+
   private async renderSessions(): Promise<void> {
     if (!this.view) return;
     const all = await listAllWorktrees();
@@ -116,7 +147,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         color: worktree.color,
         sessions: [...this.sessions.values()]
           .filter(session => session.worktree.path === worktree.path)
-          .map(session => ({ id: session.id, label: session.label }))
+          .map(session => ({ id: session.id, label: session.label, runningCommand: session.runningCommand }))
       }))
     }));
     const active = this.activeSessionId ? this.sessions.get(this.activeSessionId) : undefined;
@@ -233,7 +264,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
             icon.className = 'terminalIcon';
             icon.textContent = session.id === activeSessionId ? '▾' : '▸';
             const terminalLabel = document.createElement('span');
-            terminalLabel.textContent = session.label;
+            terminalLabel.textContent = session.runningCommand ? session.label + ' — ' + session.runningCommand : session.label;
             terminal.append(icon, terminalLabel);
             list.appendChild(terminal);
             if (session.id === activeSessionId) {
@@ -263,4 +294,9 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
 </body>
 </html>`;
   }
+}
+
+function looksLikePrompt(data: string): boolean {
+  const stripped = data.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
+  return /(?:^|\r|\n).*[$#>]\s*$/.test(stripped);
 }
