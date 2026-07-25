@@ -1,0 +1,78 @@
+{
+  "name": "worktree-workspace-manager",
+  "displayName": "Worktree Workspace Manager",
+  "description": "Manage git worktrees across multiple bare repositories from a workspace.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onView:worktreeManager.worktrees",
+    "onView:worktreeManager.terminals",
+    "onCommand:worktreeManager.refresh",
+    "onCommand:worktreeManager.showMenu"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.4.5"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "Worktree Manager",
+      "properties": {
+        "worktreeManager.repositories": {
+          "type": "array",
+          "default": [],
+          "items": { "type": "string" },
+          "description": "Bare git repositories to manage. Leading ~ is expanded; environment variables are not."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "worktreeManager",
+          "title": "Worktree Workspace",
+          "icon": "$(symbol-misc)"
+        }
+      ]
+    },
+    "views": {
+      "worktreeManager": [
+        {
+          "id": "worktreeManager.worktrees",
+          "name": "Worktree"
+        },
+        {
+          "id": "worktreeManager.terminals",
+          "name": "Terminals by Worktree"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "worktreeManager.refresh", "title": "Refresh" },
+      { "command": "worktreeManager.showMenu", "title": "Worktree Manager: Show Menu" },
+      { "command": "worktreeManager.openWorktree", "title": "Open Worktree" },
+      { "command": "worktreeManager.openTerminalHere", "title": "Open Terminal Here" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "worktreeManager.refresh", "when": "view == worktreeManager.worktrees", "group": "navigation" },
+        { "command": "worktreeManager.refresh", "when": "view == worktreeManager.terminals", "group": "navigation" }
+      ],
+      "view/item/context": [
+        { "command": "worktreeManager.openWorktree", "when": "view == worktreeManager.worktrees && viewItem == worktree", "group": "inline" },
+        { "command": "worktreeManager.openTerminalHere", "when": "viewItem == worktree", "group": "inline" }
+      ]
+    }
+  }
+}
