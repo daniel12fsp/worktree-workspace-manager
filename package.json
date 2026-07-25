@@ -42,7 +42,7 @@
         {
           "id": "worktreeManager",
           "title": "Worktree Workspace",
-          "icon": "$(symbol-misc)"
+          "icon": "resources/tree.svg"
         }
       ]
     },
@@ -62,7 +62,8 @@
       { "command": "worktreeManager.refresh", "title": "Refresh" },
       { "command": "worktreeManager.showMenu", "title": "Worktree Manager: Show Menu" },
       { "command": "worktreeManager.openWorktree", "title": "Open Worktree" },
-      { "command": "worktreeManager.openTerminalHere", "title": "Open Terminal Here" }
+      { "command": "worktreeManager.openTerminalHere", "title": "Open Terminal Here" },
+      { "command": "worktreeManager.focusTerminal", "title": "Focus Terminal" }
     ],
     "menus": {
       "view/title": [
