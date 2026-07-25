@@ -147,7 +147,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         color: worktree.color,
         sessions: [...this.sessions.values()]
           .filter(session => session.worktree.path === worktree.path)
-          .map(session => ({ id: session.id, label: session.label, runningCommand: session.runningCommand }))
+          .map(session => ({ id: session.id, label: session.label, runningCommand: commandName(session.runningCommand) }))
       }))
     }));
     const active = this.activeSessionId ? this.sessions.get(this.activeSessionId) : undefined;
@@ -264,7 +264,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
             icon.className = 'terminalIcon';
             icon.textContent = session.id === activeSessionId ? '▾' : '▸';
             const terminalLabel = document.createElement('span');
-            terminalLabel.textContent = session.runningCommand ? session.label + ' — ' + session.runningCommand : session.label;
+            terminalLabel.textContent = session.runningCommand || session.label;
             terminal.append(icon, terminalLabel);
             list.appendChild(terminal);
             if (session.id === activeSessionId) {
@@ -294,6 +294,10 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
 </body>
 </html>`;
   }
+}
+
+function commandName(command: string | undefined): string | undefined {
+  return command?.trim().split(/\s+/)[0];
 }
 
 function looksLikePrompt(data: string): boolean {
