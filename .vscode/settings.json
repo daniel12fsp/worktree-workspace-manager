@@ -1,0 +1,14 @@
+{
+  // Use a login shell for tasks/debug so ~/.bash_profile loads nvm,
+  // giving the task runner access to node/npm on PATH.
+  "terminal.integrated.automationProfile.linux": {
+    "path": "bash",
+    "args": ["-l"]
+  },
+
+  // Test repositories used by the Extension Development Host launched with F5.
+  "worktreeManager.repositories": [
+    "~/code/tmp/examples-repo/fe-project.git",
+    "~/code/tmp/examples-repo/be-project.git"
+  ]
+}

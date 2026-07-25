@@ -1,0 +1,20 @@
+{
+  // Press F5 to run this extension in an Extension Development Host.
+  // The launched window opens this repository so .vscode/settings.json below
+  // provides test values for worktreeManager.repositories.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Worktree Manager Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--disable-extensions",
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "${workspaceFolder}"
+      ],
+      "outFiles": ["${workspaceFolder}/out/**/*.js"],
+      "preLaunchTask": "compile"
+    }
+  ]
+}
