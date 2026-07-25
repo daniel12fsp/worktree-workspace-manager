@@ -18,12 +18,15 @@ interface EmbeddedSession {
 export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   private view: vscode.WebviewView | undefined;
   private readonly sessions = new Map<string, EmbeddedSession>();
+  private readonly explorerWorktreeChanged = new vscode.EventEmitter<void>();
+  readonly onDidChangeExplorerWorktree = this.explorerWorktreeChanged.event;
   private activeSessionId: string | undefined;
   private terminalSeq = 0;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
   dispose(): void {
+    this.explorerWorktreeChanged.dispose();
     for (const session of this.sessions.values()) {
       session.process.kill();
     }
@@ -119,17 +122,23 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
   private async checkWorktree(worktree: Worktree): Promise<void> {
     try {
       const result = await checkWorktreeInLiveWorkspace(worktree);
-      if (result === 'updated') {
-        void vscode.window.showInformationMessage('Updated workspace');
+      if (result === 'updated' || result === 'rootFoldersCannotBeHidden') {
+        this.explorerWorktreeChanged.fire();
+        void this.renderSessions();
+        if (result === 'rootFoldersCannotBeHidden') {
+          void vscode.window.showWarningMessage('Updated Search/exclude settings, but VS Code cannot hide inactive worktrees that are top-level workspace folders without changing workspace folders.');
+        } else {
+          void vscode.window.showInformationMessage('Updated visible worktree');
+        }
       } else if (result === 'noWorkspaceFile') {
-        void vscode.window.showErrorMessage('Check Worktree requires a .code-workspace file');
+        void vscode.window.showErrorMessage('Check Worktree requires an open workspace');
       } else if (result === 'missingFolders') {
         void vscode.window.showErrorMessage('Workspace file must contain a folders array');
       } else {
-        void vscode.window.showErrorMessage('Failed to update workspace file');
+        void vscode.window.showErrorMessage('Failed to update visible worktree');
       }
     } catch {
-      void vscode.window.showErrorMessage('Failed to update workspace file');
+      void vscode.window.showErrorMessage('Failed to update visible worktree');
     }
   }
 

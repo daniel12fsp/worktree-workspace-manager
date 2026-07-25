@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import * as vscode from 'vscode';
 import { EmbeddedTerminalViewProvider } from './embeddedTerminalView';
 import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees } from './model';
-import { checkWorktreeInLiveWorkspace } from './workspaceFile';
+import { checkWorktreeInLiveWorkspace, hideBareRepositoryFolders } from './workspaceFile';
 import { RepoNode, WorktreeNode, WorktreeProvider } from './worktreeView';
 
 const execFileAsync = promisify(execFile);
@@ -26,6 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
   status.tooltip = 'Worktree Workspace actions';
   status.show();
   void updateStatus(status);
+  void hideBareRepositoryFolders();
 
   let selectedWorktree: Worktree | undefined;
   let selectedRepo: BareRepository | undefined;
@@ -35,6 +36,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const refreshAll = () => {
     worktreeProvider.refresh();
     void updateStatus(status);
+    void hideBareRepositoryFolders();
   };
 
   const refreshTerminalsUnlessSuppressed = () => {
@@ -58,12 +60,20 @@ export function activate(context: vscode.ExtensionContext): void {
         suppressTerminalRefreshUntil = Date.now() + 3000;
         await checkWorktree(node.worktree);
         refreshAll();
+        terminalProvider.refresh();
       }
+    }),
+    terminalProvider.onDidChangeExplorerWorktree(() => {
+      refreshAll();
+      terminalProvider.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('worktreeManager.repositories')) {
         refreshAll();
         refreshTerminalsUnlessSuppressed();
+      } else if (event.affectsConfiguration('files.exclude') || event.affectsConfiguration('search.exclude')) {
+        refreshAll();
+        terminalProvider.refresh();
       }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(refreshTerminalsUnlessSuppressed),
@@ -89,6 +99,7 @@ export function activate(context: vscode.ExtensionContext): void {
       suppressTerminalRefreshUntil = Date.now() + 3000;
       await checkWorktree(node?.worktree ?? selectedWorktree);
       refreshAll();
+      terminalProvider.refresh();
     }),
     vscode.commands.registerCommand('worktreeManager.openTerminalHere', async (node?: WorktreeNode) => openTerminalHere(node?.worktree ?? selectedWorktree, terminalProvider)),
     vscode.commands.registerCommand('worktreeManager.closeRepoTerminals', async (node?: RepoNode) => closeRepoTerminals(node?.repo ?? selectedRepo, terminalProvider)),
@@ -109,16 +120,18 @@ async function checkWorktree(worktree?: Worktree): Promise<void> {
   try {
     const result = await checkWorktreeInLiveWorkspace(worktree);
     if (result === 'updated') {
-      void vscode.window.showInformationMessage('Updated workspace');
+      void vscode.window.showInformationMessage('Updated visible worktree');
+    } else if (result === 'rootFoldersCannotBeHidden') {
+      void vscode.window.showWarningMessage('Updated Search/exclude settings, but VS Code cannot hide inactive worktrees that are top-level workspace folders without changing workspace folders.');
     } else if (result === 'noWorkspaceFile') {
-      void vscode.window.showErrorMessage('Check Worktree requires a .code-workspace file');
+      void vscode.window.showErrorMessage('Check Worktree requires an open workspace');
     } else if (result === 'missingFolders') {
       void vscode.window.showErrorMessage('Workspace file must contain a folders array');
     } else {
-      void vscode.window.showErrorMessage('Failed to update workspace file');
+      void vscode.window.showErrorMessage('Failed to update visible worktree');
     }
   } catch {
-    void vscode.window.showErrorMessage('Failed to update workspace file');
+    void vscode.window.showErrorMessage('Failed to update visible worktree');
   }
 }
 
