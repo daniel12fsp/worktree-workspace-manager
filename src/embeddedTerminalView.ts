@@ -138,31 +138,29 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
   <link rel="stylesheet" href="${xtermCss}">
   <style>
     html, body { height: 100%; margin: 0; color: var(--vscode-foreground); background: var(--vscode-panel-background); font-family: var(--vscode-font-family); }
-    .root { height: 100%; display: grid; grid-template-columns: 280px minmax(0, 1fr); }
-    .sidebar { border-right: 1px solid var(--vscode-panel-border); overflow: auto; padding: 8px; }
+    .root { height: 100%; overflow: auto; padding: 8px; box-sizing: border-box; }
+    .sidebar { min-width: 0; }
     .repo { margin: 8px 0 4px; font-weight: 600; }
     .wt, .terminalLeaf { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
     .terminalLeaf { margin-left: 22px; color: var(--vscode-foreground); }
     .wt:hover, .terminalLeaf:hover, .wt.active, .terminalLeaf.active { background: var(--vscode-list-hoverBackground); }
     .terminalIcon { color: var(--vscode-terminal-ansiGreen); }
     .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-    .terminalWrap { min-width: 0; min-height: 0; padding: 6px; }
+    .terminalInline { margin: 4px 0 8px 44px; height: min(360px, 55vh); border: 1px solid var(--vscode-panel-border); padding: 4px; background: #000; }
     #terminal { height: 100%; }
-    .empty { padding: 12px; opacity: 0.75; }
     .badge { margin-left: auto; opacity: 0.7; font-size: 11px; }
   </style>
 </head>
 <body>
   <div class="root">
     <div class="sidebar" id="list"></div>
-    <div class="terminalWrap"><div id="terminal"></div><div class="empty" id="empty">Select or create a terminal from a worktree.</div></div>
   </div>
+  <div id="terminal" style="display:none"></div>
   <script nonce="${nonce}" src="${xtermJs}"></script>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const term = new Terminal({ convertEol: true, cursorBlink: true, fontFamily: 'monospace', theme: { background: '#000000' } });
     const terminalEl = document.getElementById('terminal');
-    const emptyEl = document.getElementById('empty');
     let activeSessionId;
     term.open(terminalEl);
     term.onData(data => activeSessionId && vscode.postMessage({ type: 'input', id: activeSessionId, data }));
@@ -174,8 +172,6 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         renderList(message.repos || []);
         term.clear();
         if (message.activeOutput) term.write(message.activeOutput);
-        terminalEl.style.display = activeSessionId ? 'block' : 'none';
-        emptyEl.style.display = activeSessionId ? 'none' : 'block';
         resize();
       } else if (message.type === 'output' && message.id === activeSessionId) {
         term.write(message.data);
@@ -217,12 +213,23 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
             terminalLabel.textContent = wt.name + ' terminal';
             terminal.append(icon, terminalLabel);
             list.appendChild(terminal);
+            if (wt.sessionId === activeSessionId) {
+              const inline = document.createElement('div');
+              inline.className = 'terminalInline';
+              inline.appendChild(terminalEl);
+              terminalEl.style.display = 'block';
+              list.appendChild(inline);
+            }
           }
         }
       }
+      if (!activeSessionId || !terminalEl.parentElement?.classList.contains('terminalInline')) {
+        terminalEl.style.display = 'none';
+        document.body.appendChild(terminalEl);
+      }
     }
     function resize() {
-      if (!activeSessionId) return;
+      if (!activeSessionId || !terminalEl.parentElement?.classList.contains('terminalInline')) return;
       const cols = Math.max(20, Math.floor(terminalEl.clientWidth / 9));
       const rows = Math.max(5, Math.floor(terminalEl.clientHeight / 18));
       term.resize(cols, rows);
