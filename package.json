@@ -7,7 +7,9 @@
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [
     "onView:worktreeManager.worktrees",
     "onView:worktreeManager.terminals",
@@ -37,7 +39,9 @@
         "worktreeManager.repositories": {
           "type": "array",
           "default": [],
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "Bare git repositories to manage. Leading ~ is expanded; environment variables are not."
         }
       }
@@ -73,30 +77,92 @@
       ]
     },
     "commands": [
-      { "command": "worktreeManager.refresh", "title": "Refresh" },
-      { "command": "worktreeManager.showMenu", "title": "Worktree Manager: Show Menu" },
-      { "command": "worktreeManager.addWorktree", "title": "Add Worktree…" },
-      { "command": "worktreeManager.openWorktree", "title": "Open Worktree" },
-      { "command": "worktreeManager.openTerminalHere", "title": "Open Terminal Here" },
-      { "command": "worktreeManager.removeWorktree", "title": "Remove Worktree" },
-      { "command": "worktreeManager.fetch", "title": "Fetch" },
-      { "command": "worktreeManager.pruneStale", "title": "Prune Stale" },
-      { "command": "worktreeManager.configureRepositories", "title": "Configure Repositories…" },
-      { "command": "worktreeManager.focusTerminal", "title": "Focus Terminal" }
+      {
+        "command": "worktreeManager.refresh",
+        "title": "Refresh"
+      },
+      {
+        "command": "worktreeManager.showMenu",
+        "title": "Worktree Manager: Show Menu"
+      },
+      {
+        "command": "worktreeManager.addWorktree",
+        "title": "Add Worktree…"
+      },
+      {
+        "command": "worktreeManager.openWorktree",
+        "title": "Open Worktree"
+      },
+      {
+        "command": "worktreeManager.openTerminalHere",
+        "title": "Open Terminal Here"
+      },
+      {
+        "command": "worktreeManager.removeWorktree",
+        "title": "Remove Worktree"
+      },
+      {
+        "command": "worktreeManager.fetch",
+        "title": "Fetch"
+      },
+      {
+        "command": "worktreeManager.pruneStale",
+        "title": "Prune Stale"
+      },
+      {
+        "command": "worktreeManager.configureRepositories",
+        "title": "Configure Repositories…"
+      }
     ],
     "menus": {
       "view/title": [
-        { "command": "worktreeManager.refresh", "when": "view == worktreeManager.worktrees", "group": "navigation" },
-        { "command": "worktreeManager.refresh", "when": "view == worktreeManager.terminals", "group": "navigation" }
+        {
+          "command": "worktreeManager.refresh",
+          "when": "view == worktreeManager.worktrees",
+          "group": "navigation"
+        },
+        {
+          "command": "worktreeManager.refresh",
+          "when": "view == worktreeManager.terminals",
+          "group": "navigation"
+        }
       ],
       "view/item/context": [
-        { "command": "worktreeManager.addWorktree", "when": "viewItem == repo", "group": "navigation" },
-        { "command": "worktreeManager.fetch", "when": "viewItem == repo", "group": "navigation" },
-        { "command": "worktreeManager.pruneStale", "when": "viewItem == repo", "group": "navigation" },
-        { "command": "worktreeManager.openWorktree", "when": "view == worktreeManager.worktrees && viewItem == worktree", "group": "inline" },
-        { "command": "worktreeManager.openTerminalHere", "when": "viewItem == worktree", "group": "inline" },
-        { "command": "worktreeManager.removeWorktree", "when": "viewItem == worktree", "group": "navigation" }
+        {
+          "command": "worktreeManager.addWorktree",
+          "when": "viewItem == repo",
+          "group": "navigation"
+        },
+        {
+          "command": "worktreeManager.fetch",
+          "when": "viewItem == repo",
+          "group": "navigation"
+        },
+        {
+          "command": "worktreeManager.pruneStale",
+          "when": "viewItem == repo",
+          "group": "navigation"
+        },
+        {
+          "command": "worktreeManager.openWorktree",
+          "when": "view == worktreeManager.worktrees && viewItem == worktree",
+          "group": "inline"
+        },
+        {
+          "command": "worktreeManager.openTerminalHere",
+          "when": "viewItem == worktree",
+          "group": "inline"
+        },
+        {
+          "command": "worktreeManager.removeWorktree",
+          "when": "viewItem == worktree",
+          "group": "navigation"
+        }
       ]
     }
+  },
+  "dependencies": {
+    "@xterm/xterm": "^6.0.0",
+    "node-pty": "^1.1.0"
   }
 }
