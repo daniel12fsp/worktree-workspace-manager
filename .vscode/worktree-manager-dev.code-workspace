@@ -1,0 +1,9 @@
+{
+  "folders": [],
+  "settings": {
+    "worktreeManager.repositories": [
+      "~/code/tmp/examples-repo/fe-project.git",
+      "~/code/tmp/examples-repo/be-project.git",
+    ],
+  },
+}
