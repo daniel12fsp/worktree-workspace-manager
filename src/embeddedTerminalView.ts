@@ -141,8 +141,10 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     .root { height: 100%; display: grid; grid-template-columns: 280px minmax(0, 1fr); }
     .sidebar { border-right: 1px solid var(--vscode-panel-border); overflow: auto; padding: 8px; }
     .repo { margin: 8px 0 4px; font-weight: 600; }
-    .wt { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
-    .wt:hover, .wt.active { background: var(--vscode-list-hoverBackground); }
+    .wt, .terminalLeaf { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+    .terminalLeaf { margin-left: 22px; color: var(--vscode-foreground); }
+    .wt:hover, .terminalLeaf:hover, .wt.active, .terminalLeaf.active { background: var(--vscode-list-hoverBackground); }
+    .terminalIcon { color: var(--vscode-terminal-ansiGreen); }
     .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
     .terminalWrap { min-width: 0; min-height: 0; padding: 6px; }
     #terminal { height: 100%; }
@@ -198,9 +200,24 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
           label.textContent = wt.name + ' (' + wt.branch + ')';
           const badge = document.createElement('span');
           badge.className = 'badge';
-          badge.textContent = wt.sessionId ? 'running' : '+';
+          badge.textContent = wt.sessionId ? '' : '+';
           row.append(dot, label, badge);
           list.appendChild(row);
+          if (wt.sessionId) {
+            const terminal = document.createElement('div');
+            terminal.className = 'terminalLeaf' + (wt.sessionId === activeSessionId ? ' active' : '');
+            terminal.onclick = event => {
+              event.stopPropagation();
+              vscode.postMessage({ type: 'select', id: wt.sessionId });
+            };
+            const icon = document.createElement('span');
+            icon.className = 'terminalIcon';
+            icon.textContent = '▸';
+            const terminalLabel = document.createElement('span');
+            terminalLabel.textContent = wt.name + ' terminal';
+            terminal.append(icon, terminalLabel);
+            list.appendChild(terminal);
+          }
         }
       }
     }
