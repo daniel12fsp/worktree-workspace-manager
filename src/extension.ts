@@ -1,7 +1,12 @@
+import { execFile } from 'node:child_process';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
 import * as vscode from 'vscode';
-import { getConfiguredRepositories, listAllWorktrees } from './model';
+import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees } from './model';
 import { TerminalLeafNode, TerminalProvider, TerminalTracker, TerminalWorktreeNode } from './terminalView';
-import { WorktreeNode, WorktreeProvider } from './worktreeView';
+import { RepoNode, WorktreeNode, WorktreeProvider } from './worktreeView';
+
+const execFileAsync = promisify(execFile);
 
 export function activate(context: vscode.ExtensionContext): void {
   const worktreeProvider = new WorktreeProvider();
@@ -24,6 +29,9 @@ export function activate(context: vscode.ExtensionContext): void {
   status.show();
   void updateStatus(status);
 
+  let selectedWorktree: Worktree | undefined;
+  let selectedRepo: BareRepository | undefined;
+
   const refreshAll = () => {
     worktreeProvider.refresh();
     terminalProvider.refresh();
@@ -34,48 +42,142 @@ export function activate(context: vscode.ExtensionContext): void {
     worktreeView,
     terminalView,
     status,
+    worktreeView.onDidChangeSelection(event => {
+      const node = event.selection[0];
+      selectedWorktree = node instanceof WorktreeNode ? node.worktree : undefined;
+      selectedRepo = node instanceof RepoNode ? node.repo : selectedWorktree?.repo;
+    }),
+    terminalView.onDidChangeSelection(event => {
+      const node = event.selection[0];
+      selectedWorktree = node instanceof TerminalWorktreeNode ? node.worktree : selectedWorktree;
+      selectedRepo = node instanceof TerminalWorktreeNode ? node.worktree.repo : selectedRepo;
+    }),
     vscode.workspace.onDidChangeConfiguration(event => {
       if (event.affectsConfiguration('worktreeManager.repositories')) {
         refreshAll();
       }
     }),
     vscode.commands.registerCommand('worktreeManager.refresh', refreshAll),
-    vscode.commands.registerCommand('worktreeManager.openWorktree', (node?: WorktreeNode | TerminalWorktreeNode) => openWorktree(node)),
-    vscode.commands.registerCommand('worktreeManager.openTerminalHere', (node?: WorktreeNode | TerminalWorktreeNode) => openTerminalHere(node, terminalTracker)),
+    vscode.commands.registerCommand('worktreeManager.addWorktree', async (node?: RepoNode) => {
+      await addWorktree(node?.repo ?? selectedRepo);
+      refreshAll();
+    }),
+    vscode.commands.registerCommand('worktreeManager.removeWorktree', async (node?: WorktreeNode | TerminalWorktreeNode) => {
+      await removeWorktree(node?.worktree ?? selectedWorktree);
+      refreshAll();
+    }),
+    vscode.commands.registerCommand('worktreeManager.fetch', async (node?: RepoNode) => {
+      await runRepoGit(node?.repo ?? selectedRepo, ['fetch'], 'Fetch complete');
+      refreshAll();
+    }),
+    vscode.commands.registerCommand('worktreeManager.pruneStale', async (node?: RepoNode) => {
+      await runRepoGit(node?.repo ?? selectedRepo, ['worktree', 'prune'], 'Prune complete');
+      refreshAll();
+    }),
+    vscode.commands.registerCommand('worktreeManager.configureRepositories', () => vscode.commands.executeCommand('workbench.action.openSettingsJson')),
+    vscode.commands.registerCommand('worktreeManager.openWorktree', async (node?: WorktreeNode | TerminalWorktreeNode) => openWorktree(node?.worktree ?? selectedWorktree)),
+    vscode.commands.registerCommand('worktreeManager.openTerminalHere', async (node?: WorktreeNode | TerminalWorktreeNode) => openTerminalHere(node?.worktree ?? selectedWorktree, terminalTracker)),
     vscode.commands.registerCommand('worktreeManager.focusTerminal', (node?: TerminalLeafNode) => node?.terminal.show()),
     vscode.commands.registerCommand('worktreeManager.showMenu', async () => {
-      const choice = await vscode.window.showQuickPick([
-        { label: 'Refresh', command: 'worktreeManager.refresh' },
-        { label: 'Configure Repositories…', command: 'worktreeManager.configureRepositories' }
-      ], { placeHolder: 'Worktree Workspace' });
-      if (choice?.command === 'worktreeManager.refresh') {
+      const choice = await vscode.window.showQuickPick(menuItems(Boolean(selectedWorktree)), { placeHolder: 'Worktree Workspace' });
+      if (choice) {
         await vscode.commands.executeCommand(choice.command);
-      } else if (choice?.command === 'worktreeManager.configureRepositories') {
-        await vscode.commands.executeCommand('workbench.action.openSettingsJson');
       }
     })
   );
 }
 
-async function openWorktree(node?: WorktreeNode | TerminalWorktreeNode): Promise<void> {
-  if (!node) {
-    void vscode.window.showInformationMessage('Select a worktree first.');
-    return;
-  }
-  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(node.worktree.path), true);
+async function openWorktree(worktree?: Worktree): Promise<void> {
+  worktree = worktree ?? await pickWorktree();
+  if (!worktree) return;
+  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(worktree.path), true);
 }
 
-async function openTerminalHere(node: WorktreeNode | TerminalWorktreeNode | undefined, tracker: TerminalTracker): Promise<void> {
-  if (!node) {
-    void vscode.window.showInformationMessage('Select a worktree first.');
-    return;
-  }
+async function openTerminalHere(worktree: Worktree | undefined, tracker: TerminalTracker): Promise<void> {
+  worktree = worktree ?? await pickWorktree();
+  if (!worktree) return;
   const terminal = vscode.window.createTerminal({
-    name: node.worktree.name,
-    cwd: node.worktree.path
+    name: worktree.name,
+    cwd: worktree.path
   });
-  tracker.registerCreatedTerminal(terminal, node.worktree.path);
+  tracker.registerCreatedTerminal(terminal, worktree.path);
   terminal.show();
+}
+
+async function addWorktree(repo?: BareRepository): Promise<void> {
+  repo = repo ?? await pickRepo();
+  if (!repo) return;
+  const branch = await vscode.window.showInputBox({ prompt: 'Branch name for the new worktree' });
+  if (!branch) return;
+  const defaultPath = path.join(path.dirname(repo.fsPath), branch.replace(/[\\/:*?"<>|]+/g, '-'));
+  const worktreePath = await vscode.window.showInputBox({ prompt: 'Worktree path', value: defaultPath });
+  if (!worktreePath) return;
+  await runGit(['--git-dir', repo.fsPath, 'worktree', 'add', worktreePath, branch], `Added ${branch}`);
+}
+
+async function removeWorktree(worktree?: Worktree): Promise<void> {
+  worktree = worktree ?? await pickWorktree();
+  if (!worktree) return;
+  const confirmed = await vscode.window.showWarningMessage(
+    `Remove worktree ${worktree.name}?`,
+    { modal: true, detail: worktree.path },
+    'Remove'
+  );
+  if (confirmed !== 'Remove') return;
+  await runGit(['--git-dir', worktree.repo.fsPath, 'worktree', 'remove', worktree.path], `Removed ${worktree.name}`);
+}
+
+async function runRepoGit(repo: BareRepository | undefined, args: string[], success: string): Promise<void> {
+  repo = repo ?? await pickRepo();
+  if (!repo) return;
+  await runGit(['--git-dir', repo.fsPath, ...args], success);
+}
+
+async function runGit(args: string[], success: string): Promise<void> {
+  await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Worktree Manager' }, async () => {
+    try {
+      const { stderr } = await execFileAsync('git', args);
+      void vscode.window.showInformationMessage(stderr.trim() || success);
+    } catch (error) {
+      void vscode.window.showErrorMessage(String(error));
+    }
+  });
+}
+
+async function pickRepo(): Promise<BareRepository | undefined> {
+  const repos = getConfiguredRepositories();
+  const choice = await vscode.window.showQuickPick(repos.map(repo => ({ label: repo.label, description: repo.configPath, repo })), {
+    placeHolder: 'Choose a bare repository'
+  });
+  return choice?.repo;
+}
+
+async function pickWorktree(): Promise<Worktree | undefined> {
+  const all = await listAllWorktrees();
+  const items = [...all.values()].flat().map(worktree => ({
+    label: `${worktree.name} (${worktree.branch ?? 'detached'})`,
+    description: worktree.repo.label,
+    detail: worktree.path,
+    worktree
+  }));
+  const choice = await vscode.window.showQuickPick(items, { placeHolder: 'Choose a worktree' });
+  return choice?.worktree;
+}
+
+function menuItems(hasSelectedWorktree: boolean): Array<{ label: string; command: string }> {
+  const worktreeActions = [
+    { label: 'Open Worktree', command: 'worktreeManager.openWorktree' },
+    { label: 'Open Terminal Here', command: 'worktreeManager.openTerminalHere' },
+    { label: 'Remove Worktree', command: 'worktreeManager.removeWorktree' }
+  ];
+  const repoActions = [
+    { label: 'Add Worktree…', command: 'worktreeManager.addWorktree' },
+    { label: 'Fetch', command: 'worktreeManager.fetch' },
+    { label: 'Prune Stale', command: 'worktreeManager.pruneStale' },
+    { label: 'Refresh', command: 'worktreeManager.refresh' },
+    { label: 'Configure Repositories…', command: 'worktreeManager.configureRepositories' }
+  ];
+  return hasSelectedWorktree ? [...worktreeActions, ...repoActions] : [...repoActions, ...worktreeActions];
 }
 
 async function updateStatus(status: vscode.StatusBarItem): Promise<void> {

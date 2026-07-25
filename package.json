@@ -12,7 +12,12 @@
     "onView:worktreeManager.worktrees",
     "onView:worktreeManager.terminals",
     "onCommand:worktreeManager.refresh",
-    "onCommand:worktreeManager.showMenu"
+    "onCommand:worktreeManager.showMenu",
+    "onCommand:worktreeManager.addWorktree",
+    "onCommand:worktreeManager.removeWorktree",
+    "onCommand:worktreeManager.fetch",
+    "onCommand:worktreeManager.pruneStale",
+    "onCommand:worktreeManager.configureRepositories"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -61,8 +66,13 @@
     "commands": [
       { "command": "worktreeManager.refresh", "title": "Refresh" },
       { "command": "worktreeManager.showMenu", "title": "Worktree Manager: Show Menu" },
+      { "command": "worktreeManager.addWorktree", "title": "Add Worktree…" },
       { "command": "worktreeManager.openWorktree", "title": "Open Worktree" },
       { "command": "worktreeManager.openTerminalHere", "title": "Open Terminal Here" },
+      { "command": "worktreeManager.removeWorktree", "title": "Remove Worktree" },
+      { "command": "worktreeManager.fetch", "title": "Fetch" },
+      { "command": "worktreeManager.pruneStale", "title": "Prune Stale" },
+      { "command": "worktreeManager.configureRepositories", "title": "Configure Repositories…" },
       { "command": "worktreeManager.focusTerminal", "title": "Focus Terminal" }
     ],
     "menus": {
@@ -71,8 +81,12 @@
         { "command": "worktreeManager.refresh", "when": "view == worktreeManager.terminals", "group": "navigation" }
       ],
       "view/item/context": [
+        { "command": "worktreeManager.addWorktree", "when": "viewItem == repo", "group": "navigation" },
+        { "command": "worktreeManager.fetch", "when": "viewItem == repo", "group": "navigation" },
+        { "command": "worktreeManager.pruneStale", "when": "viewItem == repo", "group": "navigation" },
         { "command": "worktreeManager.openWorktree", "when": "view == worktreeManager.worktrees && viewItem == worktree", "group": "inline" },
-        { "command": "worktreeManager.openTerminalHere", "when": "viewItem == worktree", "group": "inline" }
+        { "command": "worktreeManager.openTerminalHere", "when": "viewItem == worktree", "group": "inline" },
+        { "command": "worktreeManager.removeWorktree", "when": "viewItem == worktree", "group": "navigation" }
       ]
     }
   }
