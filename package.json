@@ -72,7 +72,8 @@
       "worktreeManagerTerminals": [
         {
           "id": "worktreeManager.terminals",
-          "name": "Terminals by Worktree"
+          "name": "Terminals by Worktree",
+          "type": "webview"
         }
       ]
     },
