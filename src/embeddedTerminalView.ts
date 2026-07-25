@@ -52,6 +52,9 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
           this.activeSessionId = undefined;
           this.renderSessions();
         }
+      } else if (message?.type === 'collapseAll') {
+        this.activeSessionId = undefined;
+        this.renderSessions();
       } else if (message?.type === 'input') {
         this.sessions.get(String(message.id))?.process.write(String(message.data));
       } else if (message?.type === 'resize') {
@@ -189,11 +192,12 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         const header = document.createElement('div');
         header.className = 'repo';
         header.textContent = repo.label;
+        header.onclick = () => vscode.postMessage({ type: 'collapseAll' });
         list.appendChild(header);
         for (const wt of repo.worktrees) {
           const row = document.createElement('div');
-          row.className = 'wt' + (wt.sessionId && wt.sessionId === activeSessionId ? ' active' : '');
-          row.onclick = () => wt.sessionId ? vscode.postMessage({ type: 'select', id: wt.sessionId }) : vscode.postMessage({ type: 'create', path: wt.path });
+          row.className = 'wt';
+          row.onclick = () => vscode.postMessage({ type: 'collapseAll' });
           const dot = document.createElement('span');
           dot.className = 'dot';
           dot.style.background = wt.color;
