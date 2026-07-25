@@ -50,7 +50,7 @@
           "icon": "resources/tree.svg"
         }
       ],
-      "secondarySideBar": [
+      "panel": [
         {
           "id": "worktreeManagerTerminals",
           "title": "Terminals by Worktree",
