@@ -42,6 +42,7 @@ export function activate(context: vscode.ExtensionContext): void {
     worktreeView,
     terminalView,
     status,
+    { dispose: () => terminalTracker.dispose() },
     worktreeView.onDidChangeSelection(event => {
       const node = event.selection[0];
       selectedWorktree = node instanceof WorktreeNode ? node.worktree : undefined;

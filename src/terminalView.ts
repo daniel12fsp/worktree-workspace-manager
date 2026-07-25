@@ -13,12 +13,19 @@ interface TerminalState {
 export class TerminalTracker {
   private readonly state = new Map<vscode.Terminal, TerminalState>();
   private seq = 0;
+  private refreshTimer: NodeJS.Timeout | undefined;
 
   constructor(private readonly refresh: () => void) {}
 
+  dispose(): void {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+    }
+  }
+
   registerCreatedTerminal(terminal: vscode.Terminal, cwd?: string): void {
     this.ensure(terminal).cwd = cwd;
-    this.refresh();
+    this.requestRefresh();
   }
 
   wire(context: vscode.ExtensionContext): void {
@@ -29,33 +36,34 @@ export class TerminalTracker {
     context.subscriptions.push(
       vscode.window.onDidOpenTerminal(terminal => {
         this.ensure(terminal);
-        this.refresh();
+        this.requestRefresh();
       }),
       vscode.window.onDidCloseTerminal(terminal => {
         this.state.delete(terminal);
-        this.refresh();
+        this.requestRefresh();
       }),
       vscode.window.onDidChangeActiveTerminal(terminal => {
         if (terminal) {
           this.ensure(terminal).lastFocusSeq = ++this.seq;
-          this.refresh();
+          this.requestRefresh();
         }
       }),
       vscode.window.onDidChangeTerminalShellIntegration(({ terminal, shellIntegration }) => {
-        this.ensure(terminal).cwd = uriToFsPath(shellIntegration.cwd) ?? this.ensure(terminal).cwd;
-        this.refresh();
+        const state = this.ensure(terminal);
+        state.cwd = uriToFsPath(shellIntegration.cwd) ?? state.cwd;
+        this.requestRefresh();
       }),
       vscode.window.onDidStartTerminalShellExecution(event => {
         const state = this.ensure(event.terminal);
         state.cwd = uriToFsPath(event.execution.cwd) ?? uriToFsPath(event.terminal.shellIntegration?.cwd) ?? state.cwd;
         state.runningCommand = event.execution.commandLine.value;
-        this.refresh();
+        this.requestRefresh();
       }),
       vscode.window.onDidEndTerminalShellExecution(event => {
         const state = this.ensure(event.terminal);
         state.cwd = uriToFsPath(event.execution.cwd) ?? uriToFsPath(event.terminal.shellIntegration?.cwd) ?? state.cwd;
         state.runningCommand = undefined;
-        this.refresh();
+        this.requestRefresh();
       })
     );
   }
@@ -64,6 +72,16 @@ export class TerminalTracker {
     const state = this.state.get(terminal);
     const cwd = uriToFsPath(terminal.shellIntegration?.cwd) ?? state?.cwd;
     return state ? { ...state, cwd } : undefined;
+  }
+
+  private requestRefresh(): void {
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+    }
+    this.refreshTimer = setTimeout(() => {
+      this.refreshTimer = undefined;
+      this.refresh();
+    }, 75);
   }
 
   private ensure(terminal: vscode.Terminal): TerminalState {

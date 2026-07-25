@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { BareRepository, Worktree, dotIcon, getConfiguredRepositories, listWorktrees } from './model';
 
-type Node = RepoNode | WorktreeNode | EmptyNode;
+type Node = RepoNode | WorktreeNode | EmptyNode | ErrorNode;
 
 export class RepoNode extends vscode.TreeItem {
   constructor(readonly repo: BareRepository) {
@@ -29,6 +29,15 @@ class EmptyNode extends vscode.TreeItem {
   }
 }
 
+class ErrorNode extends vscode.TreeItem {
+  constructor(error: unknown) {
+    super('Failed to load worktrees', vscode.TreeItemCollapsibleState.None);
+    this.contextValue = 'error';
+    this.description = String(error);
+    this.iconPath = new vscode.ThemeIcon('error');
+  }
+}
+
 export class WorktreeProvider implements vscode.TreeDataProvider<Node> {
   private readonly changed = new vscode.EventEmitter<Node | undefined | null | void>();
   readonly onDidChangeTreeData = this.changed.event;
@@ -48,8 +57,12 @@ export class WorktreeProvider implements vscode.TreeDataProvider<Node> {
     }
 
     if (element instanceof RepoNode) {
-      const worktrees = await listWorktrees(element.repo);
-      return worktrees.length ? worktrees.map(worktree => new WorktreeNode(worktree)) : [new EmptyNode()];
+      try {
+        const worktrees = await listWorktrees(element.repo);
+        return worktrees.length ? worktrees.map(worktree => new WorktreeNode(worktree)) : [new EmptyNode()];
+      } catch (error) {
+        return [new ErrorNode(error)];
+      }
     }
 
     return [];
