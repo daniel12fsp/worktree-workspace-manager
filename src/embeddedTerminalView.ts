@@ -148,7 +148,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     html, body { height: 100%; margin: 0; color: var(--vscode-foreground); background: var(--vscode-panel-background); font-family: var(--vscode-font-family); }
     .root { height: 100%; overflow: auto; padding: 8px; box-sizing: border-box; }
     .sidebar { min-width: 0; }
-    .repo { margin: 8px 0 4px; font-weight: 600; }
+    .repo { margin: 8px 0 4px; font-weight: 600; cursor: pointer; user-select: none; }
     .wt, .terminalLeaf { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
     .terminalLeaf { margin-left: 22px; color: var(--vscode-foreground); }
     .wt:hover, .terminalLeaf:hover, .wt.active, .terminalLeaf.active { background: var(--vscode-list-hoverBackground); }
@@ -170,6 +170,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     const term = new Terminal({ convertEol: true, cursorBlink: true, fontFamily: 'monospace', theme: { background: '#000000' } });
     const terminalEl = document.getElementById('terminal');
     let activeSessionId;
+    const collapsedRepos = new Set();
     term.open(terminalEl);
     term.onData(data => activeSessionId && vscode.postMessage({ type: 'input', id: activeSessionId, data }));
     window.addEventListener('resize', resize);
@@ -191,9 +192,15 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       for (const repo of repos) {
         const header = document.createElement('div');
         header.className = 'repo';
-        header.textContent = repo.label;
-        header.onclick = () => vscode.postMessage({ type: 'collapseAll' });
+        const isRepoCollapsed = collapsedRepos.has(repo.label);
+        header.textContent = (isRepoCollapsed ? '▸ ' : '▾ ') + repo.label;
+        header.onclick = () => {
+          isRepoCollapsed ? collapsedRepos.delete(repo.label) : collapsedRepos.add(repo.label);
+          vscode.postMessage({ type: 'collapseAll' });
+          renderList(repos);
+        };
         list.appendChild(header);
+        if (isRepoCollapsed) continue;
         for (const wt of repo.worktrees) {
           const row = document.createElement('div');
           row.className = 'wt';
