@@ -19,7 +19,9 @@
     "onCommand:worktreeManager.removeWorktree",
     "onCommand:worktreeManager.fetch",
     "onCommand:worktreeManager.pruneStale",
-    "onCommand:worktreeManager.configureRepositories"
+    "onCommand:worktreeManager.configureRepositories",
+    "onCommand:worktreeManager.closeRepoTerminals",
+    "onCommand:worktreeManager.killWorktreeTerminals"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -113,6 +115,14 @@
       {
         "command": "worktreeManager.configureRepositories",
         "title": "Configure Repositories…"
+      },
+      {
+        "command": "worktreeManager.closeRepoTerminals",
+        "title": "Close All Terminals"
+      },
+      {
+        "command": "worktreeManager.killWorktreeTerminals",
+        "title": "Kill Related Terminals"
       }
     ],
     "menus": {
@@ -145,6 +155,11 @@
           "group": "navigation"
         },
         {
+          "command": "worktreeManager.closeRepoTerminals",
+          "when": "viewItem == repo",
+          "group": "terminals"
+        },
+        {
           "command": "worktreeManager.openWorktree",
           "when": "view == worktreeManager.worktrees && viewItem == worktree",
           "group": "inline"
@@ -158,6 +173,11 @@
           "command": "worktreeManager.removeWorktree",
           "when": "viewItem == worktree",
           "group": "navigation"
+        },
+        {
+          "command": "worktreeManager.killWorktreeTerminals",
+          "when": "viewItem == worktree",
+          "group": "terminals"
         }
       ]
     }

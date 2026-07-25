@@ -2,7 +2,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as pty from 'node-pty';
 import * as vscode from 'vscode';
-import { Worktree, listAllWorktrees } from './model';
+import { BareRepository, Worktree, listAllWorktrees } from './model';
 
 interface EmbeddedSession {
   readonly id: string;
@@ -34,6 +34,14 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     this.activeSessionId = session.id;
     await vscode.commands.executeCommand('worktreeManager.terminals.focus');
     this.renderSessions();
+  }
+
+  killRepoTerminals(repo: BareRepository): number {
+    return this.killSessions(session => session.worktree.repo.fsPath === repo.fsPath);
+  }
+
+  killWorktreeTerminals(worktree: Worktree): number {
+    return this.killSessions(session => path.resolve(session.worktree.path) === path.resolve(worktree.path));
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -74,6 +82,19 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       }
     });
     void this.renderSessions();
+  }
+
+  private killSessions(predicate: (session: EmbeddedSession) => boolean): number {
+    const matches = [...this.sessions.values()].filter(predicate);
+    for (const session of matches) {
+      this.sessions.delete(session.id);
+      session.process.kill();
+    }
+    if (this.activeSessionId && !this.sessions.has(this.activeSessionId)) {
+      this.activeSessionId = undefined;
+    }
+    void this.renderSessions();
+    return matches.length;
   }
 
   private createSession(worktree: Worktree): EmbeddedSession {

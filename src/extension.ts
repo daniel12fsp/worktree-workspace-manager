@@ -69,6 +69,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('worktreeManager.configureRepositories', () => vscode.commands.executeCommand('workbench.action.openSettingsJson')),
     vscode.commands.registerCommand('worktreeManager.openWorktree', async (node?: WorktreeNode) => openWorktree(node?.worktree ?? selectedWorktree)),
     vscode.commands.registerCommand('worktreeManager.openTerminalHere', async (node?: WorktreeNode) => openTerminalHere(node?.worktree ?? selectedWorktree, terminalProvider)),
+    vscode.commands.registerCommand('worktreeManager.closeRepoTerminals', async (node?: RepoNode) => closeRepoTerminals(node?.repo ?? selectedRepo, terminalProvider)),
+    vscode.commands.registerCommand('worktreeManager.killWorktreeTerminals', async (node?: WorktreeNode) => killWorktreeTerminals(node?.worktree ?? selectedWorktree, terminalProvider)),
     vscode.commands.registerCommand('worktreeManager.showMenu', async () => {
       const choice = await vscode.window.showQuickPick(menuItems(Boolean(selectedWorktree)), { placeHolder: 'Worktree Workspace' });
       if (choice) {
@@ -88,6 +90,32 @@ async function openTerminalHere(worktree: Worktree | undefined, terminalProvider
   worktree = worktree ?? await pickWorktree();
   if (!worktree) return;
   await terminalProvider.openTerminal(worktree);
+}
+
+async function closeRepoTerminals(repo: BareRepository | undefined, terminalProvider: EmbeddedTerminalViewProvider): Promise<void> {
+  repo = repo ?? await pickRepo();
+  if (!repo) return;
+  const confirmed = await vscode.window.showWarningMessage(
+    `Close all embedded terminals for ${repo.label}?`,
+    { modal: true },
+    'Close Terminals'
+  );
+  if (confirmed !== 'Close Terminals') return;
+  const killed = terminalProvider.killRepoTerminals(repo);
+  void vscode.window.showInformationMessage(killed ? `Closed ${killed} terminal(s).` : 'No terminals to close.');
+}
+
+async function killWorktreeTerminals(worktree: Worktree | undefined, terminalProvider: EmbeddedTerminalViewProvider): Promise<void> {
+  worktree = worktree ?? await pickWorktree();
+  if (!worktree) return;
+  const confirmed = await vscode.window.showWarningMessage(
+    `Kill embedded terminals for ${worktree.name}?`,
+    { modal: true, detail: worktree.path },
+    'Kill Terminals'
+  );
+  if (confirmed !== 'Kill Terminals') return;
+  const killed = terminalProvider.killWorktreeTerminals(worktree);
+  void vscode.window.showInformationMessage(killed ? `Killed ${killed} terminal(s).` : 'No terminals to kill.');
 }
 
 async function addWorktree(repo?: BareRepository): Promise<void> {
