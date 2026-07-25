@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { BareRepository, Worktree, dotIcon, getConfiguredRepositories, listWorktrees } from './model';
+import { getCheckedWorktreePaths, normalizePath } from './workspaceFile';
 
 type Node = RepoNode | WorktreeNode | EmptyNode | ErrorNode;
 
@@ -13,12 +14,15 @@ export class RepoNode extends vscode.TreeItem {
 }
 
 export class WorktreeNode extends vscode.TreeItem {
-  constructor(readonly worktree: Worktree) {
+  constructor(readonly worktree: Worktree, checked: boolean) {
     super(`${worktree.name} (${worktree.branch ?? 'detached'})`, vscode.TreeItemCollapsibleState.None);
     this.contextValue = 'worktree';
     this.iconPath = dotIcon(worktree.color);
     this.tooltip = worktree.path;
     this.resourceUri = vscode.Uri.file(worktree.path);
+    this.checkboxState = checked
+      ? vscode.TreeItemCheckboxState.Checked
+      : vscode.TreeItemCheckboxState.Unchecked;
   }
 }
 
@@ -58,8 +62,10 @@ export class WorktreeProvider implements vscode.TreeDataProvider<Node> {
 
     if (element instanceof RepoNode) {
       try {
-        const worktrees = await listWorktrees(element.repo);
-        return worktrees.length ? worktrees.map(worktree => new WorktreeNode(worktree)) : [new EmptyNode()];
+        const [worktrees, checkedPaths] = await Promise.all([listWorktrees(element.repo), getCheckedWorktreePaths()]);
+        return worktrees.length
+          ? worktrees.map(worktree => new WorktreeNode(worktree, checkedPaths.has(normalizePath(worktree.path))))
+          : [new EmptyNode()];
       } catch (error) {
         return [new ErrorNode(error)];
       }

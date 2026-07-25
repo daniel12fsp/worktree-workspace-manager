@@ -1,9 +1,64 @@
 {
-  "folders": [],
+  "folders": [
+    {
+      "name": "fe-project.git: main",
+      "path": "../../examples-repo/fe-project.git/worktrees/main"
+    },
+    {
+      "name": "be-project.git: be-1",
+      "path": "../../examples-repo/be-project.git/be-1"
+    }
+  ],
   "settings": {
     "worktreeManager.repositories": [
       "~/code/tmp/examples-repo/fe-project.git",
       "~/code/tmp/examples-repo/be-project.git",
     ],
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/bower_components": true,
+      "**/*.code-search": true,
+      "fe-project.git: fe-1/**": false,
+      "fe-1/**": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/fe-project.git/fe-1/**": false,
+      "fe-project.git: fe-2/**": true,
+      "fe-2/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/fe-project.git/fe-2/**": true,
+      "fe-project.git: main/**": true,
+      "main/**": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/fe-project.git/worktrees/main/**": true,
+      "be-project.git: be-1/**": true,
+      "be-1/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-1/**": true,
+      "be-project.git: be-2/**": true,
+      "be-2/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-2/**": true,
+      "be-project.git: main/**": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/worktrees/main/**": false
+    },
+    "files.exclude": {
+      "**/.git": true,
+      "**/.svn": true,
+      "**/.hg": true,
+      "**/.DS_Store": true,
+      "**/Thumbs.db": true,
+      "fe-project.git: fe-1/**": false,
+      "fe-1/**": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/fe-project.git/fe-1/**": false,
+      "fe-project.git: fe-2/**": true,
+      "fe-2/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/fe-project.git/fe-2/**": true,
+      "fe-project.git: main/**": true,
+      "main/**": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/fe-project.git/worktrees/main/**": true,
+      "be-project.git: be-1/**": true,
+      "be-1/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-1/**": true,
+      "be-project.git: be-2/**": true,
+      "be-2/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-2/**": true,
+      "be-project.git: main/**": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/worktrees/main/**": false
+    },
   },
 }

@@ -16,6 +16,7 @@
     "onCommand:worktreeManager.refresh",
     "onCommand:worktreeManager.showMenu",
     "onCommand:worktreeManager.addWorktree",
+    "onCommand:worktreeManager.checkWorktree",
     "onCommand:worktreeManager.removeWorktree",
     "onCommand:worktreeManager.fetch",
     "onCommand:worktreeManager.pruneStale",
@@ -26,6 +27,7 @@
   "main": "./out/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run compile",
+    "build": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"
   },
@@ -49,13 +51,6 @@
       }
     },
     "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "worktreeManager",
-          "title": "Worktree Workspace",
-          "icon": "resources/tree.svg"
-        }
-      ],
       "panel": [
         {
           "id": "worktreeManagerTerminals",
@@ -65,7 +60,7 @@
       ]
     },
     "views": {
-      "worktreeManager": [
+      "explorer": [
         {
           "id": "worktreeManager.worktrees",
           "name": "Worktree"
@@ -93,8 +88,8 @@
         "title": "Add Worktree…"
       },
       {
-        "command": "worktreeManager.openWorktree",
-        "title": "Open Worktree"
+        "command": "worktreeManager.checkWorktree",
+        "title": "Check Worktree"
       },
       {
         "command": "worktreeManager.openTerminalHere",
@@ -160,7 +155,7 @@
           "group": "terminals"
         },
         {
-          "command": "worktreeManager.openWorktree",
+          "command": "worktreeManager.checkWorktree",
           "when": "view == worktreeManager.worktrees && viewItem == worktree",
           "group": "inline"
         },
@@ -184,6 +179,7 @@
   },
   "dependencies": {
     "@xterm/xterm": "^6.0.0",
+    "jsonc-parser": "^3.3.1",
     "node-pty": "^1.1.0"
   }
 }

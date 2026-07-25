@@ -1,0 +1,257 @@
+import * as fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
+import * as path from 'node:path';
+import * as vscode from 'vscode';
+import { applyEdits, findNodeAtLocation, getNodeValue, modify, parse, parseTree, type Node as JsonNode, type ParseError } from 'jsonc-parser';
+import { Worktree, listAllWorktrees } from './model';
+
+const BEGIN_MARKER = '// BEGIN worktreeManager';
+const END_MARKER = '// END worktreeManager';
+
+export type CheckWorktreeResult = 'updated' | 'noWorkspaceFile' | 'missingFolders' | 'failed';
+
+export async function checkWorktreeInLiveWorkspace(target: Worktree): Promise<CheckWorktreeResult> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders) return 'noWorkspaceFile';
+
+  const all = await listAllWorktrees();
+  const managedPaths = new Set([...all.values()].flat().map(worktree => normalizePath(worktree.path)));
+  const normalFolders = folders.filter(folder => !managedPaths.has(normalizePath(folder.uri.fsPath)));
+  const currentActivePaths = new Set(folders.map(folder => normalizePath(folder.uri.fsPath)));
+  const targetRepoKey = repoKey(target);
+  const targetPath = normalizePath(target.path);
+
+  const nextFolders: Array<{ uri: vscode.Uri; name?: string }> = normalFolders.map(folder => ({
+    uri: folder.uri,
+    name: folder.name
+  }));
+
+  for (const [, worktrees] of all) {
+    const active = repoKey(worktrees[0] ?? target) === targetRepoKey
+      ? worktrees.find(worktree => normalizePath(worktree.path) === targetPath)
+      : worktrees.find(worktree => currentActivePaths.has(normalizePath(worktree.path)))
+        ?? worktrees.find(worktree => !worktree.prunable)
+        ?? worktrees[0];
+    if (active) {
+      nextFolders.push({
+        uri: vscode.Uri.file(active.path),
+        name: `${active.repo.label}: ${active.name}`
+      });
+    }
+  }
+
+  const ok = vscode.workspace.updateWorkspaceFolders(0, folders.length, ...nextFolders);
+  return ok ? 'updated' : 'failed';
+}
+
+export async function checkWorktreeInWorkspaceFile(target: Worktree): Promise<CheckWorktreeResult> {
+  const workspaceFile = vscode.workspace.workspaceFile?.fsPath;
+  if (!workspaceFile) return 'noWorkspaceFile';
+
+  const original = await fs.readFile(workspaceFile, 'utf8');
+  const all = await listAllWorktrees();
+  const managedPaths = new Set([...all.values()].flat().map(worktree => normalizePath(worktree.path)));
+  const cleaned = removeExistingManagedFolderEntries(original, managedPaths);
+
+  const foldersNode = findFoldersArray(cleaned);
+  if (!foldersNode) return 'missingFolders';
+
+  const activePaths = readActiveManagedPathOrder(cleaned);
+  activePaths.push(normalizePath(target.path));
+
+  const block = buildManagedBlock(all, activePaths, target);
+  const next = patchManagedBlock(cleaned, foldersNode, block);
+  if (!next) return 'missingFolders';
+
+  const errors: ParseError[] = [];
+  parse(next, errors, { allowTrailingComma: true, disallowComments: false });
+  if (errors.length) return 'failed';
+
+  await fs.writeFile(workspaceFile, next, 'utf8');
+  return 'updated';
+}
+
+export async function getCheckedWorktreePaths(): Promise<Set<string>> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (folders) return new Set(folders.map(folder => normalizePath(folder.uri.fsPath)));
+
+  const workspaceFile = vscode.workspace.workspaceFile?.fsPath;
+  if (!workspaceFile) return new Set();
+  try {
+    return new Set(readActiveManagedPathOrder(await fs.readFile(workspaceFile, 'utf8')));
+  } catch {
+    return new Set();
+  }
+}
+
+async function updateExcludeConfiguration(section: 'search.exclude' | 'files.exclude', all: Map<unknown, Worktree[]>, selected: Set<string>): Promise<void> {
+  const current = getExcludeConfiguration(section);
+  const next: Record<string, boolean> = { ...current };
+
+  for (const [, worktrees] of all) {
+    for (const worktree of worktrees) {
+      for (const pattern of excludePatterns(worktree)) {
+        next[pattern] = !selected.has(normalizePath(worktree.path));
+      }
+    }
+  }
+
+  await vscode.workspace.getConfiguration().update(section, next, vscode.ConfigurationTarget.Workspace);
+}
+
+function getExcludeConfiguration(section: 'search.exclude' | 'files.exclude'): Record<string, boolean> {
+  const value = vscode.workspace.getConfiguration(undefined, null).get<Record<string, boolean>>(section, {});
+  return value && typeof value === 'object' ? value : {};
+}
+
+function excludePatterns(worktree: Worktree): string[] {
+  return [
+    `${worktree.repo.label}: ${worktree.name}/**`,
+    `${worktree.name}/**`,
+    `${toAbsolutePath(worktree.path)}/**`
+  ];
+}
+
+function findFoldersArray(text: string): JsonNode | undefined {
+  const tree = parseTree(text, undefined, { allowTrailingComma: true, disallowComments: false });
+  const folders = tree ? findNodeAtLocation(tree, ['folders']) : undefined;
+  if (!folders || folders.type !== 'array') return undefined;
+  return folders;
+}
+
+function removeExistingManagedFolderEntries(text: string, managedPaths: Set<string>): string {
+  let next = text;
+
+  while (true) {
+    const foldersNode = findFoldersArray(next);
+    if (!foldersNode?.children?.length) return next;
+
+    const existingBlock = findExistingBlockRange(next, foldersNode);
+    const index = foldersNode.children.findIndex(child => {
+      if (existingBlock && child.offset >= existingBlock.beginLineStart && child.offset <= existingBlock.endLineEnd) {
+        return false;
+      }
+      const value = getNodeValue(child) as { path?: unknown } | undefined;
+      return typeof value?.path === 'string' && managedPaths.has(normalizePath(value.path));
+    });
+
+    if (index === -1) return next;
+    next = applyEdits(next, modify(next, ['folders', index], undefined, {}));
+  }
+}
+
+function readActiveManagedPathOrder(text: string): string[] {
+  const foldersNode = findFoldersArray(text);
+  const range = foldersNode ? findExistingBlockRange(text, foldersNode) : undefined;
+  if (!range) return [];
+
+  const active: string[] = [];
+  for (const line of text.slice(range.contentStart, range.contentEnd).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('//')) continue;
+    const withoutTrailingComma = trimmed.endsWith(',') ? trimmed.slice(0, -1) : trimmed;
+    try {
+      const value = JSON.parse(withoutTrailingComma) as { path?: unknown };
+      if (typeof value.path === 'string') active.push(normalizePath(value.path));
+    } catch {
+      // Ignore malformed generated lines; the next sync will regenerate the block.
+    }
+  }
+  return active;
+}
+
+function buildManagedBlock(all: Map<unknown, Worktree[]>, previousActivePaths: string[], target: Worktree): string {
+  const lines: string[] = [BEGIN_MARKER];
+  const targetRepoKey = repoKey(target);
+  const targetPath = normalizePath(target.path);
+
+  for (const [, worktrees] of all) {
+    const active = chooseActiveWorktree(worktrees, previousActivePaths, targetRepoKey, targetPath);
+    for (const worktree of worktrees) {
+      const entry = `{ "name": ${JSON.stringify(`${worktree.repo.label}: ${worktree.name}`)}, "path": ${JSON.stringify(toAbsolutePath(worktree.path))} },`;
+      lines.push(normalizePath(worktree.path) === normalizePath(active?.path ?? '') ? entry : `// ${entry}`);
+    }
+  }
+
+  lines.push(END_MARKER);
+  return lines.join('\n');
+}
+
+function chooseActiveWorktree(worktrees: Worktree[], previousActivePaths: string[], targetRepoKey: string, targetPath: string): Worktree | undefined {
+  if (!worktrees.length) return undefined;
+  if (repoKey(worktrees[0]) === targetRepoKey) {
+    return worktrees.find(worktree => normalizePath(worktree.path) === targetPath) ?? worktrees[0];
+  }
+  for (const activePath of previousActivePaths) {
+    const matching = worktrees.find(worktree => normalizePath(worktree.path) === activePath);
+    if (matching) return matching;
+  }
+  return worktrees.find(worktree => !worktree.prunable) ?? worktrees[0];
+}
+
+function patchManagedBlock(text: string, foldersNode: JsonNode, block: string): string | undefined {
+  const existing = findExistingBlockRange(text, foldersNode);
+  if (existing) {
+    const indent = indentationAt(text, existing.beginLineStart);
+    const replacement = indentBlock(block, indent);
+    const trailingNewline = text.slice(existing.beginLineStart, existing.endLineEnd).endsWith('\n') ? '\n' : '';
+    return text.slice(0, existing.beginLineStart) + replacement + trailingNewline + text.slice(existing.endLineEnd);
+  }
+
+  const arrayEnd = foldersNode.offset + foldersNode.length - 1;
+  if (arrayEnd < foldersNode.offset) return undefined;
+
+  const arrayIndent = indentationAt(text, foldersNode.offset);
+  const itemIndent = arrayIndent + '  ';
+  const hasItems = Boolean(foldersNode.children?.length) || text.slice(foldersNode.offset + 1, arrayEnd).trim().length > 0;
+  const prefix = hasItems ? ',' : '';
+  const insertion = `${prefix}\n${indentBlock(block, itemIndent)}\n${arrayIndent}`;
+  return text.slice(0, arrayEnd) + insertion + text.slice(arrayEnd);
+}
+
+function findExistingBlockRange(text: string, containingNode: JsonNode): { beginLineStart: number; contentStart: number; contentEnd: number; endLineEnd: number } | undefined {
+  const nodeEnd = containingNode.offset + containingNode.length;
+  const begin = text.indexOf(BEGIN_MARKER, containingNode.offset);
+  const end = text.indexOf(END_MARKER, begin + BEGIN_MARKER.length);
+  if (begin === -1 || end === -1 || begin > nodeEnd || end > nodeEnd) return undefined;
+
+  const beginLineStart = text.lastIndexOf('\n', begin) + 1;
+  const afterBeginLine = lineEndIncludingNewline(text, begin);
+  const endLineStart = text.lastIndexOf('\n', end) + 1;
+  const endLineEnd = lineEndIncludingNewline(text, end);
+  return { beginLineStart, contentStart: afterBeginLine, contentEnd: endLineStart, endLineEnd };
+}
+
+function lineEndIncludingNewline(text: string, offset: number): number {
+  const lineEnd = text.indexOf('\n', offset);
+  return lineEnd === -1 ? text.length : lineEnd + 1;
+}
+
+function indentationAt(text: string, offset: number): string {
+  const lineStart = text.lastIndexOf('\n', offset) + 1;
+  return /^\s*/.exec(text.slice(lineStart, offset))?.[0] ?? '';
+}
+
+function indentBlock(block: string, indent: string): string {
+  return block.split('\n').map(line => `${indent}${line}`).join('\n');
+}
+
+function repoKey(worktree: Worktree): string {
+  return normalizePath(worktree.repo.gitDir);
+}
+
+function toAbsolutePath(input: string): string {
+  return path.resolve(input);
+}
+
+export function normalizePath(input: string): string {
+  const absolute = path.resolve(input);
+  let normalized = absolute;
+  try {
+    normalized = fsSync.realpathSync.native(absolute);
+  } catch {
+    normalized = absolute;
+  }
+  normalized = path.normalize(normalized);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}

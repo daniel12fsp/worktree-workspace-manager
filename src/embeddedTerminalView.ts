@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as pty from 'node-pty';
 import * as vscode from 'vscode';
 import { BareRepository, Worktree, listAllWorktrees } from './model';
+import { checkWorktreeInLiveWorkspace, getCheckedWorktreePaths, normalizePath } from './workspaceFile';
 
 interface EmbeddedSession {
   readonly id: string;
@@ -34,6 +35,10 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     this.activeSessionId = session.id;
     await vscode.commands.executeCommand('worktreeManager.terminals.focus');
     this.renderSessions();
+  }
+
+  refresh(): void {
+    void this.renderSessions();
   }
 
   killRepoTerminals(repo: BareRepository): number {
@@ -79,6 +84,11 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         if (worktree) {
           await this.openTerminal(worktree);
         }
+      } else if (message?.type === 'setExplorerWorktree') {
+        const worktree = await this.findWorktree(String(message.path));
+        if (worktree) {
+          await this.checkWorktree(worktree);
+        }
       } else if (message?.type === 'killRepo') {
         const repoPath = String(message.path);
         const confirmed = await vscode.window.showWarningMessage(
@@ -104,6 +114,23 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       }
     });
     void this.renderSessions();
+  }
+
+  private async checkWorktree(worktree: Worktree): Promise<void> {
+    try {
+      const result = await checkWorktreeInLiveWorkspace(worktree);
+      if (result === 'updated') {
+        void vscode.window.showInformationMessage('Updated workspace');
+      } else if (result === 'noWorkspaceFile') {
+        void vscode.window.showErrorMessage('Check Worktree requires a .code-workspace file');
+      } else if (result === 'missingFolders') {
+        void vscode.window.showErrorMessage('Workspace file must contain a folders array');
+      } else {
+        void vscode.window.showErrorMessage('Failed to update workspace file');
+      }
+    } catch {
+      void vscode.window.showErrorMessage('Failed to update workspace file');
+    }
   }
 
   private killSessions(predicate: (session: EmbeddedSession) => boolean): number {
@@ -181,6 +208,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
   private async renderSessions(): Promise<void> {
     if (!this.view) return;
     const all = await listAllWorktrees();
+    const activeWorkspaceFolders = await getCheckedWorktreePaths();
     const repos = [...all].map(([repo, worktrees]) => ({
       label: repo.label,
       path: repo.fsPath,
@@ -189,6 +217,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         branch: worktree.branch ?? 'detached',
         path: worktree.path,
         color: worktree.color,
+        activeInExplorer: activeWorkspaceFolders.has(normalizePath(worktree.path)),
         sessions: [...this.sessions.values()]
           .filter(session => session.worktree.path === worktree.path)
           .map(session => ({ id: session.id, label: session.label, runningCommand: commandName(session.runningCommand) }))
@@ -229,6 +258,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     .wt:hover, .terminalLeaf:hover, .wt.active, .terminalLeaf.active { background: var(--vscode-list-hoverBackground); }
     .terminalIcon { color: var(--vscode-terminal-ansiGreen); }
     .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+    .workspaceState { flex: 0 0 auto; accent-color: #2ea043; cursor: pointer; }
     .terminalInline { margin: 4px 0 8px 0; width: 100%; height: min(420px, 65vh); border: 1px solid var(--vscode-panel-border); padding: 4px; background: #000; box-sizing: border-box; }
     #terminal { height: 100%; }
     .badge { margin-left: auto; opacity: 0.7; font-size: 11px; }
@@ -296,6 +326,16 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
           const dot = document.createElement('span');
           dot.className = 'dot';
           dot.style.background = wt.color;
+          const state = document.createElement('input');
+          state.type = 'checkbox';
+          state.className = 'workspaceState';
+          state.checked = Boolean(wt.activeInExplorer);
+          state.title = wt.activeInExplorer ? 'Enabled in VSCode Explorer' : 'Enable in VSCode Explorer';
+          state.onchange = event => {
+            event.stopPropagation();
+            vscode.postMessage({ type: 'setExplorerWorktree', path: wt.path, enabled: state.checked });
+          };
+          state.onclick = event => event.stopPropagation();
           const label = document.createElement('span');
           label.textContent = wt.name + ' (' + wt.branch + ')';
           const addButton = document.createElement('button');
@@ -306,7 +346,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
             event.stopPropagation();
             vscode.postMessage({ type: 'create', path: wt.path });
           };
-          row.append(dot, label, addButton);
+          row.append(dot, state, label, addButton);
           list.appendChild(row);
           for (const session of wt.sessions || []) {
             const terminal = document.createElement('div');
