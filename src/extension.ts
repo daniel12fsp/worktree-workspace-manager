@@ -113,7 +113,7 @@ async function addWorktree(repo?: BareRepository): Promise<void> {
   const defaultPath = path.join(path.dirname(repo.fsPath), branch.replace(/[\\/:*?"<>|]+/g, '-'));
   const worktreePath = await vscode.window.showInputBox({ prompt: 'Worktree path', value: defaultPath });
   if (!worktreePath) return;
-  await runGit(['--git-dir', repo.fsPath, 'worktree', 'add', worktreePath, branch], `Added ${branch}`);
+  await runGit(['--git-dir', repo.gitDir, 'worktree', 'add', worktreePath, branch], `Added ${branch}`);
 }
 
 async function removeWorktree(worktree?: Worktree): Promise<void> {
@@ -125,13 +125,13 @@ async function removeWorktree(worktree?: Worktree): Promise<void> {
     'Remove'
   );
   if (confirmed !== 'Remove') return;
-  await runGit(['--git-dir', worktree.repo.fsPath, 'worktree', 'remove', worktree.path], `Removed ${worktree.name}`);
+  await runGit(['--git-dir', worktree.repo.gitDir, 'worktree', 'remove', worktree.path], `Removed ${worktree.name}`);
 }
 
 async function runRepoGit(repo: BareRepository | undefined, args: string[], success: string): Promise<void> {
   repo = repo ?? await pickRepo();
   if (!repo) return;
-  await runGit(['--git-dir', repo.fsPath, ...args], success);
+  await runGit(['--git-dir', repo.gitDir, ...args], success);
 }
 
 async function runGit(args: string[], success: string): Promise<void> {

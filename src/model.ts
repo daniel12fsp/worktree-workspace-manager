@@ -1,5 +1,6 @@
 import * as path from 'node:path';
 import * as os from 'node:os';
+import * as fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as vscode from 'vscode';
@@ -9,6 +10,7 @@ const execFileAsync = promisify(execFile);
 export interface BareRepository {
   readonly configPath: string;
   readonly fsPath: string;
+  readonly gitDir: string;
   readonly label: string;
 }
 
@@ -40,6 +42,20 @@ export function expandHome(input: string): string {
   return input;
 }
 
+export function resolveGitDir(fsPath: string): string {
+  const gitFile = path.join(fsPath, '.git');
+  if (!fs.existsSync(gitFile) || !fs.statSync(gitFile).isFile()) {
+    return fsPath;
+  }
+
+  const match = fs.readFileSync(gitFile, 'utf8').trim().match(/^gitdir:\s*(.+)$/i);
+  if (!match) {
+    return fsPath;
+  }
+
+  return path.isAbsolute(match[1]) ? match[1] : path.resolve(fsPath, match[1]);
+}
+
 export function getConfiguredRepositories(): BareRepository[] {
   const values = vscode.workspace
     .getConfiguration('worktreeManager')
@@ -47,13 +63,13 @@ export function getConfiguredRepositories(): BareRepository[] {
 
   return values.map(configPath => {
     const fsPath = expandHome(configPath);
-    return { configPath, fsPath, label: path.basename(fsPath) };
+    return { configPath, fsPath, gitDir: resolveGitDir(fsPath), label: path.basename(fsPath) };
   });
 }
 
 export async function listWorktrees(repo: BareRepository): Promise<Worktree[]> {
   const { stdout } = await execFileAsync('git', [
-    `--git-dir=${repo.fsPath}`,
+    `--git-dir=${repo.gitDir}`,
     'worktree',
     'list',
     '--porcelain'
@@ -83,10 +99,11 @@ export function parseWorktreePorcelain(output: string, repo: BareRepository): Wo
     branch?: string;
     locked?: string | true;
     prunable?: string | true;
+    bare?: true;
   } | undefined;
 
   const flush = () => {
-    if (!current?.path) {
+    if (!current?.path || current.bare) {
       current = undefined;
       return;
     }
@@ -121,6 +138,7 @@ export function parseWorktreePorcelain(output: string, repo: BareRepository): Wo
       if (key === 'branch') current.branch = shortBranch(String(value));
       if (key === 'locked') current.locked = value;
       if (key === 'prunable') current.prunable = value;
+      if (key === 'bare') current.bare = true;
     }
   }
   flush();
