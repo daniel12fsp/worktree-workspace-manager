@@ -6,6 +6,7 @@ import { Worktree, listAllWorktrees } from './model';
 
 interface EmbeddedSession {
   readonly id: string;
+  readonly label: string;
   readonly worktree: Worktree;
   readonly process: pty.IPty;
   readonly output: string[];
@@ -15,6 +16,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
   private view: vscode.WebviewView | undefined;
   private readonly sessions = new Map<string, EmbeddedSession>();
   private activeSessionId: string | undefined;
+  private terminalSeq = 0;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -73,12 +75,8 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
   }
 
   private createSession(worktree: Worktree): EmbeddedSession {
-    const existing = [...this.sessions.values()].find(session => session.worktree.path === worktree.path);
-    if (existing) {
-      return existing;
-    }
-
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const label = `${worktree.name} terminal ${++this.terminalSeq}`;
     const shell = process.env.SHELL || (process.platform === 'win32' ? 'powershell.exe' : 'bash');
     const proc = pty.spawn(shell, [], {
       name: 'xterm-256color',
@@ -87,7 +85,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       cols: 80,
       rows: 24
     });
-    const session: EmbeddedSession = { id, worktree, process: proc, output: [] };
+    const session: EmbeddedSession = { id, label, worktree, process: proc, output: [] };
     proc.onData(data => {
       session.output.push(data);
       if (session.output.length > 500) {
@@ -116,7 +114,9 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         branch: worktree.branch ?? 'detached',
         path: worktree.path,
         color: worktree.color,
-        sessionId: [...this.sessions.values()].find(session => session.worktree.path === worktree.path)?.id
+        sessions: [...this.sessions.values()]
+          .filter(session => session.worktree.path === worktree.path)
+          .map(session => ({ id: session.id, label: session.label }))
       }))
     }));
     const active = this.activeSessionId ? this.sessions.get(this.activeSessionId) : undefined;
@@ -157,6 +157,8 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     .terminalInline { margin: 4px 0 8px 0; width: 100%; height: min(420px, 65vh); border: 1px solid var(--vscode-panel-border); padding: 4px; background: #000; box-sizing: border-box; }
     #terminal { height: 100%; }
     .badge { margin-left: auto; opacity: 0.7; font-size: 11px; }
+    .addTerminal { margin-left: auto; border: none; background: transparent; color: var(--vscode-foreground); cursor: pointer; opacity: 0.8; }
+    .addTerminal:hover { opacity: 1; background: var(--vscode-button-secondaryHoverBackground); }
   </style>
 </head>
 <body>
@@ -210,26 +212,31 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
           dot.style.background = wt.color;
           const label = document.createElement('span');
           label.textContent = wt.name + ' (' + wt.branch + ')';
-          const badge = document.createElement('span');
-          badge.className = 'badge';
-          badge.textContent = wt.sessionId ? '' : '+';
-          row.append(dot, label, badge);
+          const addButton = document.createElement('button');
+          addButton.className = 'addTerminal';
+          addButton.title = 'New terminal here';
+          addButton.textContent = '+';
+          addButton.onclick = event => {
+            event.stopPropagation();
+            vscode.postMessage({ type: 'create', path: wt.path });
+          };
+          row.append(dot, label, addButton);
           list.appendChild(row);
-          if (wt.sessionId) {
+          for (const session of wt.sessions || []) {
             const terminal = document.createElement('div');
-            terminal.className = 'terminalLeaf' + (wt.sessionId === activeSessionId ? ' active' : '');
+            terminal.className = 'terminalLeaf' + (session.id === activeSessionId ? ' active' : '');
             terminal.onclick = event => {
               event.stopPropagation();
-              vscode.postMessage({ type: wt.sessionId === activeSessionId ? 'collapse' : 'select', id: wt.sessionId });
+              vscode.postMessage({ type: session.id === activeSessionId ? 'collapse' : 'select', id: session.id });
             };
             const icon = document.createElement('span');
             icon.className = 'terminalIcon';
-            icon.textContent = wt.sessionId === activeSessionId ? '▾' : '▸';
+            icon.textContent = session.id === activeSessionId ? '▾' : '▸';
             const terminalLabel = document.createElement('span');
-            terminalLabel.textContent = wt.name + ' terminal';
+            terminalLabel.textContent = session.label;
             terminal.append(icon, terminalLabel);
             list.appendChild(terminal);
-            if (wt.sessionId === activeSessionId) {
+            if (session.id === activeSessionId) {
               const inline = document.createElement('div');
               inline.className = 'terminalInline';
               inline.appendChild(terminalEl);
