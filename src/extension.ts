@@ -78,7 +78,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('worktreeManager.configureRepositories', () => vscode.commands.executeCommand('workbench.action.openSettingsJson')),
     vscode.commands.registerCommand('worktreeManager.openWorktree', async (node?: WorktreeNode | TerminalWorktreeNode) => openWorktree(node?.worktree ?? selectedWorktree)),
     vscode.commands.registerCommand('worktreeManager.openTerminalHere', async (node?: WorktreeNode | TerminalWorktreeNode) => openTerminalHere(node?.worktree ?? selectedWorktree, terminalTracker)),
-    vscode.commands.registerCommand('worktreeManager.focusTerminal', (node?: TerminalLeafNode) => node?.terminal.show()),
+    vscode.commands.registerCommand('worktreeManager.focusTerminal', async (node?: TerminalLeafNode) => {
+      if (!node) return;
+      node.terminal.show(false);
+      await vscode.commands.executeCommand('workbench.action.terminal.focus');
+    }),
     vscode.commands.registerCommand('worktreeManager.showMenu', async () => {
       const choice = await vscode.window.showQuickPick(menuItems(Boolean(selectedWorktree)), { placeHolder: 'Worktree Workspace' });
       if (choice) {

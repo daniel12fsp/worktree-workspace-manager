@@ -49,6 +49,13 @@
           "title": "Worktree Workspace",
           "icon": "resources/tree.svg"
         }
+      ],
+      "secondarySideBar": [
+        {
+          "id": "worktreeManagerTerminals",
+          "title": "Terminals by Worktree",
+          "icon": "resources/tree.svg"
+        }
       ]
     },
     "views": {
@@ -56,7 +63,9 @@
         {
           "id": "worktreeManager.worktrees",
           "name": "Worktree"
-        },
+        }
+      ],
+      "worktreeManagerTerminals": [
         {
           "id": "worktreeManager.terminals",
           "name": "Terminals by Worktree"
