@@ -79,6 +79,28 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         if (worktree) {
           await this.openTerminal(worktree);
         }
+      } else if (message?.type === 'killRepo') {
+        const repoPath = String(message.path);
+        const confirmed = await vscode.window.showWarningMessage(
+          'Close all embedded terminals for this repository?',
+          { modal: true },
+          'Close Terminals'
+        );
+        if (confirmed === 'Close Terminals') {
+          const killed = this.killSessions(session => session.worktree.repo.fsPath === repoPath);
+          void vscode.window.showInformationMessage(killed ? `Closed ${killed} terminal(s).` : 'No terminals to close.');
+        }
+      } else if (message?.type === 'killWorktree') {
+        const worktreePath = String(message.path);
+        const confirmed = await vscode.window.showWarningMessage(
+          'Kill embedded terminals for this worktree?',
+          { modal: true, detail: worktreePath },
+          'Kill Terminals'
+        );
+        if (confirmed === 'Kill Terminals') {
+          const killed = this.killSessions(session => path.resolve(session.worktree.path) === path.resolve(worktreePath));
+          void vscode.window.showInformationMessage(killed ? `Killed ${killed} terminal(s).` : 'No terminals to kill.');
+        }
       }
     });
     void this.renderSessions();
@@ -161,6 +183,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     const all = await listAllWorktrees();
     const repos = [...all].map(([repo, worktrees]) => ({
       label: repo.label,
+      path: repo.fsPath,
       worktrees: worktrees.map(worktree => ({
         name: worktree.name,
         branch: worktree.branch ?? 'detached',
@@ -211,6 +234,9 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     .badge { margin-left: auto; opacity: 0.7; font-size: 11px; }
     .addTerminal { margin-left: auto; border: none; background: transparent; color: var(--vscode-foreground); cursor: pointer; opacity: 0.8; }
     .addTerminal:hover { opacity: 1; background: var(--vscode-button-secondaryHoverBackground); }
+    .contextMenu { position: fixed; z-index: 10; min-width: 180px; padding: 4px 0; background: var(--vscode-menu-background); color: var(--vscode-menu-foreground); border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
+    .contextMenu button { display: block; width: 100%; padding: 6px 12px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+    .contextMenu button:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
   </style>
 </head>
 <body>
@@ -218,16 +244,22 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     <div class="sidebar" id="list"></div>
   </div>
   <div id="terminal" style="display:none"></div>
+  <div id="contextMenu" class="contextMenu" style="display:none"></div>
   <script nonce="${nonce}" src="${xtermJs}"></script>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const term = new Terminal({ convertEol: true, cursorBlink: true, fontFamily: 'monospace', theme: { background: '#000000' } });
     const terminalEl = document.getElementById('terminal');
+    const contextMenuEl = document.getElementById('contextMenu');
     let activeSessionId;
     const collapsedRepos = new Set();
     term.open(terminalEl);
     term.onData(data => activeSessionId && vscode.postMessage({ type: 'input', id: activeSessionId, data }));
     window.addEventListener('resize', resize);
+    window.addEventListener('click', hideContextMenu);
+    window.addEventListener('keydown', event => {
+      if (event.key === 'Escape') hideContextMenu();
+    });
     window.addEventListener('message', event => {
       const message = event.data;
       if (message.type === 'state') {
@@ -253,12 +285,14 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
           vscode.postMessage({ type: 'collapseAll' });
           renderList(repos);
         };
+        header.oncontextmenu = event => showContextMenu(event, [{ label: 'Close All Terminals', message: { type: 'killRepo', path: repo.path } }]);
         list.appendChild(header);
         if (isRepoCollapsed) continue;
         for (const wt of repo.worktrees) {
           const row = document.createElement('div');
           row.className = 'wt';
           row.onclick = () => vscode.postMessage({ type: 'collapseAll' });
+          row.oncontextmenu = event => showContextMenu(event, [{ label: 'Kill Related Terminals', message: { type: 'killWorktree', path: wt.path } }]);
           const dot = document.createElement('span');
           dot.className = 'dot';
           dot.style.background = wt.color;
@@ -302,6 +336,27 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         terminalEl.style.display = 'none';
         document.body.appendChild(terminalEl);
       }
+    }
+    function showContextMenu(event, items) {
+      event.preventDefault();
+      event.stopPropagation();
+      contextMenuEl.textContent = '';
+      for (const item of items) {
+        const button = document.createElement('button');
+        button.textContent = item.label;
+        button.onclick = clickEvent => {
+          clickEvent.stopPropagation();
+          hideContextMenu();
+          vscode.postMessage(item.message);
+        };
+        contextMenuEl.appendChild(button);
+      }
+      contextMenuEl.style.display = 'block';
+      contextMenuEl.style.left = event.clientX + 'px';
+      contextMenuEl.style.top = event.clientY + 'px';
+    }
+    function hideContextMenu() {
+      contextMenuEl.style.display = 'none';
     }
     function resize() {
       if (!activeSessionId || !terminalEl.parentElement?.classList.contains('terminalInline')) return;
