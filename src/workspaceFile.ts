@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parse, parseTree, type Node as JsonNode, type ParseError } from 'jsonc-parser';
 import { Worktree, listAllWorktrees } from './model';
+import { log, logError } from './logger';
 
 const BEGIN_MARKER = '// BEGIN worktreeManager';
 const END_MARKER = '// END worktreeManager';
@@ -11,11 +12,15 @@ const END_MARKER = '// END worktreeManager';
 export type CheckWorktreeResult = 'updated' | 'noWorkspaceFile' | 'missingFolders' | 'rootFoldersCannotBeHidden' | 'failed';
 
 export async function hideBareRepositoryFolders(): Promise<void> {
-  const all = await listAllWorktrees();
-  await Promise.all([
-    updateBareRepositoryExcludeConfiguration('files.exclude', all),
-    updateBareRepositoryExcludeConfiguration('search.exclude', all)
-  ]);
+  try {
+    const all = await listAllWorktrees();
+    await Promise.all([
+      updateBareRepositoryExcludeConfiguration('files.exclude', all),
+      updateBareRepositoryExcludeConfiguration('search.exclude', all)
+    ]);
+  } catch (error) {
+    logError('failed to hide bare repository folders', error);
+  }
 }
 
 export async function checkWorktreeInLiveWorkspace(target: Worktree): Promise<CheckWorktreeResult> {
@@ -43,7 +48,9 @@ export async function checkWorktreeInLiveWorkspace(target: Worktree): Promise<Ch
     .flat()
     .some(worktree => !selected.has(normalizePath(worktree.path)) && workspaceRootPaths.has(normalizePath(worktree.path)));
 
-  return hasHiddenWorkspaceRoot ? 'rootFoldersCannotBeHidden' : 'updated';
+  const result = hasHiddenWorkspaceRoot ? 'rootFoldersCannotBeHidden' : 'updated';
+  log('check worktree in live workspace', { worktree: target.name, selected: selected.size, result });
+  return result;
 }
 
 export async function checkWorktreeInWorkspaceFile(target: Worktree): Promise<CheckWorktreeResult> {
@@ -67,9 +74,13 @@ export async function checkWorktreeInWorkspaceFile(target: Worktree): Promise<Ch
 
   const errors: ParseError[] = [];
   parse(next, errors, { allowTrailingComma: true, disallowComments: false });
-  if (errors.length) return 'failed';
+  if (errors.length) {
+    logError('workspace file parse errors', { worktree: target.name, count: errors.length });
+    return 'failed';
+  }
 
   await fs.writeFile(workspaceFile, next, 'utf8');
+  log('wrote workspace file', { worktree: target.name, activePaths: activePaths.length });
   return 'updated';
 }
 
@@ -85,7 +96,8 @@ export async function getCheckedWorktreePaths(): Promise<Set<string>> {
   if (!workspaceFile) return new Set();
   try {
     return new Set(readActiveManagedPathOrder(await fs.readFile(workspaceFile, 'utf8')));
-  } catch {
+  } catch (error) {
+    logError('failed to read active worktree paths', { workspaceFile, error });
     return new Set();
   }
 }
@@ -233,8 +245,8 @@ function readActiveManagedPathOrder(text: string): string[] {
     try {
       const value = JSON.parse(withoutTrailingComma) as { path?: unknown };
       if (typeof value.path === 'string') active.push(normalizePath(value.path));
-    } catch {
-      // Ignore malformed generated lines; the next sync will regenerate the block.
+    } catch (error) {
+      logError('skipped malformed managed folder line', { line: trimmed, error });
     }
   }
   return active;

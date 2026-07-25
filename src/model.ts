@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as vscode from 'vscode';
+import { log, logError } from './logger';
 
 const execFileAsync = promisify(execFile);
 
@@ -61,10 +62,12 @@ export function getConfiguredRepositories(): BareRepository[] {
     .getConfiguration('worktreeManager')
     .get<string[]>('repositories', []);
 
-  return values.map(configPath => {
+  const repos = values.map(configPath => {
     const fsPath = expandHome(configPath);
     return { configPath, fsPath, gitDir: resolveGitDir(fsPath), label: path.basename(fsPath) };
   });
+  log('configured repositories', { count: repos.length });
+  return repos;
 }
 
 export async function listWorktrees(repo: BareRepository): Promise<Worktree[]> {
@@ -75,7 +78,9 @@ export async function listWorktrees(repo: BareRepository): Promise<Worktree[]> {
     '--porcelain'
   ]);
 
-  return parseWorktreePorcelain(stdout, repo);
+  const worktrees = parseWorktreePorcelain(stdout, repo);
+  log('listed worktrees', { repo: repo.label, count: worktrees.length });
+  return worktrees;
 }
 
 export async function listAllWorktrees(): Promise<Map<BareRepository, Worktree[]>> {
@@ -84,6 +89,7 @@ export async function listAllWorktrees(): Promise<Map<BareRepository, Worktree[]
     try {
       return [repo, await listWorktrees(repo)] as const;
     } catch (error) {
+      logError('failed to list worktrees', { repo: repo.configPath, error });
       void vscode.window.showWarningMessage(`Failed to list worktrees for ${repo.configPath}: ${String(error)}`);
       return [repo, [] as Worktree[]] as const;
     }

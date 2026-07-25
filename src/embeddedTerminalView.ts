@@ -4,6 +4,7 @@ import * as pty from 'node-pty';
 import * as vscode from 'vscode';
 import { BareRepository, Worktree, listAllWorktrees } from './model';
 import { checkWorktreeInLiveWorkspace, getCheckedWorktreePaths, normalizePath } from './workspaceFile';
+import { log, logError } from './logger';
 
 interface EmbeddedSession {
   readonly id: string;
@@ -62,66 +63,75 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     };
     webviewView.webview.html = this.html(webviewView.webview);
     webviewView.webview.onDidReceiveMessage(async message => {
-      if (message?.type === 'ready') {
-        await this.renderSessions();
-      } else if (message?.type === 'select') {
-        this.activeSessionId = String(message.id);
-        this.renderSessions();
-      } else if (message?.type === 'collapse') {
-        if (this.activeSessionId === String(message.id)) {
-          this.activeSessionId = undefined;
-          this.renderSessions();
-        }
-      } else if (message?.type === 'collapseAll') {
-        this.activeSessionId = undefined;
-        this.renderSessions();
-      } else if (message?.type === 'input') {
-        this.writeInput(String(message.id), String(message.data));
-      } else if (message?.type === 'resize') {
-        const session = this.sessions.get(String(message.id));
-        if (session) {
-          session.process.resize(Number(message.cols) || 80, Number(message.rows) || 24);
-        }
-      } else if (message?.type === 'create') {
-        const worktree = await this.findWorktree(String(message.path));
-        if (worktree) {
-          await this.openTerminal(worktree);
-        }
-      } else if (message?.type === 'setExplorerWorktree') {
-        const worktree = await this.findWorktree(String(message.path));
-        if (worktree) {
-          await this.checkWorktree(worktree);
-        }
-      } else if (message?.type === 'killRepo') {
-        const repoPath = String(message.path);
-        const confirmed = await vscode.window.showWarningMessage(
-          'Close all embedded terminals for this repository?',
-          { modal: true },
-          'Close Terminals'
-        );
-        if (confirmed === 'Close Terminals') {
-          const killed = this.killSessions(session => session.worktree.repo.fsPath === repoPath);
-          void vscode.window.showInformationMessage(killed ? `Closed ${killed} terminal(s).` : 'No terminals to close.');
-        }
-      } else if (message?.type === 'killWorktree') {
-        const worktreePath = String(message.path);
-        const confirmed = await vscode.window.showWarningMessage(
-          'Kill embedded terminals for this worktree?',
-          { modal: true, detail: worktreePath },
-          'Kill Terminals'
-        );
-        if (confirmed === 'Kill Terminals') {
-          const killed = this.killSessions(session => path.resolve(session.worktree.path) === path.resolve(worktreePath));
-          void vscode.window.showInformationMessage(killed ? `Killed ${killed} terminal(s).` : 'No terminals to kill.');
-        }
+      try {
+        await this.handleWebviewMessage(message);
+      } catch (error) {
+        logError('webview message failed', { type: message?.type, error });
       }
     });
     void this.renderSessions();
   }
 
+  private async handleWebviewMessage(message: any): Promise<void> {
+    if (message?.type === 'ready') {
+      await this.renderSessions();
+    } else if (message?.type === 'select') {
+      this.activeSessionId = String(message.id);
+      this.renderSessions();
+    } else if (message?.type === 'collapse') {
+      if (this.activeSessionId === String(message.id)) {
+        this.activeSessionId = undefined;
+        this.renderSessions();
+      }
+    } else if (message?.type === 'collapseAll') {
+      this.activeSessionId = undefined;
+      this.renderSessions();
+    } else if (message?.type === 'input') {
+      this.writeInput(String(message.id), String(message.data));
+    } else if (message?.type === 'resize') {
+      const session = this.sessions.get(String(message.id));
+      if (session) {
+        session.process.resize(Number(message.cols) || 80, Number(message.rows) || 24);
+      }
+    } else if (message?.type === 'create') {
+      const worktree = await this.findWorktree(String(message.path));
+      if (worktree) {
+        await this.openTerminal(worktree);
+      }
+    } else if (message?.type === 'setExplorerWorktree') {
+      const worktree = await this.findWorktree(String(message.path));
+      if (worktree) {
+        await this.checkWorktree(worktree);
+      }
+    } else if (message?.type === 'killRepo') {
+      const repoPath = String(message.path);
+      const confirmed = await vscode.window.showWarningMessage(
+        'Close all embedded terminals for this repository?',
+        { modal: true },
+        'Close Terminals'
+      );
+      if (confirmed === 'Close Terminals') {
+        const killed = this.killSessions(session => session.worktree.repo.fsPath === repoPath);
+        void vscode.window.showInformationMessage(killed ? `Closed ${killed} terminal(s).` : 'No terminals to close.');
+      }
+    } else if (message?.type === 'killWorktree') {
+      const worktreePath = String(message.path);
+      const confirmed = await vscode.window.showWarningMessage(
+        'Kill embedded terminals for this worktree?',
+        { modal: true, detail: worktreePath },
+        'Kill Terminals'
+      );
+      if (confirmed === 'Kill Terminals') {
+        const killed = this.killSessions(session => path.resolve(session.worktree.path) === path.resolve(worktreePath));
+        void vscode.window.showInformationMessage(killed ? `Killed ${killed} terminal(s).` : 'No terminals to kill.');
+      }
+    }
+  }
+
   private async checkWorktree(worktree: Worktree): Promise<void> {
     try {
       const result = await checkWorktreeInLiveWorkspace(worktree);
+      log('check worktree', { worktree: worktree.name, result });
       if (result === 'updated' || result === 'rootFoldersCannotBeHidden') {
         this.explorerWorktreeChanged.fire();
         void this.renderSessions();
@@ -137,7 +147,8 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       } else {
         void vscode.window.showErrorMessage('Failed to update visible worktree');
       }
-    } catch {
+    } catch (error) {
+      logError('check worktree failed', { worktree: worktree.name, error });
       void vscode.window.showErrorMessage('Failed to update visible worktree');
     }
   }
@@ -148,6 +159,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       this.sessions.delete(session.id);
       session.process.kill();
     }
+    if (matches.length) log('killed sessions', { count: matches.length });
     if (this.activeSessionId && !this.sessions.has(this.activeSessionId)) {
       this.activeSessionId = undefined;
     }
@@ -166,6 +178,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       cols: 80,
       rows: 24
     });
+    log('spawn terminal', { worktree: worktree.name, shell });
     const session: EmbeddedSession = { id, label, worktree, process: proc, output: [], inputBuffer: '' };
     proc.onData(data => {
       if (session.runningCommand && looksLikePrompt(data)) {
@@ -179,6 +192,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       this.view?.webview.postMessage({ type: 'output', id, data });
     });
     proc.onExit(() => {
+      log('terminal exited', { label: session.label });
       this.sessions.delete(id);
       if (this.activeSessionId === id) {
         this.activeSessionId = this.sessions.keys().next().value;

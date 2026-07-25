@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { BareRepository, Worktree, dotIcon, getConfiguredRepositories, listWorktrees } from './model';
 import { getCheckedWorktreePaths, normalizePath } from './workspaceFile';
+import { logError } from './logger';
 
 type Node = RepoNode | WorktreeNode | EmptyNode | ErrorNode;
 
@@ -67,6 +68,7 @@ export class WorktreeProvider implements vscode.TreeDataProvider<Node> {
           ? worktrees.map(worktree => new WorktreeNode(worktree, checkedPaths.has(normalizePath(worktree.path))))
           : [new EmptyNode()];
       } catch (error) {
+        logError('failed to load worktrees', { repo: element.repo.label, error });
         return [new ErrorNode(error)];
       }
     }

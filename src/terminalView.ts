@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { BareRepository, Worktree, dotIcon, listAllWorktrees } from './model';
+import { log } from './logger';
 
 export type TerminalNode = TerminalRepoNode | TerminalWorktreeNode | TerminalLeafNode | UngroupedNode | PlaceholderNode;
 
@@ -35,10 +36,12 @@ export class TerminalTracker {
 
     context.subscriptions.push(
       vscode.window.onDidOpenTerminal(terminal => {
+        log('terminal opened', { name: terminal.name });
         this.ensure(terminal);
         this.requestRefresh();
       }),
       vscode.window.onDidCloseTerminal(terminal => {
+        log('terminal closed', { name: terminal.name });
         this.state.delete(terminal);
         this.requestRefresh();
       }),
@@ -57,12 +60,14 @@ export class TerminalTracker {
         const state = this.ensure(event.terminal);
         state.cwd = uriToFsPath(event.execution.cwd) ?? uriToFsPath(event.terminal.shellIntegration?.cwd) ?? state.cwd;
         state.runningCommand = event.execution.commandLine.value;
+        log('command started', { name: event.terminal.name, command: state.runningCommand });
         this.requestRefresh();
       }),
       vscode.window.onDidEndTerminalShellExecution(event => {
         const state = this.ensure(event.terminal);
         state.cwd = uriToFsPath(event.execution.cwd) ?? uriToFsPath(event.terminal.shellIntegration?.cwd) ?? state.cwd;
         state.runningCommand = undefined;
+        log('command ended', { name: event.terminal.name });
         this.requestRefresh();
       })
     );

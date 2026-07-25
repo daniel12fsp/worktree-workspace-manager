@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { promisify } from 'node:util';
 import * as vscode from 'vscode';
 import { EmbeddedTerminalViewProvider } from './embeddedTerminalView';
+import { disposeLogger, log, logError } from './logger';
 import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees } from './model';
 import { checkWorktreeInLiveWorkspace, hideBareRepositoryFolders } from './workspaceFile';
 import { RepoNode, WorktreeNode, WorktreeProvider } from './worktreeView';
@@ -10,6 +11,7 @@ import { RepoNode, WorktreeNode, WorktreeProvider } from './worktreeView';
 const execFileAsync = promisify(execFile);
 
 export function activate(context: vscode.ExtensionContext): void {
+  log('activate');
   const worktreeProvider = new WorktreeProvider();
   const terminalProvider = new EmbeddedTerminalViewProvider(context.extensionUri);
 
@@ -49,6 +51,7 @@ export function activate(context: vscode.ExtensionContext): void {
     terminalView,
     status,
     terminalProvider,
+    { dispose: disposeLogger },
     worktreeView.onDidChangeSelection(event => {
       const node = event.selection[0];
       selectedWorktree = node instanceof WorktreeNode ? node.worktree : undefined;
@@ -119,6 +122,7 @@ async function checkWorktree(worktree?: Worktree): Promise<void> {
 
   try {
     const result = await checkWorktreeInLiveWorkspace(worktree);
+    log('check worktree', { worktree: worktree.name, result });
     if (result === 'updated') {
       void vscode.window.showInformationMessage('Updated visible worktree');
     } else if (result === 'rootFoldersCannotBeHidden') {
@@ -130,7 +134,8 @@ async function checkWorktree(worktree?: Worktree): Promise<void> {
     } else {
       void vscode.window.showErrorMessage('Failed to update visible worktree');
     }
-  } catch {
+  } catch (error) {
+    logError('check worktree failed', { worktree: worktree.name, error });
     void vscode.window.showErrorMessage('Failed to update visible worktree');
   }
 }
@@ -200,8 +205,10 @@ async function runGit(args: string[], success: string): Promise<void> {
   await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Worktree Manager' }, async () => {
     try {
       const { stderr } = await execFileAsync('git', args);
+      log('git ok', { args });
       void vscode.window.showInformationMessage(stderr.trim() || success);
     } catch (error) {
+      logError('git failed', { args, error });
       void vscode.window.showErrorMessage(String(error));
     }
   });
