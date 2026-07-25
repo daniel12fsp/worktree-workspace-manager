@@ -128,6 +128,8 @@ async function updateBareRepositoryExcludeConfiguration(section: 'search.exclude
       next[pattern] = true;
     }
   }
+  stripWorkspaceRootExclusions(next);
+  if (excludeObjectsEqual(current, next)) return;
   await vscode.workspace.getConfiguration().update(section, next, vscode.ConfigurationTarget.Workspace);
 }
 
@@ -146,12 +148,21 @@ async function updateExcludeConfiguration(section: 'search.exclude' | 'files.exc
     }
   }
 
+  stripWorkspaceRootExclusions(next);
+  if (excludeObjectsEqual(current, next)) return;
   await vscode.workspace.getConfiguration().update(section, next, vscode.ConfigurationTarget.Workspace);
 }
 
 function getExcludeConfiguration(section: 'search.exclude' | 'files.exclude'): Record<string, boolean> {
   const value = vscode.workspace.getConfiguration(undefined, null).get<Record<string, boolean>>(section, {});
   return value && typeof value === 'object' ? value : {};
+}
+
+function excludeObjectsEqual(a: Record<string, boolean>, b: Record<string, boolean>): boolean {
+  const ak = Object.keys(a);
+  const bk = Object.keys(b);
+  if (ak.length !== bk.length) return false;
+  return ak.every(key => a[key] === b[key]);
 }
 
 function repoExcludePatterns(repo: unknown): string[] {
@@ -202,6 +213,33 @@ function pathExcludePatterns(fsPath: string): string[] {
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
+}
+
+function patternsHidingWorkspaceRoots(): Set<string> {
+  const roots = vscode.workspace.workspaceFolders ?? [];
+  const patterns = new Set<string>();
+  const names = roots.map(folder => path.basename(toAbsolutePath(folder.uri.fsPath)));
+  for (const name of names) {
+    patterns.add(name);
+    patterns.add(`${name}/**`);
+    patterns.add(`**/${name}`);
+    patterns.add(`**/${name}/**`);
+  }
+  if (names.some(name => name.endsWith('.git'))) {
+    for (const pattern of ['*.git', '*.git/**', '**/*.git', '**/*.git/**']) patterns.add(pattern);
+  }
+  for (const folder of roots) {
+    for (const pattern of pathExcludePatterns(toAbsolutePath(folder.uri.fsPath))) patterns.add(pattern);
+  }
+  return patterns;
+}
+
+function stripWorkspaceRootExclusions(next: Record<string, boolean>): void {
+  // A workspace-root folder must always stay visible: hiding it would also hide
+  // every worktree nested inside it (e.g. a bare repo added as a workspace folder).
+  for (const pattern of patternsHidingWorkspaceRoots()) {
+    delete next[pattern];
+  }
 }
 
 function findFoldersArray(text: string): JsonNode | undefined {

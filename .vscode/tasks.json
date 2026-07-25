@@ -2,10 +2,21 @@
   "version": "2.0.0",
   "tasks": [
     {
+      // Wipe the isolated dev-host profile so every launch starts clean —
+      // prevents "Could not register service worker: ... invalid state".
+      "label": "reset-dev-profile",
+      "type": "shell",
+      "command": "rm -rf \"${workspaceFolder}/.vscode/.dev-profile\"",
+      "presentation": { "reveal": "silent", "panel": "shared", "close": true },
+      "problemMatcher": []
+    },
+    {
       "label": "compile",
       "type": "npm",
       "script": "compile",
       "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": ["reset-dev-profile"],
+      "dependsOrder": "sequence",
       "problemMatcher": ["$tsc"],
       "group": { "kind": "build", "isDefault": true }
     },

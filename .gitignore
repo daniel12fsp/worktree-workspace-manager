@@ -2,3 +2,5 @@ node_modules/
 out/
 .vscode-test/
 *.vsix
+# Isolated Extension Development Host profile (see .vscode/launch.json)
+.vscode/.dev-profile/

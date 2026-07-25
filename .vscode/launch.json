@@ -10,6 +10,11 @@
       "request": "launch",
       "args": [
         "--disable-extensions",
+        // Run the dev host in its OWN profile dir so a corrupted webview /
+        // service-worker here can never poison your main VSCode install.
+        // Wiped before every F5 by the `compile` task (see tasks.json).
+        "--user-data-dir=${workspaceFolder}/.vscode/.dev-profile",
+        "--profile=dev",
         "--extensionDevelopmentPath=${workspaceFolder}",
         "${workspaceFolder}/.vscode/worktree-manager-dev.code-workspace"
       ],
