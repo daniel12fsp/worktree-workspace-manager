@@ -3,7 +3,7 @@ import * as fsSync from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { applyEdits, findNodeAtLocation, getNodeValue, modify, parse, parseTree, type Node as JsonNode, type ParseError } from 'jsonc-parser';
-import { Worktree, listAllWorktrees } from './model';
+import { BareRepository, Worktree, listAllWorktrees } from './model';
 import { log, logError } from './logger';
 
 const BEGIN_MARKER = '// BEGIN worktreeManager';
@@ -14,10 +14,14 @@ export type CheckWorktreeResult = 'updated' | 'noWorkspaceFile' | 'missingFolder
 export async function hideBareRepositoryFolders(): Promise<void> {
   try {
     const all = await listAllWorktrees();
-    await Promise.all([
-      updateBareRepositoryExcludeConfiguration('files.exclude', all),
-      updateBareRepositoryExcludeConfiguration('search.exclude', all)
-    ]);
+    await Promise.all([...all.keys()].flatMap(repo => {
+      const folder = findFolderForRepo(repo);
+      if (!folder) return [];
+      return [
+        ensureBareHidden('files.exclude', folder),
+        ensureBareHidden('search.exclude', folder)
+      ];
+    }));
   } catch (error) {
     logError('failed to hide bare repository folders', error);
   }
@@ -33,23 +37,44 @@ export async function checkWorktreeInLiveWorkspace(target: Worktree): Promise<Ch
   const targetPath = normalizePath(target.path);
   const selected = new Set<string>();
 
-  for (const [, worktrees] of all) {
+  log('check worktree in live workspace: choosing selected worktrees', {
+    target: target.name,
+    targetPath,
+    previousActivePaths,
+    repoCount: all.size
+  });
+
+  for (const [repo, worktrees] of all) {
     const active = chooseActiveWorktree(worktrees, previousActivePaths, targetRepoKey, targetPath);
+    log('check worktree in live workspace: repo active choice', {
+      repo: repo.label,
+      worktrees: worktrees.map(worktree => ({ name: worktree.name, path: normalizePath(worktree.path) })),
+      active: active ? { name: active.name, path: normalizePath(active.path) } : undefined
+    });
     if (active) selected.add(normalizePath(active.path));
   }
+
+  log('check worktree in live workspace: selected set before excludes', { selected: [...selected] });
 
   await Promise.all([
     updateExcludeConfiguration('files.exclude', all, selected),
     updateExcludeConfiguration('search.exclude', all, selected)
   ]);
 
-  const workspaceRootPaths = new Set(folders.map(folder => normalizePath(folder.uri.fsPath)));
+  const workspaceRootPaths = await updateWorkspaceFolderVisibility(all, selected, folders);
   const hasHiddenWorkspaceRoot = [...all.values()]
     .flat()
     .some(worktree => !selected.has(normalizePath(worktree.path)) && workspaceRootPaths.has(normalizePath(worktree.path)));
 
   const result = hasHiddenWorkspaceRoot ? 'rootFoldersCannotBeHidden' : 'updated';
-  log('check worktree in live workspace', { worktree: target.name, selected: selected.size, result });
+  log('check worktree in live workspace', {
+    worktree: target.name,
+    selected: selected.size,
+    selectedPaths: [...selected],
+    workspaceRootPaths: [...workspaceRootPaths],
+    hasHiddenWorkspaceRoot,
+    result
+  });
   return result;
 }
 
@@ -102,16 +127,22 @@ export async function getCheckedWorktreePaths(): Promise<Set<string>> {
   }
 }
 
-function getSelectedWorktreesFromExcludeConfiguration(all: Map<unknown, Worktree[]>): Set<string> | undefined {
-  const filesExclude = getExcludeConfiguration('files.exclude');
-  const searchExclude = getExcludeConfiguration('search.exclude');
+// Excludes are written per workspace folder (per repo) at the WorkspaceFolder
+// scope, NOT globally. A basename pattern like `**/main` is therefore scoped to
+// the single repo folder it belongs to, so worktrees that share a name across
+// repos never collide — and exactly one worktree (the selected one) stays
+// visible per repo.
+function getSelectedWorktreesFromExcludeConfiguration(all: Map<BareRepository, Worktree[]>): Set<string> | undefined {
   const selected = new Set<string>();
   let hasManagedExclude = false;
 
-  for (const [, worktrees] of all) {
+  for (const [repo, worktrees] of all) {
+    const folder = findFolderForRepo(repo);
+    if (!folder) continue;
+    const filesExclude = getFolderExclude('files.exclude', folder);
+    const searchExclude = getFolderExclude('search.exclude', folder);
     for (const worktree of worktrees) {
-      const patterns = excludePatterns(worktree);
-      const values = patterns.flatMap(pattern => [filesExclude[pattern], searchExclude[pattern]]);
+      const values = worktreeNamePatterns(worktree.name).flatMap(pattern => [filesExclude[pattern], searchExclude[pattern]]);
       if (values.some(value => typeof value === 'boolean')) hasManagedExclude = true;
       if (values.some(value => value === false)) selected.add(normalizePath(worktree.path));
     }
@@ -120,42 +151,129 @@ function getSelectedWorktreesFromExcludeConfiguration(all: Map<unknown, Worktree
   return hasManagedExclude ? selected : undefined;
 }
 
-async function updateBareRepositoryExcludeConfiguration(section: 'search.exclude' | 'files.exclude', all: Map<unknown, Worktree[]>): Promise<void> {
-  const current = getExcludeConfiguration(section);
-  const next: Record<string, boolean> = { ...current };
-  for (const repo of all.keys()) {
-    for (const pattern of repoExcludePatterns(repo)) {
-      next[pattern] = true;
-    }
-  }
-  stripWorkspaceRootExclusions(next);
+async function ensureBareHidden(section: 'search.exclude' | 'files.exclude', folder: vscode.WorkspaceFolder): Promise<void> {
+  const current = getFolderExclude(section, folder);
+  const next: Record<string, boolean> = { ...current, '.bare': true, '.bare/**': true };
   if (excludeObjectsEqual(current, next)) return;
-  await vscode.workspace.getConfiguration().update(section, next, vscode.ConfigurationTarget.Workspace);
+  await writeFolderExclude(section, folder, next);
 }
 
-async function updateExcludeConfiguration(section: 'search.exclude' | 'files.exclude', all: Map<unknown, Worktree[]>, selected: Set<string>): Promise<void> {
-  const current = getExcludeConfiguration(section);
-  const next: Record<string, boolean> = { ...current };
-
-  for (const [repo, worktrees] of all) {
-    for (const pattern of repoExcludePatterns(repo)) {
-      next[pattern] = true;
-    }
+async function updateExcludeConfiguration(section: 'search.exclude' | 'files.exclude', all: Map<BareRepository, Worktree[]>, selected: Set<string>): Promise<void> {
+  await Promise.all([...all.entries()].map(async ([repo, worktrees]) => {
+    const folder = findFolderForRepo(repo);
+    if (!folder) return;
+    const next: Record<string, boolean> = { '.bare': true, '.bare/**': true };
     for (const worktree of worktrees) {
-      for (const pattern of excludePatterns(worktree)) {
-        next[pattern] = !selected.has(normalizePath(worktree.path));
+      const visible = selected.has(normalizePath(worktree.path));
+      for (const pattern of worktreeNamePatterns(worktree.name)) {
+        next[pattern] = !visible;
       }
     }
-  }
-
-  stripWorkspaceRootExclusions(next);
-  if (excludeObjectsEqual(current, next)) return;
-  await vscode.workspace.getConfiguration().update(section, next, vscode.ConfigurationTarget.Workspace);
+    if (excludeObjectsEqual(getFolderExclude(section, folder), next)) return;
+    await writeFolderExclude(section, folder, next);
+  }));
 }
 
-function getExcludeConfiguration(section: 'search.exclude' | 'files.exclude'): Record<string, boolean> {
-  const value = vscode.workspace.getConfiguration(undefined, null).get<Record<string, boolean>>(section, {});
+async function updateWorkspaceFolderVisibility(
+  all: Map<BareRepository, Worktree[]>,
+  selected: Set<string>,
+  folders: readonly vscode.WorkspaceFolder[]
+): Promise<Set<string>> {
+  const allWorktrees = [...all.values()].flat();
+  const worktreeByPath = new Map(allWorktrees.map(worktree => [normalizePath(worktree.path), worktree]));
+  const repoRootPaths = new Set([...all.keys()].map(repo => normalizePath(repo.fsPath)));
+  const repoKeysWithWorktreeRoots = new Set<string>();
+
+  log('update workspace folder visibility: start', {
+    selected: [...selected],
+    folders: folders.map(folder => ({ name: folder.name, path: normalizePath(folder.uri.fsPath) })),
+    worktrees: allWorktrees.map(worktree => ({ repo: worktree.repo.label, name: worktree.name, path: normalizePath(worktree.path) }))
+  });
+
+  for (const folder of folders) {
+    const worktree = worktreeByPath.get(normalizePath(folder.uri.fsPath));
+    if (worktree) repoKeysWithWorktreeRoots.add(repoKey(worktree));
+  }
+
+  if (!repoKeysWithWorktreeRoots.size) {
+    log('update workspace folder visibility: no worktree roots currently open, skip workspace folder update');
+    return new Set(folders.map(folder => normalizePath(folder.uri.fsPath)));
+  }
+
+  log('update workspace folder visibility: repos with open worktree roots', { repoKeysWithWorktreeRoots: [...repoKeysWithWorktreeRoots] });
+
+  const additions = allWorktrees.filter(worktree => {
+    const worktreePath = normalizePath(worktree.path);
+    if (!selected.has(worktreePath)) return false;
+    if (!repoKeysWithWorktreeRoots.has(repoKey(worktree))) return false;
+    if (folders.some(folder => normalizePath(folder.uri.fsPath) === worktreePath)) return false;
+    if (folders.some(folder => normalizePath(folder.uri.fsPath) === normalizePath(worktree.repo.fsPath))) return false;
+    return true;
+  });
+
+  log('update workspace folder visibility: additions', {
+    additions: additions.map(worktree => ({ repo: worktree.repo.label, name: worktree.name, path: normalizePath(worktree.path) }))
+  });
+
+  const firstManagedIndex = folders.findIndex(folder => worktreeByPath.has(normalizePath(folder.uri.fsPath)));
+  if (firstManagedIndex === -1 && !additions.length) {
+    log('update workspace folder visibility: no managed folder range and no additions');
+    return new Set(folders.map(folder => normalizePath(folder.uri.fsPath)));
+  }
+
+  const lastManagedIndex = folders.reduce(
+    (last, folder, index) => worktreeByPath.has(normalizePath(folder.uri.fsPath)) ? index : last,
+    -1
+  );
+  const start = firstManagedIndex === -1 ? folders.length : firstManagedIndex;
+  const deleteCount = lastManagedIndex === -1 ? 0 : lastManagedIndex - firstManagedIndex + 1;
+  const replacement = folders.slice(start, start + deleteCount).filter(folder => {
+    const folderPath = normalizePath(folder.uri.fsPath);
+    const worktree = worktreeByPath.get(folderPath);
+    return !worktree || selected.has(folderPath) || repoRootPaths.has(folderPath);
+  });
+  const toAdd: vscode.WorkspaceFolder[] = [
+    ...replacement,
+    ...additions.map(worktree => ({ uri: vscode.Uri.file(worktree.path), name: `${worktree.repo.label}: ${worktree.name}`, index: -1 }))
+  ];
+
+  const changed = deleteCount > 0 || additions.length > 0;
+  log('update workspace folder visibility: computed update', {
+    start,
+    deleteCount,
+    changed,
+    replacement: replacement.map(folder => ({ name: folder.name, path: normalizePath(folder.uri.fsPath) })),
+    toAdd: toAdd.map(folder => ({ name: folder.name, path: normalizePath(folder.uri.fsPath) }))
+  });
+  if (changed) {
+    const accepted = vscode.workspace.updateWorkspaceFolders(start, deleteCount, ...toAdd.map(folder => ({ uri: folder.uri, name: folder.name })));
+    log('update workspace folder visibility: updateWorkspaceFolders returned', { accepted });
+  }
+
+  return new Set([
+    ...folders.slice(0, start).map(folder => normalizePath(folder.uri.fsPath)),
+    ...toAdd.map(folder => normalizePath(folder.uri.fsPath)),
+    ...folders.slice(start + deleteCount).map(folder => normalizePath(folder.uri.fsPath))
+  ]);
+}
+
+function findFolderForRepo(repo: BareRepository): vscode.WorkspaceFolder | undefined {
+  const target = normalizePath(repo.fsPath);
+  return (vscode.workspace.workspaceFolders ?? []).find(folder => normalizePath(folder.uri.fsPath) === target);
+}
+
+function worktreeNamePatterns(name: string): string[] {
+  return [name, `${name}/**`, `**/${name}`, `**/${name}/**`];
+}
+
+function getFolderExclude(section: 'search.exclude' | 'files.exclude', folder: vscode.WorkspaceFolder): Record<string, boolean> {
+  const inspect = vscode.workspace.getConfiguration(undefined, folder.uri).inspect<Record<string, boolean>>(section);
+  const value = inspect?.workspaceFolderValue;
   return value && typeof value === 'object' ? value : {};
+}
+
+async function writeFolderExclude(section: 'search.exclude' | 'files.exclude', folder: vscode.WorkspaceFolder, value: Record<string, boolean>): Promise<void> {
+  await vscode.workspace.getConfiguration(undefined, folder.uri).update(section, value, vscode.ConfigurationTarget.WorkspaceFolder);
 }
 
 function excludeObjectsEqual(a: Record<string, boolean>, b: Record<string, boolean>): boolean {
@@ -163,83 +281,6 @@ function excludeObjectsEqual(a: Record<string, boolean>, b: Record<string, boole
   const bk = Object.keys(b);
   if (ak.length !== bk.length) return false;
   return ak.every(key => a[key] === b[key]);
-}
-
-function repoExcludePatterns(repo: unknown): string[] {
-  const maybeRepo = repo as { fsPath?: unknown; gitDir?: unknown; label?: unknown };
-  const paths = [maybeRepo.fsPath, maybeRepo.gitDir].filter((value): value is string => typeof value === 'string');
-  const names = paths.map(value => path.basename(value));
-  if (typeof maybeRepo.label === 'string') names.push(maybeRepo.label);
-  names.push('.bare', '.bare.git');
-
-  const patterns = names.flatMap(name => [name, `${name}/**`, `**/${name}`, `**/${name}/**`]);
-  patterns.push('*.git', '*.git/**', '**/*.git', '**/*.git/**');
-  for (const repoPath of paths) {
-    patterns.push(...pathExcludePatterns(repoPath));
-  }
-  return unique(patterns);
-}
-
-function excludePatterns(worktree: Worktree): string[] {
-  return unique([
-    `${worktree.repo.label}: ${worktree.name}`,
-    `${worktree.repo.label}: ${worktree.name}/**`,
-    ...pathExcludePatterns(worktree.path)
-  ]);
-}
-
-function pathExcludePatterns(fsPath: string): string[] {
-  const absolute = toAbsolutePath(fsPath);
-  const name = path.basename(absolute);
-  const patterns = [
-    name,
-    `${name}/**`,
-    `**/${name}`,
-    `**/${name}/**`,
-    absolute,
-    `${absolute}/**`
-  ];
-
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    const root = toAbsolutePath(folder.uri.fsPath);
-    const relative = path.relative(root, absolute);
-    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
-    const glob = relative.split(path.sep).join('/');
-    patterns.push(glob, `${glob}/**`, `**/${glob}`, `**/${glob}/**`);
-  }
-
-  return patterns;
-}
-
-function unique<T>(values: T[]): T[] {
-  return [...new Set(values)];
-}
-
-function patternsHidingWorkspaceRoots(): Set<string> {
-  const roots = vscode.workspace.workspaceFolders ?? [];
-  const patterns = new Set<string>();
-  const names = roots.map(folder => path.basename(toAbsolutePath(folder.uri.fsPath)));
-  for (const name of names) {
-    patterns.add(name);
-    patterns.add(`${name}/**`);
-    patterns.add(`**/${name}`);
-    patterns.add(`**/${name}/**`);
-  }
-  if (names.some(name => name.endsWith('.git'))) {
-    for (const pattern of ['*.git', '*.git/**', '**/*.git', '**/*.git/**']) patterns.add(pattern);
-  }
-  for (const folder of roots) {
-    for (const pattern of pathExcludePatterns(toAbsolutePath(folder.uri.fsPath))) patterns.add(pattern);
-  }
-  return patterns;
-}
-
-function stripWorkspaceRootExclusions(next: Record<string, boolean>): void {
-  // A workspace-root folder must always stay visible: hiding it would also hide
-  // every worktree nested inside it (e.g. a bare repo added as a workspace folder).
-  for (const pattern of patternsHidingWorkspaceRoots()) {
-    delete next[pattern];
-  }
 }
 
 function findFoldersArray(text: string): JsonNode | undefined {

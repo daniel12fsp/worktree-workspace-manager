@@ -2,6 +2,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as pty from 'node-pty';
 import * as vscode from 'vscode';
+import { closeEditorsOutsideWorktree } from './editorTabs';
 import { BareRepository, Worktree, listAllWorktrees } from './model';
 import { checkWorktreeInLiveWorkspace, getCheckedWorktreePaths, normalizePath } from './workspaceFile';
 import { log, logError } from './logger';
@@ -130,9 +131,13 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
 
   private async checkWorktree(worktree: Worktree): Promise<void> {
     try {
+      log('embedded check worktree start', { worktree: worktree.name, path: worktree.path, repo: worktree.repo.label });
       const result = await checkWorktreeInLiveWorkspace(worktree);
-      log('check worktree', { worktree: worktree.name, result });
+      log('embedded check worktree result', { worktree: worktree.name, result });
       if (result === 'updated' || result === 'rootFoldersCannotBeHidden') {
+        log('embedded check worktree: about to close non-selected editor tabs', { worktree: worktree.name, path: worktree.path });
+        await closeEditorsOutsideWorktree(worktree);
+        log('embedded check worktree: finished close non-selected editor tabs', { worktree: worktree.name });
         this.explorerWorktreeChanged.fire();
         void this.renderSessions();
         if (result === 'rootFoldersCannotBeHidden') {

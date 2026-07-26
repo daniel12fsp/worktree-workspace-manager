@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { EmbeddedTerminalViewProvider } from './embeddedTerminalView';
 import { disposeLogger, log, logError } from './logger';
 import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees } from './model';
+import { closeEditorsOutsideWorktree } from './editorTabs';
 import { checkWorktreeInLiveWorkspace, hideBareRepositoryFolders } from './workspaceFile';
 import { RepoNode, WorktreeNode, WorktreeProvider } from './worktreeView';
 
@@ -59,9 +60,17 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     worktreeView.onDidChangeCheckboxState(async event => {
       const node = event.items[0]?.[0];
+      log('worktree checkbox changed', {
+        itemCount: event.items.length,
+        nodeType: node?.constructor?.name,
+        isWorktreeNode: node instanceof WorktreeNode,
+        worktree: node instanceof WorktreeNode ? node.worktree.name : undefined,
+        path: node instanceof WorktreeNode ? node.worktree.path : undefined
+      });
       if (node instanceof WorktreeNode) {
         suppressTerminalRefreshUntil = Date.now() + 3000;
         await checkWorktree(node.worktree);
+        log('worktree checkbox flow: refreshing views after check');
         refreshAll();
         terminalProvider.refresh();
       }
@@ -99,8 +108,16 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('worktreeManager.configureRepositories', () => vscode.commands.executeCommand('workbench.action.openSettingsJson')),
     vscode.commands.registerCommand('worktreeManager.checkWorktree', async (node?: WorktreeNode) => {
+      const target = node?.worktree ?? selectedWorktree;
+      log('check worktree command invoked', {
+        fromNode: Boolean(node?.worktree),
+        selectedWorktree: selectedWorktree?.name,
+        target: target?.name,
+        path: target?.path
+      });
       suppressTerminalRefreshUntil = Date.now() + 3000;
-      await checkWorktree(node?.worktree ?? selectedWorktree);
+      await checkWorktree(target);
+      log('check worktree command flow: refreshing views after check');
       refreshAll();
       terminalProvider.refresh();
     }),
@@ -121,11 +138,18 @@ async function checkWorktree(worktree?: Worktree): Promise<void> {
   if (!worktree) return;
 
   try {
+    log('check worktree start', { worktree: worktree.name, path: worktree.path, repo: worktree.repo.label });
     const result = await checkWorktreeInLiveWorkspace(worktree);
-    log('check worktree', { worktree: worktree.name, result });
+    log('check worktree result', { worktree: worktree.name, result });
     if (result === 'updated') {
+      log('check worktree: about to close non-selected editor tabs', { worktree: worktree.name, path: worktree.path });
+      await closeEditorsOutsideWorktree(worktree);
+      log('check worktree: finished close non-selected editor tabs', { worktree: worktree.name });
       void vscode.window.showInformationMessage('Updated visible worktree');
     } else if (result === 'rootFoldersCannotBeHidden') {
+      log('check worktree: about to close non-selected editor tabs after root warning', { worktree: worktree.name, path: worktree.path });
+      await closeEditorsOutsideWorktree(worktree);
+      log('check worktree: finished close non-selected editor tabs after root warning', { worktree: worktree.name });
       void vscode.window.showWarningMessage('Updated Search/exclude settings, but VS Code cannot hide inactive worktrees that are top-level workspace folders without changing workspace folders.');
     } else if (result === 'noWorkspaceFile') {
       void vscode.window.showErrorMessage('Check Worktree requires an open workspace');

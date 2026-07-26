@@ -64,8 +64,10 @@ export class WorktreeProvider implements vscode.TreeDataProvider<Node> {
     if (element instanceof RepoNode) {
       try {
         const [worktrees, checkedPaths] = await Promise.all([listWorktrees(element.repo), getCheckedWorktreePaths()]);
-        return worktrees.length
-          ? worktrees.map(worktree => new WorktreeNode(worktree, checkedPaths.has(normalizePath(worktree.path))))
+        const selectedWorktrees = worktrees.filter(worktree => checkedPaths.has(normalizePath(worktree.path)));
+        const visibleWorktrees = selectedWorktrees.length ? selectedWorktrees : worktrees;
+        return visibleWorktrees.length
+          ? visibleWorktrees.map(worktree => new WorktreeNode(worktree, checkedPaths.has(normalizePath(worktree.path))))
           : [new EmptyNode()];
       } catch (error) {
         logError('failed to load worktrees', { repo: element.repo.label, error });
