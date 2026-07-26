@@ -17,6 +17,18 @@
       "~/code/tmp/examples-repo/fe-project.git",
       "~/code/tmp/examples-repo/be-project.git",
     ],
+    "worktreeManager.tasks": {
+      "fe-project.git": {
+        "env": { "PORT": "4000" },
+        "cleanup": ["echo cleanup"],
+        "cmd": ["python -m http.server $PORT"],
+      },
+      "be-project.git": {
+        "env": { "PORT": "5000" },
+        "cleanup": ["echo cleanup"],
+        "cmd": ["python -m http.server $PORT"],
+      },
+    },
     "files.exclude": {
       "**/.git": true,
       "**/.svn": true,

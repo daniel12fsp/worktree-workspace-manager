@@ -17,6 +17,7 @@
     "onCommand:worktreeManager.showMenu",
     "onCommand:worktreeManager.addWorktree",
     "onCommand:worktreeManager.checkWorktree",
+    "onCommand:worktreeManager.runWorktreeTask",
     "onCommand:worktreeManager.removeWorktree",
     "onCommand:worktreeManager.fetch",
     "onCommand:worktreeManager.pruneStale",
@@ -47,6 +48,42 @@
             "type": "string"
           },
           "description": "Bare git repositories to manage. Leading ~ is expanded; environment variables are not."
+        },
+        "worktreeManager.tasks": {
+          "type": "object",
+          "default": {},
+          "description": "Repo-scoped task definitions keyed by bare repository basename, including .git.",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["cmd"],
+            "properties": {
+              "env": {
+                "type": "object",
+                "default": {},
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Environment variables applied to task and cleanup commands."
+              },
+              "cleanup": {
+                "type": "array",
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "description": "Ordered shell commands run for the old selected worktree before switching tasks."
+              },
+              "cmd": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                },
+                "description": "Ordered shell commands run in a new VS Code terminal when a worktree is selected."
+              }
+            },
+            "additionalProperties": false
+          }
         }
       }
     },
@@ -94,6 +131,10 @@
       {
         "command": "worktreeManager.openTerminalHere",
         "title": "Open Terminal Here"
+      },
+      {
+        "command": "worktreeManager.runWorktreeTask",
+        "title": "Run Worktree Task"
       },
       {
         "command": "worktreeManager.removeWorktree",
@@ -162,6 +203,11 @@
         {
           "command": "worktreeManager.openTerminalHere",
           "when": "viewItem == worktree",
+          "group": "inline"
+        },
+        {
+          "command": "worktreeManager.runWorktreeTask",
+          "when": "view == worktreeManager.worktrees && viewItem == worktree",
           "group": "inline"
         },
         {

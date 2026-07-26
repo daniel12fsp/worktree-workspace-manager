@@ -7,6 +7,7 @@ import { disposeLogger, log, logError } from './logger';
 import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees } from './model';
 import { closeEditorsOutsideWorktree } from './editorTabs';
 import { checkWorktreeInLiveWorkspace, hideBareRepositoryFolders } from './workspaceFile';
+import { pickTaskWorktree, WorktreeTaskManager } from './taskManager';
 import { RepoNode, WorktreeNode, WorktreeProvider } from './worktreeView';
 
 const execFileAsync = promisify(execFile);
@@ -14,7 +15,8 @@ const execFileAsync = promisify(execFile);
 export function activate(context: vscode.ExtensionContext): void {
   log('activate');
   const worktreeProvider = new WorktreeProvider();
-  const terminalProvider = new EmbeddedTerminalViewProvider(context.extensionUri);
+  const taskManager = new WorktreeTaskManager();
+  const terminalProvider = new EmbeddedTerminalViewProvider(context.extensionUri, taskManager);
 
   const worktreeView = vscode.window.createTreeView('worktreeManager.worktrees', {
     treeDataProvider: worktreeProvider,
@@ -52,12 +54,17 @@ export function activate(context: vscode.ExtensionContext): void {
     terminalView,
     status,
     terminalProvider,
+    taskManager,
     { dispose: disposeLogger },
     worktreeView.onDidChangeSelection(event => {
       const node = event.selection[0];
       selectedWorktree = node instanceof WorktreeNode ? node.worktree : undefined;
       selectedRepo = node instanceof RepoNode ? node.repo : selectedWorktree?.repo;
+      if (selectedWorktree) {
+        void taskManager.runForSelection(selectedWorktree).finally(() => terminalProvider.refresh());
+      }
     }),
+    taskManager.onDidChangeTasks(() => terminalProvider.refresh()),
     worktreeView.onDidChangeCheckboxState(async event => {
       const node = event.items[0]?.[0];
       log('worktree checkbox changed', {
@@ -70,7 +77,9 @@ export function activate(context: vscode.ExtensionContext): void {
       if (node instanceof WorktreeNode) {
         suppressTerminalRefreshUntil = Date.now() + 3000;
         await checkWorktree(node.worktree);
-        log('worktree checkbox flow: refreshing views after check');
+        log('worktree checkbox flow: starting task after check', { repo: node.worktree.repo.label, worktree: node.worktree.name });
+        await taskManager.runForSelection(node.worktree);
+        log('worktree checkbox flow: refreshing views after check/task');
         refreshAll();
         terminalProvider.refresh();
       }
@@ -80,7 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
       terminalProvider.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('worktreeManager.repositories')) {
+      if (event.affectsConfiguration('worktreeManager.repositories') || event.affectsConfiguration('worktreeManager.tasks')) {
         refreshAll();
         refreshTerminalsUnlessSuppressed();
       } else if (event.affectsConfiguration('files.exclude') || event.affectsConfiguration('search.exclude')) {
@@ -117,11 +126,20 @@ export function activate(context: vscode.ExtensionContext): void {
       });
       suppressTerminalRefreshUntil = Date.now() + 3000;
       await checkWorktree(target);
-      log('check worktree command flow: refreshing views after check');
+      if (target) {
+        log('check worktree command flow: starting task after check', { repo: target.repo.label, worktree: target.name });
+        await taskManager.runForSelection(target);
+      }
+      log('check worktree command flow: refreshing views after check/task');
       refreshAll();
       terminalProvider.refresh();
     }),
     vscode.commands.registerCommand('worktreeManager.openTerminalHere', async (node?: WorktreeNode) => openTerminalHere(node?.worktree ?? selectedWorktree, terminalProvider)),
+    vscode.commands.registerCommand('worktreeManager.runWorktreeTask', async (node?: WorktreeNode) => {
+      const target = node?.worktree ?? selectedWorktree ?? await pickTaskWorktree();
+      if (target) await taskManager.rerun(target);
+      terminalProvider.refresh();
+    }),
     vscode.commands.registerCommand('worktreeManager.closeRepoTerminals', async (node?: RepoNode) => closeRepoTerminals(node?.repo ?? selectedRepo, terminalProvider)),
     vscode.commands.registerCommand('worktreeManager.killWorktreeTerminals', async (node?: WorktreeNode) => killWorktreeTerminals(node?.worktree ?? selectedWorktree, terminalProvider)),
     vscode.commands.registerCommand('worktreeManager.showMenu', async () => {
@@ -262,6 +280,7 @@ function menuItems(hasSelectedWorktree: boolean): Array<{ label: string; command
   const worktreeActions = [
     { label: 'Check Worktree', command: 'worktreeManager.checkWorktree' },
     { label: 'Open Terminal Here', command: 'worktreeManager.openTerminalHere' },
+    { label: 'Run Worktree Task', command: 'worktreeManager.runWorktreeTask' },
     { label: 'Remove Worktree', command: 'worktreeManager.removeWorktree' }
   ];
   const repoActions = [

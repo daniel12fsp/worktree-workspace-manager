@@ -1,0 +1,285 @@
+import { spawn } from 'node:child_process';
+import * as path from 'node:path';
+import * as vscode from 'vscode';
+import { Worktree, listAllWorktrees } from './model';
+import { log, logError } from './logger';
+
+export interface WorktreeTaskConfig {
+  readonly env?: Record<string, string>;
+  readonly cleanup?: string[];
+  readonly cmd: string[];
+}
+
+export interface TaskTerminalHandle {
+  readonly id: string;
+  readonly label: string;
+  readonly worktree: Worktree;
+  readonly runningCommand?: string;
+  isAlive(): boolean;
+  dispose(): void;
+}
+
+export interface TaskTerminalEntry {
+  readonly worktree: Worktree;
+  readonly handle: TaskTerminalHandle;
+  readonly command?: string;
+}
+
+type TaskTerminalLauncher = (worktree: Worktree, config: WorktreeTaskConfig) => TaskTerminalHandle;
+
+interface ActiveTask {
+  readonly worktree: Worktree;
+  readonly config: WorktreeTaskConfig;
+  readonly handle: TaskTerminalHandle;
+}
+
+export class WorktreeTaskManager implements vscode.Disposable {
+  private readonly activeByPath = new Map<string, ActiveTask>();
+  private readonly changed = new vscode.EventEmitter<void>();
+  readonly onDidChangeTasks = this.changed.event;
+
+  private lastSelectedPath: string | undefined;
+  private transitionRunning = false;
+  private pendingWorktree: Worktree | undefined;
+  private launcher: TaskTerminalLauncher | undefined;
+
+  setLauncher(launcher: TaskTerminalLauncher): void {
+    this.launcher = launcher;
+  }
+
+  dispose(): void {
+    this.changed.dispose();
+  }
+
+  async runForSelection(worktree: Worktree): Promise<void> {
+    const key = normalize(worktree.path);
+    log('TASK click/selection received from Worktree/Terminals by Worktree', { repo: worktree.repo.label, worktree: worktree.name, path: worktree.path });
+    if (this.lastSelectedPath === key && !this.pendingWorktree && !this.transitionRunning && this.isActiveAlive(key)) {
+      log('TASK skip: selected worktree task is already running in embedded terminal', { repo: worktree.repo.label, worktree: worktree.name, path: worktree.path });
+      return;
+    }
+    this.pendingWorktree = worktree;
+    if (!this.transitionRunning) {
+      await this.drainQueue();
+    } else {
+      log('task selection queued while transition is running', { repo: worktree.repo.label, worktree: worktree.name });
+    }
+  }
+
+  async rerun(worktree: Worktree): Promise<void> {
+    log('manual task rerun requested', { repo: worktree.repo.label, worktree: worktree.name, path: worktree.path });
+    this.lastSelectedPath = undefined;
+    this.pendingWorktree = worktree;
+    if (!this.transitionRunning) {
+      await this.drainQueue();
+    } else {
+      log('manual task rerun queued while transition is running', { repo: worktree.repo.label, worktree: worktree.name });
+    }
+  }
+
+  getTaskTerminals(): TaskTerminalEntry[] {
+    return [...this.activeByPath.values()].filter(entry => entry.handle.isAlive()).map(entry => ({
+      worktree: entry.worktree,
+      handle: entry.handle,
+      command: entry.handle.runningCommand ?? entry.config.cmd[0]
+    }));
+  }
+
+  private async drainQueue(): Promise<void> {
+    this.transitionRunning = true;
+    try {
+      while (this.pendingWorktree) {
+        const next = this.pendingWorktree;
+        this.pendingWorktree = undefined;
+        await this.transitionTo(next);
+      }
+    } finally {
+      this.transitionRunning = false;
+    }
+  }
+
+  private async transitionTo(worktree: Worktree): Promise<void> {
+    const nextKey = normalize(worktree.path);
+    if (this.lastSelectedPath === nextKey && this.isActiveAlive(nextKey)) return;
+
+    log('TASK transition start: cleanup old worktree first, then start selected worktree cmd', { selectedRepo: worktree.repo.label, selectedWorktree: worktree.name, selectedPath: worktree.path, previousPath: this.lastSelectedPath });
+    const config = taskConfigFor(worktree);
+    if (!config) {
+      log('TASK skip: no valid worktreeManager.tasks config for selected repo', { repo: worktree.repo.label, worktree: worktree.name });
+      this.lastSelectedPath = nextKey;
+      return;
+    }
+
+    const old = this.lastSelectedPath ? this.activeByPath.get(this.lastSelectedPath) : undefined;
+    if (old) {
+      log('TASK cleanup phase: old embedded task found', { oldRepo: old.worktree.repo.label, oldWorktree: old.worktree.name, oldPath: old.worktree.path });
+      const ok = await this.cleanupOldTask(old);
+      if (!ok) {
+        log('TASK blocked: cleanup failed, selected cmd will NOT start', { selectedRepo: worktree.repo.label, selectedWorktree: worktree.name });
+        return;
+      }
+      log('TASK cleanup phase complete: disposing old embedded task terminal', { oldRepo: old.worktree.repo.label, oldWorktree: old.worktree.name, terminal: old.handle.label });
+      old.handle.dispose();
+      this.activeByPath.delete(normalize(old.worktree.path));
+      this.changed.fire();
+    }
+
+    const existing = this.activeByPath.get(nextKey);
+    if (existing) {
+      existing.handle.dispose();
+      this.activeByPath.delete(nextKey);
+    }
+
+    if (!this.launcher) {
+      logError('cannot start task; embedded terminal launcher is not registered', { repo: worktree.repo.label, worktree: worktree.name });
+      void vscode.window.showErrorMessage('Cannot start worktree task: embedded terminal view is not ready.');
+      return;
+    }
+
+    log('TASK cmd phase: creating embedded terminal in Terminals by Worktree', { repo: worktree.repo.label, worktree: worktree.name, cwd: worktree.path, env: config.env, cmd: config.cmd });
+    const handle = this.launcher(worktree, config);
+    this.activeByPath.set(nextKey, { worktree, config, handle });
+    this.lastSelectedPath = nextKey;
+    this.changed.fire();
+    log('TASK cmd phase complete: command(s) sent to embedded terminal and visible under tasks group', { repo: worktree.repo.label, worktree: worktree.name, terminal: handle.label, cmd: config.cmd });
+  }
+
+  private isActiveAlive(key: string): boolean {
+    const active = this.activeByPath.get(key);
+    return Boolean(active?.handle.isAlive());
+  }
+
+  private async cleanupOldTask(old: ActiveTask): Promise<boolean> {
+    const commands = old.config.cleanup ?? [];
+    if (!commands.length) {
+      log('TASK cleanup phase skipped: old worktree has no cleanup commands', { repo: old.worktree.repo.label, worktree: old.worktree.name });
+      return true;
+    }
+    try {
+      log('TASK cleanup phase start: running cleanup command(s) for OLD worktree', { repo: old.worktree.repo.label, worktree: old.worktree.name, cwd: old.worktree.path, env: old.config.env, cleanup: commands });
+      await runShellCommands(commands, old.worktree.path, old.config.env ?? {});
+      log('TASK cleanup phase success: old worktree cleanup command(s) exited 0', { repo: old.worktree.repo.label, worktree: old.worktree.name, cleanup: commands });
+      return true;
+    } catch (error) {
+      logError('TASK cleanup phase failed: old worktree cleanup command(s) exited non-zero', { repo: old.worktree.repo.label, worktree: old.worktree.name, cleanup: commands, error });
+      void vscode.window.showErrorMessage(`Cleanup failed for ${old.worktree.name}; task switch blocked. ${String(error)}`);
+      return false;
+    }
+  }
+}
+
+export function taskConfigFor(worktree: Worktree, options: { readonly silent?: boolean; readonly source?: string } = {}): WorktreeTaskConfig | undefined {
+  const all = vscode.workspace.getConfiguration('worktreeManager').get<Record<string, unknown>>('tasks', {});
+  const configuredRepos = Object.keys(all ?? {});
+  const raw = all?.[worktree.repo.label];
+  const rawFields = rawTaskFields(raw);
+  log('task config lookup fields', {
+    source: options.source ?? 'taskConfigFor',
+    repo: worktree.repo.label,
+    worktree: worktree.name,
+    worktreePath: worktree.path,
+    configuredRepos,
+    found: raw !== undefined,
+    rawType: raw === undefined ? 'undefined' : Array.isArray(raw) ? 'array' : typeof raw,
+    rawKeys: raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.keys(raw as Record<string, unknown>) : undefined,
+    rawCmd: rawFields.cmd,
+    rawCleanup: rawFields.cleanup,
+    rawEnv: rawFields.env
+  });
+  const validation = validateTaskConfig(raw);
+  if (validation.error) {
+    log('task config invalid fields', { source: options.source ?? 'taskConfigFor', repo: worktree.repo.label, error: validation.error, raw });
+    if (!options.silent) {
+      void vscode.window.showErrorMessage(`Invalid worktreeManager.tasks.${worktree.repo.label}: ${validation.error}`);
+    }
+    return undefined;
+  }
+  if (validation.config) {
+    log('task config valid fields', {
+      source: options.source ?? 'taskConfigFor',
+      repo: worktree.repo.label,
+      worktree: worktree.name,
+      cmd: validation.config.cmd,
+      cleanup: validation.config.cleanup,
+      env: validation.config.env,
+      envKeys: Object.keys(validation.config.env ?? {})
+    });
+  }
+  return validation.config;
+}
+
+export async function pickTaskWorktree(): Promise<Worktree | undefined> {
+  const all = await listAllWorktrees();
+  const items = [...all.values()].flat().filter(worktree => Boolean(taskConfigFor(worktree))).map(worktree => ({
+    label: `${worktree.name} (${worktree.branch ?? 'detached'})`,
+    description: worktree.repo.label,
+    detail: worktree.path,
+    worktree
+  }));
+  const choice = await vscode.window.showQuickPick(items, { placeHolder: 'Choose a worktree task to run' });
+  return choice?.worktree;
+}
+
+function validateTaskConfig(raw: unknown): { config?: WorktreeTaskConfig; error?: string } {
+  if (raw === undefined) return {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'expected an object' };
+  const { cmd, cleanup, env } = rawTaskFields(raw);
+  if (!Array.isArray(cmd) || !cmd.length || !cmd.every(value => typeof value === 'string')) {
+    return { error: 'cmd must be a non-empty array of strings' };
+  }
+  if (cleanup !== undefined && (!Array.isArray(cleanup) || !cleanup.every(value => typeof value === 'string'))) {
+    return { error: 'cleanup must be an array of strings' };
+  }
+  if (env !== undefined) {
+    if (!env || typeof env !== 'object' || Array.isArray(env)) return { error: 'env must be an object with string values' };
+    for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
+      if (typeof value !== 'string') return { error: `env.${key} must be a string` };
+    }
+  }
+  return { config: { cmd, cleanup: cleanup as string[] | undefined, env: env as Record<string, string> | undefined } };
+}
+
+function rawTaskFields(raw: unknown): { cmd?: unknown; cleanup?: unknown; env?: unknown } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return {
+    cmd: rawTaskField(raw, 'cmd'),
+    cleanup: rawTaskField(raw, 'cleanup'),
+    env: rawTaskField(raw, 'env')
+  };
+}
+
+function rawTaskField(raw: object, key: 'cmd' | 'cleanup' | 'env'): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(raw, key);
+  if (descriptor && 'value' in descriptor) return descriptor.value;
+  try {
+    return (raw as Record<string, unknown>)[key];
+  } catch (error) {
+    log('task config field read failed', { key, error: error instanceof Error ? error.message : String(error) });
+    return undefined;
+  }
+}
+
+function runShellCommands(commands: string[], cwd: string, env: Record<string, string>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const shell = process.platform === 'win32' ? (process.env.COMSPEC || 'cmd.exe') : (process.env.SHELL || 'sh');
+    const script = process.platform === 'win32'
+      ? commands.join(' && ')
+      : `set -e\n${commands.join('\n')}`;
+    const args = process.platform === 'win32' ? ['/d', '/s', '/c', script] : ['-lc', script];
+    const child = spawn(shell, args, {
+      cwd,
+      env: { ...process.env, ...env } as NodeJS.ProcessEnv,
+      windowsHide: true
+    });
+    let stderr = '';
+    child.stderr?.on('data', chunk => { stderr += String(chunk); });
+    child.on('error', reject);
+    child.on('close', code => {
+      code === 0 ? resolve() : reject(new Error(stderr.trim() || `exit code ${code}`));
+    });
+  });
+}
+
+function normalize(fsPath: string): string {
+  return path.resolve(fsPath);
+}
