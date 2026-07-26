@@ -20,13 +20,13 @@
     "worktreeManager.tasks": {
       "fe-project.git": {
         "env": { "PORT": "4000" },
-        "cleanup": ["echo cleanup"],
-        "cmd": ["python -m http.server $PORT"],
+        "cleanup": ["echo cleanup fe-project.git", "pwd"],
+        "cmd": ["pwd", "python -m http.server $PORT"],
       },
       "be-project.git": {
         "env": { "PORT": "5000" },
-        "cleanup": ["echo cleanup"],
-        "cmd": ["python -m http.server $PORT"],
+        "cleanup": ["echo cleanup be-project.git", "pwd"],
+        "cmd": ["pwd", "python -m http.server $PORT"],
       },
     },
     "files.exclude": {

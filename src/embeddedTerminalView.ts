@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import { closeEditorsOutsideWorktree } from './editorTabs';
 import { BareRepository, Worktree, listAllWorktrees } from './model';
 import { checkWorktreeInLiveWorkspace, getCheckedWorktreePaths, normalizePath } from './workspaceFile';
-import { WorktreeTaskConfig, WorktreeTaskManager, taskConfigFor } from './taskManager';
+import { WorktreeTaskConfig, WorktreeTaskManager } from './taskManager';
 import { log, logError } from './logger';
 
 interface EmbeddedSession {
@@ -19,6 +19,7 @@ interface EmbeddedSession {
   readonly isTask?: boolean;
   status?: 'starting' | 'running' | 'exited';
   exitCode?: number;
+  onExit?: (exitCode: number | undefined) => void;
 }
 
 export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -30,7 +31,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
   private terminalSeq = 0;
 
   constructor(private readonly extensionUri: vscode.Uri, private readonly taskManager?: WorktreeTaskManager) {
-    this.taskManager?.setLauncher((worktree, config) => this.createTaskSession(worktree, config));
+    this.taskManager?.setLauncher((worktree, config, onExit) => this.createTaskSession(worktree, config, onExit));
   }
 
   dispose(): void {
@@ -205,7 +206,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     return matches.length;
   }
 
-  private createSession(worktree: Worktree, options: { isTask?: boolean; env?: Record<string, string>; label?: string } = {}): EmbeddedSession {
+  private createSession(worktree: Worktree, options: { isTask?: boolean; env?: Record<string, string>; label?: string; onExit?: (exitCode: number | undefined) => void } = {}): EmbeddedSession {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const label = options.label ?? `${worktree.name} terminal ${++this.terminalSeq}`;
     const shell = safeEnv('SHELL') || (process.platform === 'win32' ? 'powershell.exe' : 'bash');
@@ -227,7 +228,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       rows: 24
     });
     log(options.isTask ? 'TASK embedded terminal spawn success: pty session created for cmd' : 'spawn embedded terminal', { repo: worktree.repo.label, worktree: worktree.name, cwd: worktree.path, shell, isTask: Boolean(options.isTask), label, envKeys: Object.keys(options.env ?? {}) });
-    const session: EmbeddedSession = { id, label, worktree, process: proc, output: [], inputBuffer: '', isTask: options.isTask, status: options.isTask ? 'starting' : undefined };
+    const session: EmbeddedSession = { id, label, worktree, process: proc, output: [], inputBuffer: '', isTask: options.isTask, status: options.isTask ? 'starting' : undefined, onExit: options.onExit };
     proc.onData(data => {
       if (session.isTask && session.status !== 'exited') {
         session.status = session.runningCommand ? 'running' : 'starting';
@@ -246,6 +247,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       session.status = 'exited';
       session.exitCode = event.exitCode;
       log(session.isTask ? 'TASK embedded terminal exited' : 'terminal exited', { label: session.label, exitCode: event.exitCode, signal: event.signal });
+      session.onExit?.(event.exitCode);
       if (session.isTask) {
         void this.renderSessions();
         return;
@@ -260,11 +262,13 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     return session;
   }
 
-  private createTaskSession(worktree: Worktree, config: WorktreeTaskConfig) {
-    const session = this.createSession(worktree, { isTask: true, env: config.env, label: `${worktree.name} task` });
+  private createTaskSession(worktree: Worktree, config: WorktreeTaskConfig, onExit: (exitCode: number | undefined) => void) {
+    const session = this.createSession(worktree, { isTask: true, env: config.env, label: `${worktree.name} task`, onExit });
     log('TASK embedded terminal registered in sessions map', { id: session.id, repo: worktree.repo.label, worktree: worktree.name, label: session.label, sessionCount: this.sessions.size });
     void vscode.commands.executeCommand('worktreeManager.terminals.focus');
-    log('TASK embedded terminal start collapsed: sending cmd command(s)', { repo: worktree.repo.label, worktree: worktree.name, terminal: session.label, cmd: config.cmd });
+    session.output.splice(0, session.output.length);
+    this.view?.webview.postMessage({ type: 'clear', id: session.id });
+    log('TASK embedded terminal start collapsed: cleared terminal output before sending cmd command(s)', { repo: worktree.repo.label, worktree: worktree.name, terminal: session.label, cmd: config.cmd });
     for (const command of config.cmd) {
       log('TASK embedded terminal write cmd', { repo: worktree.repo.label, worktree: worktree.name, terminal: session.label, command });
       session.runningCommand = command;
@@ -337,47 +341,30 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       }))
     }));
     const taskSessions = [...this.sessions.values()].filter(session => session.isTask);
-    log('render tasks group hierarchy for Terminals by Worktree', {
+    const taskRows = this.taskManager?.getTaskActivityRows() ?? [];
+    log('render generic tasks group hierarchy for Terminals by Worktree', {
       taskSessionCount: taskSessions.length,
-      tasks: taskSessions.map(session => ({ repo: session.worktree.repo.label, worktree: session.worktree.name, label: session.label, runningCommand: session.runningCommand }))
+      rowCount: taskRows.length,
+      rows: taskRows
     });
-    const tasks = [...all].map(([repo, worktrees]) => ({
+    const tasks = [...all].map(([repo]) => ({
       label: repo.label,
       path: repo.fsPath,
-      worktrees: worktrees.map(worktree => {
-        const config = taskConfigFor(worktree, { silent: true, source: 'Terminals by Worktree render' });
-        const terminals = taskSessions
-          .filter(session => session.worktree.path === worktree.path)
-          .map(session => ({
-            id: session.id,
-            label: session.label,
-            command: session.runningCommand ?? config?.cmd[0] ?? 'idle',
-            status: taskStatus(session),
-            preview: outputPreview(session.output)
-          }));
-        log('render task worktree fields for Terminals by Worktree', {
-          repo: worktree.repo.label,
-          worktree: worktree.name,
-          path: worktree.path,
-          hasConfig: Boolean(config),
-          cmd: config?.cmd,
-          cleanup: config?.cleanup,
-          env: config?.env,
-          terminalCount: terminals.length
-        });
-        return {
-          name: worktree.name,
-          branch: worktree.branch ?? 'detached',
-          path: worktree.path,
-          color: worktree.color,
-          taskConfig: config ? {
-            cmd: config.cmd,
-            cleanup: config.cleanup ?? [],
-            env: config.env ?? {}
-          } : undefined,
-          terminals
-        };
-      })
+      rows: taskRows
+        .filter(row => row.repo === repo.label)
+        .map(row => {
+          const session = row.terminalId ? this.sessions.get(row.terminalId) : undefined;
+          return {
+            id: row.id,
+            terminalId: row.terminalId,
+            label: row.kind,
+            worktreeName: row.worktreeName,
+            command: row.command,
+            status: row.status,
+            exitValue: row.exitValue,
+            preview: row.output ? outputPreview([row.output]) : session ? outputPreview(session.output) : undefined
+          };
+        })
     }));
     const active = this.activeSessionId ? this.sessions.get(this.activeSessionId) : undefined;
     await this.view.webview.postMessage({
@@ -457,79 +444,61 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         resize();
       } else if (message.type === 'output' && message.id === activeSessionId) {
         term.write(message.data);
+      } else if (message.type === 'clear' && message.id === activeSessionId) {
+        term.clear();
       }
     });
     function renderList(repos, tasks) {
       const list = document.getElementById('list');
       list.textContent = '';
-      const hasTaskTerminals = tasks.some(repo => repo.worktrees.some(wt => (wt.terminals || []).length));
+      const hasTaskRows = tasks.some(repo => (repo.rows || []).length);
       const tasksHeader = document.createElement('div');
       tasksHeader.className = 'repo';
-      tasksHeader.textContent = '▾ tasks' + (hasTaskTerminals ? '' : ' (no task terminals yet)');
+      tasksHeader.textContent = '▾ tasks' + (hasTaskRows ? '' : ' (no task activity yet)');
       list.appendChild(tasksHeader);
       for (const repo of tasks) {
-          const repoHeader = document.createElement('div');
-          repoHeader.className = 'repo';
-          repoHeader.style.marginLeft = '14px';
-          repoHeader.textContent = repo.label;
-          list.appendChild(repoHeader);
-          for (const wt of repo.worktrees) {
-            const row = document.createElement('div');
-            row.className = 'wt';
-            row.style.marginLeft = '28px';
-            row.onclick = () => vscode.postMessage({ type: 'runTask', path: wt.path });
-            const dot = document.createElement('span');
-            dot.className = 'dot';
-            dot.style.background = wt.color;
-            const label = document.createElement('span');
-            label.textContent = wt.name + ' (' + wt.branch + ')';
-            const taskDetail = document.createElement('span');
-            taskDetail.className = 'badge';
-            taskDetail.textContent = wt.taskConfig ? formatTaskConfig(wt.taskConfig) : 'no task config';
-            row.append(dot, label, taskDetail);
-            list.appendChild(row);
-            if (!(wt.terminals || []).length) {
-              const placeholder = document.createElement('div');
-              placeholder.className = 'terminalLeaf';
-              placeholder.style.marginLeft = '50px';
-              placeholder.style.opacity = '0.65';
-              placeholder.textContent = wt.taskConfig ? 'No task terminal — click worktree to run: ' + formatTaskConfig(wt.taskConfig) : 'No task terminal — missing worktreeManager.tasks entry for ' + repo.label;
-              list.appendChild(placeholder);
-            }
-            for (const task of wt.terminals || []) {
-              const terminal = document.createElement('div');
-              terminal.className = 'terminalLeaf' + (task.id === activeSessionId ? ' active' : '');
-              terminal.style.marginLeft = '50px';
-              terminal.onclick = event => {
-                event.stopPropagation();
-                vscode.postMessage({ type: 'focusTask', path: wt.path, id: task.id });
-              };
-              const icon = document.createElement('span');
-              icon.className = 'terminalIcon';
-              icon.textContent = task.id === activeSessionId ? '▾' : '▸';
-              const terminalLabel = document.createElement('span');
-              terminalLabel.textContent = task.label + ' — ' + task.status + ' — ' + task.command;
-              terminal.append(icon, terminalLabel);
-              list.appendChild(terminal);
-              if (task.preview) {
-                const preview = document.createElement('div');
-                preview.className = 'terminalLeaf';
-                preview.style.marginLeft = '72px';
-                preview.style.opacity = '0.75';
-                preview.style.fontFamily = 'monospace';
-                preview.textContent = task.preview;
-                list.appendChild(preview);
-              }
-              if (task.id === activeSessionId) {
-                const inline = document.createElement('div');
-                inline.className = 'terminalInline';
-                inline.appendChild(terminalEl);
-                terminalEl.style.display = 'block';
-                list.appendChild(inline);
-              }
-            }
+        const repoHeader = document.createElement('div');
+        repoHeader.className = 'repo';
+        repoHeader.style.marginLeft = '14px';
+        repoHeader.textContent = repo.label;
+        list.appendChild(repoHeader);
+        for (const task of repo.rows || []) {
+          const taskRow = document.createElement('div');
+          taskRow.className = 'terminalLeaf' + (task.terminalId === activeSessionId ? ' active' : '');
+          taskRow.style.marginLeft = '36px';
+          if (task.terminalId) {
+            taskRow.onclick = event => {
+              event.stopPropagation();
+              vscode.postMessage({ type: 'focusTask', id: task.terminalId });
+            };
+          } else {
+            taskRow.style.cursor = 'default';
+          }
+          const icon = document.createElement('span');
+          icon.className = 'terminalIcon';
+          icon.textContent = task.terminalId ? (task.terminalId === activeSessionId ? '▾' : '▸') : '•';
+          const label = document.createElement('span');
+          label.textContent = formatTaskRow(task);
+          taskRow.append(icon, label);
+          list.appendChild(taskRow);
+          if (task.preview) {
+            const preview = document.createElement('div');
+            preview.className = 'terminalLeaf';
+            preview.style.marginLeft = '58px';
+            preview.style.opacity = '0.75';
+            preview.style.fontFamily = 'monospace';
+            preview.textContent = task.preview;
+            list.appendChild(preview);
+          }
+          if (task.terminalId && task.terminalId === activeSessionId) {
+            const inline = document.createElement('div');
+            inline.className = 'terminalInline';
+            inline.appendChild(terminalEl);
+            terminalEl.style.display = 'block';
+            list.appendChild(inline);
           }
         }
+      }
       for (const repo of repos) {
         const header = document.createElement('div');
         header.className = 'repo';
@@ -602,11 +571,9 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         document.body.appendChild(terminalEl);
       }
     }
-    function formatTaskConfig(config) {
-      const cmd = (config.cmd || []).join(' && ');
-      const env = Object.entries(config.env || {}).map(([key, value]) => key + '=' + value).join(' ');
-      const cleanup = (config.cleanup || []).length ? ' cleanup: ' + config.cleanup.join(' && ') : '';
-      return [cmd, env && '(' + env + ')'].filter(Boolean).join(' ') + cleanup;
+    function formatTaskRow(task) {
+      const value = task.status === 'running' ? 'running' : (task.status + ' ' + (task.exitValue ?? 'unknown'));
+      return task.label + ' [' + task.worktreeName + '] ' + value + ' — ' + task.command;
     }
     function showContextMenu(event, items) {
       event.preventDefault();
