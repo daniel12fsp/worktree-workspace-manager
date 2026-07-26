@@ -1,15 +1,41 @@
 {
   "name": "worktree-workspace-manager",
   "displayName": "Worktree Workspace Manager",
-  "description": "Manage git worktrees across multiple bare repositories from a workspace.",
+  "description": "Group terminals by git worktree, switch branches in one click, and auto-tidy editors from a single tree — built for bare-repo + worktree workflows.",
   "version": "0.0.1",
-  "publisher": "local",
+  "publisher": "daniel12fsp",
+  "author": "Daniel Pereira <daniel12fsp@yahoo.com.br>",
+  "license": "MIT",
+  "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.90.0"
   },
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "git",
+    "worktree",
+    "git worktree",
+    "bare repository",
+    "terminals",
+    "branch",
+    "scm",
+    "productivity"
+  ],
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
+  "preview": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/daniel12fsp/worktree-workspace-manager"
+  },
+  "homepage": "https://github.com/daniel12fsp/worktree-workspace-manager#readme",
+  "bugs": {
+    "url": "https://github.com/daniel12fsp/worktree-workspace-manager/issues"
+  },
   "activationEvents": [
     "onView:worktreeManager.worktrees",
     "onView:worktreeManager.terminals",

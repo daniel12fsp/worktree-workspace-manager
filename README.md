@@ -26,20 +26,6 @@ It derives everything from **git itself** — no databases, no sidecar files, no
 
 ---
 
-## ⏱️ Make it yours in 60 seconds
-
-![Make it yours in 60 seconds](assets/action.gif)
-
-1. **Add your bare repos** to `worktreeManager.repositories` — ten seconds of JSON.
-2. **Open the 🌳 view** — every worktree appears, color-coded by name.
-3. **Click a worktree** — its files surface, the rest fade out, foreign editor tabs close, and its task auto-starts while the previous one cleans up.
-
-That's the whole loop. No databases, no sync, no second app — just git plus a tree.
-
-> That's the same looping demo shown in the banner up top — give it a moment to play.
-
----
-
 ## ✨ Features
 
 ### 1. 🗂️ A tree that mirrors your repos and worktrees
