@@ -32,6 +32,7 @@ export interface TaskActivityRow {
   readonly index: number;
   readonly worktreeName: string;
   readonly worktreePath: string;
+  readonly worktreeColor: string;
   readonly command: string;
   readonly status: 'starting' | 'running' | 'exit' | 'error';
   readonly exitValue?: number | string;
@@ -53,7 +54,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
   readonly onDidChangeTasks = this.changed.event;
   private readonly activityRows = new Map<string, TaskActivityRow>();
 
-  private lastSelectedPath: string | undefined;
+  private readonly lastSelectedPathByRepo = new Map<string, string>();
   private transitionRunning = false;
   private pendingWorktree: Worktree | undefined;
   private launcher: TaskTerminalLauncher | undefined;
@@ -69,7 +70,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
   async runForSelection(worktree: Worktree): Promise<void> {
     const key = normalize(worktree.path);
     log('TASK click/selection received from Worktree/Terminals by Worktree', { repo: worktree.repo.label, worktree: worktree.name, path: worktree.path });
-    if (this.lastSelectedPath === key && !this.pendingWorktree && !this.transitionRunning && this.isActiveAlive(key)) {
+    if (this.lastSelectedPathByRepo.get(worktree.repo.label) === key && !this.pendingWorktree && !this.transitionRunning && this.isActiveAlive(key)) {
       const active = this.activeByPath.get(key);
       if (active) {
         this.setRows(active.worktree, 'cmd', active.config.cmd, 'running', undefined, active.handle.id);
@@ -87,7 +88,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
 
   async rerun(worktree: Worktree): Promise<void> {
     log('manual task rerun requested', { repo: worktree.repo.label, worktree: worktree.name, path: worktree.path });
-    this.lastSelectedPath = undefined;
+    this.lastSelectedPathByRepo.delete(worktree.repo.label);
     this.pendingWorktree = worktree;
     if (!this.transitionRunning) {
       await this.drainQueue();
@@ -123,7 +124,8 @@ export class WorktreeTaskManager implements vscode.Disposable {
 
   private async transitionTo(worktree: Worktree): Promise<void> {
     const nextKey = normalize(worktree.path);
-    if (this.lastSelectedPath === nextKey && this.isActiveAlive(nextKey)) {
+    const previousPath = this.lastSelectedPathByRepo.get(worktree.repo.label);
+    if (previousPath === nextKey && this.isActiveAlive(nextKey)) {
       const active = this.activeByPath.get(nextKey);
       if (active) {
         this.setRows(active.worktree, 'cmd', active.config.cmd, 'running', undefined, active.handle.id);
@@ -131,15 +133,15 @@ export class WorktreeTaskManager implements vscode.Disposable {
       return;
     }
 
-    log('TASK transition start: cleanup old worktree first, then start selected worktree cmd', { selectedRepo: worktree.repo.label, selectedWorktree: worktree.name, selectedPath: worktree.path, previousPath: this.lastSelectedPath });
+    log('TASK transition start: cleanup old worktree in same bare repo first, then start selected worktree cmd', { selectedRepo: worktree.repo.label, selectedWorktree: worktree.name, selectedPath: worktree.path, previousPath });
     const config = taskConfigFor(worktree);
     if (!config) {
       log('TASK skip: no valid worktreeManager.tasks config for selected repo', { repo: worktree.repo.label, worktree: worktree.name });
-      this.lastSelectedPath = nextKey;
+      this.lastSelectedPathByRepo.set(worktree.repo.label, nextKey);
       return;
     }
 
-    const old = this.lastSelectedPath ? this.activeByPath.get(this.lastSelectedPath) : undefined;
+    const old = previousPath ? this.activeByPath.get(previousPath) : undefined;
     if (old) {
       log('TASK cleanup phase: old embedded task found', { oldRepo: old.worktree.repo.label, oldWorktree: old.worktree.name, oldPath: old.worktree.path });
       const ok = await this.cleanupOldTask(old);
@@ -150,6 +152,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
       log('TASK cleanup phase complete: disposing old embedded task terminal', { oldRepo: old.worktree.repo.label, oldWorktree: old.worktree.name, terminal: old.handle.label });
       old.handle.dispose();
       this.activeByPath.delete(normalize(old.worktree.path));
+      this.clearRows(old.worktree.repo.label, 'cmd');
       this.changed.fire();
     }
 
@@ -177,7 +180,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
     });
     this.setRows(worktree, 'cmd', config.cmd, 'running', undefined, handle.id);
     this.activeByPath.set(nextKey, { worktree, config, handle });
-    this.lastSelectedPath = nextKey;
+    this.lastSelectedPathByRepo.set(worktree.repo.label, nextKey);
     this.changed.fire();
     log('TASK cmd phase complete: command(s) sent to embedded terminal and visible under tasks group', { repo: worktree.repo.label, worktree: worktree.name, terminal: handle.label, cmd: config.cmd });
   }
@@ -243,6 +246,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
       index: 0,
       worktreeName: worktree.name,
       worktreePath: worktree.path,
+      worktreeColor: worktree.color,
       command,
       status,
       exitValue,
