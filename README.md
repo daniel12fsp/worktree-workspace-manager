@@ -57,6 +57,8 @@ So flipping from `feat-login` to `fix/styles` automatically tears down one branc
 
 When you focus a worktree, the extension **hides every other worktree's files** (via `files.exclude` / `search.exclude`) and **closes editor tabs that don't belong to the one you just selected**. Your workspace stays focused on a single context at a time.
 
+> 📝 To make a single worktree visible, the extension rewrites the `files.exclude` / `search.exclude` keys **in your `.code-workspace` file** — that on-disk change is normal and flips back when you switch worktrees.
+
 ### 5. 📊 Live status bar + Quick Pick menu
 
 A status-bar item always shows a live summary (`🌳 fe-project: 3 · be-project: 4`). Click it for a context-aware Quick Pick of every action — add, remove, fetch, prune, configure, and more.
@@ -71,6 +73,9 @@ The extension is built around two simple principles:
 
 1. ✅ **Open a VS Code workspace** (a `.code-workspace` file, _not_ a plain folder). The "focus one worktree" feature rewrites `files.exclude` / `search.exclude` in that workspace file.
 2. ✅ **List your bare repos** in `worktreeManager.repositories`.
+
+> ⚠️ **Your `.code-workspace` file will be modified — this is expected.**
+> Showing **only one worktree at a time** means focusing a worktree writes `files.exclude` and `search.exclude` entries into your `.code-workspace` that hide every _other_ worktree's files (and clears them again when you switch). The extension owns those exclude keys for you; treat the rest of the workspace file as your own.
 
 ### Step 1 — Put your bare repos in a workspace file
 
@@ -152,7 +157,7 @@ Tasks are keyed by the **bare repo's basename including `.git`**. `cmd` runs whe
 ## ❓ Requirements & FAQ
 
 **Does it need a `.code-workspace` file?**
-Yes. The "focus one worktree / close foreign editors" flow writes workspace-scoped `files.exclude` and `search.exclude`, which only persist in a workspace file.
+Yes. To show just one worktree at a time, the extension writes `files.exclude` and `search.exclude` entries into your `.code-workspace` that hide the other worktrees' files — and these only persist at workspace scope (a plain folder has nowhere to store them). So **expect your `.code-workspace` file to change** whenever you focus a worktree; that's the extension doing its job, not a stray edit.
 
 **Can I manage non-bare repos?**
 No — the design is built around **bare repos** (`project.git`), since a bare repo can't be opened as a folder and instead exposes its worktrees. Add your bare repos to `worktreeManager.repositories` and you're set.
