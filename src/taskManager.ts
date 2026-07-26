@@ -31,8 +31,9 @@ export interface TaskActivityRow {
   readonly kind: 'cleanup' | 'cmd';
   readonly index: number;
   readonly worktreeName: string;
+  readonly worktreePath: string;
   readonly command: string;
-  readonly status: 'running' | 'exit' | 'error';
+  readonly status: 'starting' | 'running' | 'exit' | 'error';
   readonly exitValue?: number | string;
   readonly terminalId?: string;
   readonly output?: string;
@@ -165,7 +166,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
     }
 
     log('TASK cmd phase: creating embedded terminal in Terminals by Worktree', { repo: worktree.repo.label, worktree: worktree.name, cwd: worktree.path, env: config.env, cmd: config.cmd });
-    this.setRows(worktree, 'cmd', config.cmd, 'running');
+    this.setRows(worktree, 'cmd', config.cmd, 'starting');
     const handle = this.launcher(worktree, config, exitCode => {
       const active = this.activeByPath.get(nextKey);
       if (active?.handle.id !== handle.id) {
@@ -220,7 +221,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
     }
   }
 
-  private setRows(worktree: Worktree, kind: 'cleanup' | 'cmd', commands: string[], status: 'running' | 'exit' | 'error', exitValue?: number | string, terminalId?: string): void {
+  private setRows(worktree: Worktree, kind: 'cleanup' | 'cmd', commands: string[], status: 'starting' | 'running' | 'exit' | 'error', exitValue?: number | string, terminalId?: string): void {
     this.clearRows(worktree.repo.label, kind);
     this.setTaskRow(worktree, kind, commandListLabel(commands), status, exitValue, terminalId);
     this.changed.fire();
@@ -234,13 +235,14 @@ export class WorktreeTaskManager implements vscode.Disposable {
     }
   }
 
-  private setTaskRow(worktree: Worktree, kind: 'cleanup' | 'cmd', command: string, status: 'running' | 'exit' | 'error', exitValue?: number | string, terminalId?: string, output?: string): void {
+  private setTaskRow(worktree: Worktree, kind: 'cleanup' | 'cmd', command: string, status: 'starting' | 'running' | 'exit' | 'error', exitValue?: number | string, terminalId?: string, output?: string): void {
     this.activityRows.set(rowKey(worktree.repo.label, kind), {
       id: rowKey(worktree.repo.label, kind),
       repo: worktree.repo.label,
       kind,
       index: 0,
       worktreeName: worktree.name,
+      worktreePath: worktree.path,
       command,
       status,
       exitValue,

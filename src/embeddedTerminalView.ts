@@ -326,6 +326,9 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     if (!this.view) return;
     const all = await listAllWorktrees();
     const activeWorkspaceFolders = await getCheckedWorktreePaths();
+    const taskSessions = [...this.sessions.values()].filter(session => session.isTask);
+    const taskRows = this.taskManager?.getTaskActivityRows() ?? [];
+    const taskStatusByPath = new Map(taskRows.map(row => [normalizePath(row.worktreePath), row.status]));
     const repos = [...all].map(([repo, worktrees]) => ({
       label: repo.label,
       path: repo.fsPath,
@@ -335,13 +338,12 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         path: worktree.path,
         color: worktree.color,
         activeInExplorer: activeWorkspaceFolders.has(normalizePath(worktree.path)),
+        taskStatus: taskStatusByPath.get(normalizePath(worktree.path)),
         sessions: [...this.sessions.values()]
           .filter(session => !session.isTask && session.worktree.path === worktree.path)
           .map(session => ({ id: session.id, label: session.label, runningCommand: commandName(session.runningCommand) }))
       }))
     }));
-    const taskSessions = [...this.sessions.values()].filter(session => session.isTask);
-    const taskRows = this.taskManager?.getTaskActivityRows() ?? [];
     log('render generic tasks group hierarchy for Terminals by Worktree', {
       taskSessionCount: taskSessions.length,
       rowCount: taskRows.length,
@@ -359,6 +361,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
             terminalId: row.terminalId,
             label: row.kind,
             worktreeName: row.worktreeName,
+            worktreePath: row.worktreePath,
             command: row.command,
             status: row.status,
             exitValue: row.exitValue,
@@ -403,6 +406,8 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     .terminalIcon { color: var(--vscode-terminal-ansiGreen); }
     .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
     .workspaceState { flex: 0 0 auto; accent-color: #2ea043; cursor: pointer; }
+    .loadingCheckbox { width: 13px; height: 13px; flex: 0 0 auto; border: 2px solid var(--vscode-progressBar-background, #0e70c0); border-top-color: transparent; border-radius: 50%; box-sizing: border-box; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .terminalInline { margin: 4px 0 8px 0; width: 100%; height: min(420px, 65vh); border: 1px solid var(--vscode-panel-border); padding: 4px; background: #000; box-sizing: border-box; }
     #terminal { height: 100%; }
     .badge { margin-left: auto; opacity: 0.7; font-size: 11px; }
@@ -427,6 +432,12 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     const contextMenuEl = document.getElementById('contextMenu');
     let activeSessionId;
     const collapsedRepos = new Set();
+    let tasksCollapsed = false;
+    const collapsedTaskRepos = new Set();
+    const collapsedTaskRows = new Set();
+    const loadingWorktreePaths = new Set();
+    let currentRepos = [];
+    let currentTasks = [];
     term.open(terminalEl);
     term.onData(data => activeSessionId && vscode.postMessage({ type: 'input', id: activeSessionId, data }));
     window.addEventListener('resize', resize);
@@ -438,7 +449,15 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       const message = event.data;
       if (message.type === 'state') {
         activeSessionId = message.activeSessionId;
-        renderList(message.repos || [], message.tasks || []);
+        currentRepos = message.repos || [];
+        currentTasks = message.tasks || [];
+        for (const repo of currentRepos) {
+          for (const wt of repo.worktrees || []) {
+            if (wt.taskStatus && wt.taskStatus !== 'starting') loadingWorktreePaths.delete(wt.path);
+            if (!wt.taskStatus && wt.activeInExplorer) loadingWorktreePaths.delete(wt.path);
+          }
+        }
+        renderList(currentRepos, currentTasks);
         term.clear();
         if (message.activeOutput) term.write(message.activeOutput);
         resize();
@@ -454,48 +473,85 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       const hasTaskRows = tasks.some(repo => (repo.rows || []).length);
       const tasksHeader = document.createElement('div');
       tasksHeader.className = 'repo';
-      tasksHeader.textContent = '▾ tasks' + (hasTaskRows ? '' : ' (no task activity yet)');
+      tasksHeader.textContent = (tasksCollapsed ? '▸ ' : '▾ ') + 'tasks' + (hasTaskRows ? '' : ' (no task activity yet)');
+      tasksHeader.onclick = () => {
+        tasksCollapsed = !tasksCollapsed;
+        if (tasksCollapsed) {
+          for (const repo of tasks) {
+            collapsedTaskRepos.add(repo.label);
+            for (const task of repo.rows || []) collapsedTaskRows.add(task.id);
+          }
+        } else {
+          collapsedTaskRepos.clear();
+          collapsedTaskRows.clear();
+        }
+        renderList(repos, tasks);
+      };
       list.appendChild(tasksHeader);
-      for (const repo of tasks) {
-        const repoHeader = document.createElement('div');
-        repoHeader.className = 'repo';
-        repoHeader.style.marginLeft = '14px';
-        repoHeader.textContent = repo.label;
-        list.appendChild(repoHeader);
-        for (const task of repo.rows || []) {
-          const taskRow = document.createElement('div');
-          taskRow.className = 'terminalLeaf' + (task.terminalId === activeSessionId ? ' active' : '');
-          taskRow.style.marginLeft = '36px';
-          if (task.terminalId) {
+      if (!tasksCollapsed) {
+        for (const repo of tasks) {
+          const repoRows = repo.rows || [];
+          const repoCollapsed = collapsedTaskRepos.has(repo.label);
+          const repoHeader = document.createElement('div');
+          repoHeader.className = 'repo';
+          repoHeader.style.marginLeft = '14px';
+          repoHeader.textContent = (repoCollapsed ? '▸ ' : '▾ ') + repo.label;
+          repoHeader.onclick = event => {
+            event.stopPropagation();
+            repoCollapsed ? collapsedTaskRepos.delete(repo.label) : collapsedTaskRepos.add(repo.label);
+            renderList(repos, tasks);
+          };
+          list.appendChild(repoHeader);
+          if (repoCollapsed) continue;
+          for (const task of repoRows) {
+            const rowCollapsed = collapsedTaskRows.has(task.id);
+            const hasChildren = Boolean(task.preview || task.terminalId);
+            const taskRow = document.createElement('div');
+            taskRow.className = 'terminalLeaf' + (task.terminalId === activeSessionId ? ' active' : '');
+            taskRow.style.marginLeft = '36px';
             taskRow.onclick = event => {
               event.stopPropagation();
-              vscode.postMessage({ type: 'focusTask', id: task.terminalId });
+              if (!hasChildren) return;
+              if (task.terminalId) {
+                if (rowCollapsed) {
+                  collapsedTaskRows.delete(task.id);
+                  if (task.terminalId !== activeSessionId) vscode.postMessage({ type: 'focusTask', id: task.terminalId });
+                } else if (task.terminalId === activeSessionId) {
+                  collapsedTaskRows.add(task.id);
+                  vscode.postMessage({ type: 'focusTask', id: task.terminalId });
+                } else {
+                  collapsedTaskRows.delete(task.id);
+                  vscode.postMessage({ type: 'focusTask', id: task.terminalId });
+                }
+              } else {
+                rowCollapsed ? collapsedTaskRows.delete(task.id) : collapsedTaskRows.add(task.id);
+              }
+              renderList(repos, tasks);
             };
-          } else {
-            taskRow.style.cursor = 'default';
-          }
-          const icon = document.createElement('span');
-          icon.className = 'terminalIcon';
-          icon.textContent = task.terminalId ? (task.terminalId === activeSessionId ? '▾' : '▸') : '•';
-          const label = document.createElement('span');
-          label.textContent = formatTaskRow(task);
-          taskRow.append(icon, label);
-          list.appendChild(taskRow);
-          if (task.preview) {
-            const preview = document.createElement('div');
-            preview.className = 'terminalLeaf';
-            preview.style.marginLeft = '58px';
-            preview.style.opacity = '0.75';
-            preview.style.fontFamily = 'monospace';
-            preview.textContent = task.preview;
-            list.appendChild(preview);
-          }
-          if (task.terminalId && task.terminalId === activeSessionId) {
-            const inline = document.createElement('div');
-            inline.className = 'terminalInline';
-            inline.appendChild(terminalEl);
-            terminalEl.style.display = 'block';
-            list.appendChild(inline);
+            if (!hasChildren) taskRow.style.cursor = 'default';
+            const icon = document.createElement('span');
+            icon.className = 'terminalIcon';
+            icon.textContent = hasChildren ? (rowCollapsed ? '▸' : '▾') : '•';
+            const label = document.createElement('span');
+            label.textContent = formatTaskRow(task);
+            taskRow.append(icon, label);
+            list.appendChild(taskRow);
+            if (!rowCollapsed && task.preview) {
+              const preview = document.createElement('div');
+              preview.className = 'terminalLeaf';
+              preview.style.marginLeft = '58px';
+              preview.style.opacity = '0.75';
+              preview.style.fontFamily = 'monospace';
+              preview.textContent = task.preview;
+              list.appendChild(preview);
+            }
+            if (!rowCollapsed && task.terminalId && task.terminalId === activeSessionId) {
+              const inline = document.createElement('div');
+              inline.className = 'terminalInline';
+              inline.appendChild(terminalEl);
+              terminalEl.style.display = 'block';
+              list.appendChild(inline);
+            }
           }
         }
       }
@@ -507,7 +563,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         header.onclick = () => {
           isRepoCollapsed ? collapsedRepos.delete(repo.label) : collapsedRepos.add(repo.label);
           vscode.postMessage({ type: 'collapseAll' });
-          renderList(repos);
+          renderList(repos, tasks);
         };
         header.oncontextmenu = event => showContextMenu(event, [{ label: 'Close All Terminals', message: { type: 'killRepo', path: repo.path } }]);
         list.appendChild(header);
@@ -520,16 +576,24 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
           const dot = document.createElement('span');
           dot.className = 'dot';
           dot.style.background = wt.color;
-          const state = document.createElement('input');
-          state.type = 'checkbox';
-          state.className = 'workspaceState';
-          state.checked = Boolean(wt.activeInExplorer);
-          state.title = wt.activeInExplorer ? 'Enabled in VSCode Explorer' : 'Enable in VSCode Explorer';
-          state.onchange = event => {
-            event.stopPropagation();
-            vscode.postMessage({ type: 'setExplorerWorktree', path: wt.path, enabled: state.checked });
-          };
-          state.onclick = event => event.stopPropagation();
+          const isLoadingWorktree = loadingWorktreePaths.has(wt.path) || wt.taskStatus === 'starting';
+          const state = isLoadingWorktree ? document.createElement('span') : document.createElement('input');
+          if (isLoadingWorktree) {
+            state.className = 'loadingCheckbox';
+            state.title = 'Loading worktree task…';
+          } else {
+            state.type = 'checkbox';
+            state.className = 'workspaceState';
+            state.checked = Boolean(wt.activeInExplorer);
+            state.title = wt.activeInExplorer ? 'Enabled in VSCode Explorer' : 'Enable in VSCode Explorer';
+            state.onchange = event => {
+              event.stopPropagation();
+              loadingWorktreePaths.add(wt.path);
+              renderList(currentRepos, currentTasks);
+              vscode.postMessage({ type: 'setExplorerWorktree', path: wt.path, enabled: state.checked });
+            };
+            state.onclick = event => event.stopPropagation();
+          }
           const label = document.createElement('span');
           label.textContent = wt.name + ' (' + wt.branch + ')';
           const addButton = document.createElement('button');
@@ -572,7 +636,9 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       }
     }
     function formatTaskRow(task) {
-      const value = task.status === 'running' ? 'running' : (task.status + ' ' + (task.exitValue ?? 'unknown'));
+      const value = task.status === 'starting' ? 'loading…'
+        : task.status === 'running' ? 'running'
+        : (task.status + ' ' + (task.exitValue ?? 'unknown'));
       return task.label + ' [' + task.worktreeName + '] ' + value + ' — ' + task.command;
     }
     function showContextMenu(event, items) {
