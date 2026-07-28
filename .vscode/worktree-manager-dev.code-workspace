@@ -78,7 +78,7 @@
       "**/be-2": true,
       "**/be-2/**": true,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-2": true,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-2/**": true
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-2/**": true,
     },
     "search.exclude": {
       "**/node_modules": true,
@@ -127,7 +127,7 @@
       "**/be-2": true,
       "**/be-2/**": true,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-2": true,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-2/**": true
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-repo/be-project.git/be-2/**": true,
     },
     // files.exclude / search.exclude are managed in this workspace file only.
   },

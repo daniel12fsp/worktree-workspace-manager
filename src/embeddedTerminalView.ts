@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as pty from 'node-pty';
@@ -224,6 +225,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       label,
       envKeys: Object.keys(options.env ?? {})
     });
+    this.ensureNodePtySpawnHelperExecutable();
     const proc = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cwd: worktree.path,
@@ -264,6 +266,29 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     });
     this.sessions.set(id, session);
     return session;
+  }
+
+  private ensureNodePtySpawnHelperExecutable(): void {
+    if (process.platform !== 'darwin') return;
+
+    const helperPath = path.join(
+      this.extensionUri.fsPath,
+      'node_modules',
+      'node-pty',
+      'prebuilds',
+      `darwin-${process.arch}`,
+      'spawn-helper'
+    );
+
+    try {
+      const mode = fs.statSync(helperPath).mode;
+      if ((mode & 0o111) === 0) {
+        fs.chmodSync(helperPath, 0o755);
+        log('made node-pty macOS spawn-helper executable', { helperPath });
+      }
+    } catch (error) {
+      logError('failed to prepare node-pty macOS spawn-helper', { helperPath, error });
+    }
   }
 
   private createTaskSession(worktree: Worktree, config: WorktreeTaskConfig, onExit: (exitCode: number | undefined) => void) {
