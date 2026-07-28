@@ -99,7 +99,7 @@ Tasks are keyed by the **bare repo's basename including `.git`**. `cmd` runs whe
 ```jsonc
 "worktreeManager.tasks": {
   "fe-project.git": {
-    "env":     { "PORT": "4000" },
+    "env":     { "PORT": "auto_int({length:4, start:4000})" },
     "cleanup": ["echo cleaning up fe-project.git"],
     "cmd":     ["npm run dev"]
   },
@@ -150,7 +150,7 @@ Tasks are keyed by the **bare repo's basename including `.git`**. `cmd` runs whe
 | Setting                        | Type       | Description                                                                                                                           |
 | ------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `worktreeManager.repositories` | `string[]` | Bare git repos to manage. `~` is expanded; env vars are not.                                                                          |
-| `worktreeManager.tasks`        | `object`   | Per-repo task definitions, keyed by bare repo basename (incl. `.git`). Each has `cmd` (required), optional `cleanup`, optional `env`. |
+| `worktreeManager.tasks`        | `object`   | Per-repo task definitions, keyed by bare repo basename (incl. `.git`). Each has `cmd` (required), optional `cleanup`, optional `env`. Env values can use `auto_int({length:4, start:4000})` for a unique session number across active bare repos/worktrees. |
 
 ---
 

@@ -107,7 +107,7 @@
                 "additionalProperties": {
                   "type": "string"
                 },
-                "description": "Environment variables applied to task and cleanup commands."
+                "description": "Environment variables applied to task and cleanup commands. Values may be strings or auto_int({length:4, start:4000}) to allocate a unique session number across all active worktree tasks."
               },
               "cleanup": {
                 "type": "array",

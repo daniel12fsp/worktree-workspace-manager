@@ -46,6 +46,7 @@ interface ActiveTask {
   readonly worktree: Worktree;
   readonly config: WorktreeTaskConfig;
   readonly handle: TaskTerminalHandle;
+  readonly autoIntValues: string[];
 }
 
 export class WorktreeTaskManager implements vscode.Disposable {
@@ -55,6 +56,8 @@ export class WorktreeTaskManager implements vscode.Disposable {
   private readonly activityRows = new Map<string, TaskActivityRow>();
 
   private readonly lastSelectedPathByRepo = new Map<string, string>();
+  private readonly allocatedAutoInts = new Set<string>();
+  private readonly autoIntByWorktreeEnv = new Map<string, string>();
   private transitionRunning = false;
   private pendingWorktree: Worktree | undefined;
   private launcher: TaskTerminalLauncher | undefined;
@@ -64,6 +67,8 @@ export class WorktreeTaskManager implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.allocatedAutoInts.clear();
+    this.autoIntByWorktreeEnv.clear();
     this.changed.dispose();
   }
 
@@ -73,7 +78,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
     if (this.lastSelectedPathByRepo.get(worktree.repo.label) === key && !this.pendingWorktree && !this.transitionRunning && this.isActiveAlive(key)) {
       const active = this.activeByPath.get(key);
       if (active) {
-        this.setRows(active.worktree, 'cmd', active.config.cmd, 'running', undefined, active.handle.id);
+        this.setRows(active.worktree, 'cmd', active.config.cmd, 'running', undefined, active.handle.id, active.config.env);
       }
       log('TASK skip: selected worktree task is already running in embedded terminal', { repo: worktree.repo.label, worktree: worktree.name, path: worktree.path });
       return;
@@ -128,7 +133,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
     if (previousPath === nextKey && this.isActiveAlive(nextKey)) {
       const active = this.activeByPath.get(nextKey);
       if (active) {
-        this.setRows(active.worktree, 'cmd', active.config.cmd, 'running', undefined, active.handle.id);
+        this.setRows(active.worktree, 'cmd', active.config.cmd, 'running', undefined, active.handle.id, active.config.env);
       }
       return;
     }
@@ -152,6 +157,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
       log('TASK cleanup phase complete: disposing old embedded task terminal', { oldRepo: old.worktree.repo.label, oldWorktree: old.worktree.name, terminal: old.handle.label });
       old.handle.dispose();
       this.activeByPath.delete(normalize(old.worktree.path));
+      this.releaseAutoInts(old);
       this.clearRows(old.worktree.repo.label, 'cmd');
       this.changed.fire();
     }
@@ -160,6 +166,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
     if (existing) {
       existing.handle.dispose();
       this.activeByPath.delete(nextKey);
+      this.releaseAutoInts(existing);
     }
 
     if (!this.launcher) {
@@ -168,21 +175,64 @@ export class WorktreeTaskManager implements vscode.Disposable {
       return;
     }
 
-    log('TASK cmd phase: creating embedded terminal in Terminals by Worktree', { repo: worktree.repo.label, worktree: worktree.name, cwd: worktree.path, env: config.env, cmd: config.cmd });
-    this.setRows(worktree, 'cmd', config.cmd, 'starting');
-    const handle = this.launcher(worktree, config, exitCode => {
+    const resolved = this.resolveTaskConfigEnv(worktree, config);
+    log('TASK cmd phase: creating embedded terminal in Terminals by Worktree', { repo: worktree.repo.label, worktree: worktree.name, cwd: worktree.path, env: resolved.config.env, cmd: resolved.config.cmd });
+    this.setRows(worktree, 'cmd', resolved.config.cmd, 'starting', undefined, undefined, resolved.config.env);
+    const handle = this.launcher(worktree, resolved.config, exitCode => {
       const active = this.activeByPath.get(nextKey);
       if (active?.handle.id !== handle.id) {
         log('TASK stale cmd terminal exit ignored; newer task is active', { repo: worktree.repo.label, worktree: worktree.name, terminal: handle.label, terminalId: handle.id, activeTerminalId: active?.handle.id });
         return;
       }
-      this.setRows(worktree, 'cmd', config.cmd, 'exit', exitCode ?? 'unknown', handle.id);
+      this.setRows(worktree, 'cmd', resolved.config.cmd, 'exit', exitCode ?? 'unknown', handle.id, resolved.config.env);
+      this.activeByPath.delete(nextKey);
+      this.releaseAutoInts(active);
+      this.changed.fire();
     });
-    this.setRows(worktree, 'cmd', config.cmd, 'running', undefined, handle.id);
-    this.activeByPath.set(nextKey, { worktree, config, handle });
+    this.setRows(worktree, 'cmd', resolved.config.cmd, 'running', undefined, handle.id, resolved.config.env);
+    this.activeByPath.set(nextKey, { worktree, config: resolved.config, handle, autoIntValues: resolved.autoIntValues });
     this.lastSelectedPathByRepo.set(worktree.repo.label, nextKey);
     this.changed.fire();
-    log('TASK cmd phase complete: command(s) sent to embedded terminal and visible under tasks group', { repo: worktree.repo.label, worktree: worktree.name, terminal: handle.label, cmd: config.cmd });
+    log('TASK cmd phase complete: command(s) sent to embedded terminal and visible under tasks group', { repo: worktree.repo.label, worktree: worktree.name, terminal: handle.label, cmd: resolved.config.cmd });
+  }
+
+  private resolveTaskConfigEnv(worktree: Worktree, config: WorktreeTaskConfig): { config: WorktreeTaskConfig; autoIntValues: string[] } {
+    const env = config.env;
+    if (!env) return { config, autoIntValues: [] };
+    const resolvedEnv: Record<string, string> = {};
+    const autoIntValues: string[] = [];
+    for (const [key, value] of Object.entries(env)) {
+      const spec = parseAutoInt(value);
+      if (!spec) {
+        resolvedEnv[key] = value;
+        continue;
+      }
+      const allocationKey = autoIntAllocationKey(worktree, key, spec);
+      const next = this.allocateAutoInt(spec, allocationKey);
+      resolvedEnv[key] = next;
+      autoIntValues.push(next);
+      log('resolved task env auto_int', { repo: worktree.repo.label, worktree: worktree.name, key, value: next, length: spec.length, start: spec.start });
+    }
+    return { config: { ...config, env: resolvedEnv }, autoIntValues };
+  }
+
+  private allocateAutoInt(spec: AutoIntSpec, allocationKey: string): string {
+    const existing = this.autoIntByWorktreeEnv.get(allocationKey);
+    if (existing) return existing;
+    for (let candidate = spec.start; candidate < Number.MAX_SAFE_INTEGER; candidate++) {
+      const value = String(candidate).padStart(spec.length, '0');
+      if (!this.allocatedAutoInts.has(value)) {
+        this.allocatedAutoInts.add(value);
+        this.autoIntByWorktreeEnv.set(allocationKey, value);
+        return value;
+      }
+    }
+    throw new Error(`Unable to allocate auto_int starting at ${spec.start}`);
+  }
+
+  private releaseAutoInts(_task: ActiveTask): void {
+    // Keep auto_int values stable and unique per worktree/env key for this VS Code session.
+    // Do not release on cleanup/switch, otherwise the next worktree can reuse the old port.
   }
 
   private isActiveAlive(key: string): boolean {
@@ -198,7 +248,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
     }
     try {
       log('TASK cleanup phase start: running cleanup command(s) for OLD worktree', { repo: old.worktree.repo.label, worktree: old.worktree.name, cwd: old.worktree.path, env: old.config.env, cleanup: commands });
-      const cleanupLabel = commandListLabel(commands);
+      const cleanupLabel = commandListLabel(commands, old.config.env);
       const outputs: string[] = [];
       this.setTaskRow(old.worktree, 'cleanup', cleanupLabel, 'running');
       this.changed.fire();
@@ -215,7 +265,7 @@ export class WorktreeTaskManager implements vscode.Disposable {
     } catch (error) {
       const exitValue = error instanceof ShellCommandError ? error.exitCode : 'error';
       if (error instanceof ShellCommandError) {
-        this.setTaskRow(old.worktree, 'cleanup', commandListLabel(commands), 'error', exitValue, undefined, error.output);
+        this.setTaskRow(old.worktree, 'cleanup', commandListLabel(commands, old.config.env), 'error', exitValue, undefined, error.output);
         this.changed.fire();
       }
       logError('TASK cleanup phase failed: old worktree cleanup command(s) exited non-zero', { repo: old.worktree.repo.label, worktree: old.worktree.name, cleanup: commands, error });
@@ -224,9 +274,9 @@ export class WorktreeTaskManager implements vscode.Disposable {
     }
   }
 
-  private setRows(worktree: Worktree, kind: 'cleanup' | 'cmd', commands: string[], status: 'starting' | 'running' | 'exit' | 'error', exitValue?: number | string, terminalId?: string): void {
+  private setRows(worktree: Worktree, kind: 'cleanup' | 'cmd', commands: string[], status: 'starting' | 'running' | 'exit' | 'error', exitValue?: number | string, terminalId?: string, env?: Record<string, string>): void {
     this.clearRows(worktree.repo.label, kind);
-    this.setTaskRow(worktree, kind, commandListLabel(commands), status, exitValue, terminalId);
+    this.setTaskRow(worktree, kind, commandListLabel(commands, env), status, exitValue, terminalId);
     this.changed.fire();
   }
 
@@ -322,6 +372,8 @@ function validateTaskConfig(raw: unknown): { config?: WorktreeTaskConfig; error?
     if (!env || typeof env !== 'object' || Array.isArray(env)) return { error: 'env must be an object with string values' };
     for (const [key, value] of Object.entries(env as Record<string, unknown>)) {
       if (typeof value !== 'string') return { error: `env.${key} must be a string` };
+      const autoIntError = validateAutoInt(value);
+      if (autoIntError) return { error: `env.${key} ${autoIntError}` };
     }
   }
   return { config: { cmd, cleanup: cleanup as string[] | undefined, env: env as Record<string, string> | undefined } };
@@ -345,6 +397,35 @@ function rawTaskField(raw: object, key: 'cmd' | 'cleanup' | 'env'): unknown {
     log('task config field read failed', { key, error: error instanceof Error ? error.message : String(error) });
     return undefined;
   }
+}
+
+interface AutoIntSpec {
+  readonly length: number;
+  readonly start: number;
+}
+
+function validateAutoInt(value: string): string | undefined {
+  if (!looksLikeAutoInt(value)) return undefined;
+  const spec = parseAutoInt(value);
+  if (!spec) return 'must be auto_int({length:<positive integer>, start:<integer>})';
+  return undefined;
+}
+
+function looksLikeAutoInt(value: string): boolean {
+  return value.trim().startsWith('auto_int(');
+}
+
+function parseAutoInt(value: string): AutoIntSpec | undefined {
+  const match = /^auto_int\(\{\s*length\s*:\s*(\d+)\s*,\s*start\s*:\s*(\d+)\s*\}\)$/.exec(value.trim());
+  if (!match) return undefined;
+  const length = Number(match[1]);
+  const start = Number(match[2]);
+  if (!Number.isSafeInteger(length) || length < 1 || !Number.isSafeInteger(start) || start < 0) return undefined;
+  return { length, start };
+}
+
+function autoIntAllocationKey(worktree: Worktree, envKey: string, spec: AutoIntSpec): string {
+  return `${normalize(worktree.path)}\0${envKey}\0${spec.length}\0${spec.start}`;
 }
 
 function runShellCommand(command: string, cwd: string, env: Record<string, string>, index = 0): Promise<{ exitCode: number; output: string }> {
@@ -378,8 +459,20 @@ function rowKey(repo: string, kind: 'cleanup' | 'cmd'): string {
   return `${repo}:${kind}`;
 }
 
-function commandListLabel(commands: string[]): string {
-  return commands.join(' && ');
+function commandListLabel(commands: string[], env?: Record<string, string>): string {
+  const command = commands.join(' && ');
+  const envPrefix = envLabel(env);
+  return envPrefix ? `${envPrefix} ${command}` : command;
+}
+
+function envLabel(env: Record<string, string> | undefined): string {
+  const entries = Object.entries(env ?? {});
+  if (!entries.length) return '';
+  return `[${entries.map(([key, value]) => `${key}=${formatEnvValue(value)}`).join(' ')}]`;
+}
+
+function formatEnvValue(value: string): string {
+  return /\s/.test(value) ? JSON.stringify(value) : value;
 }
 
 function kindOrder(kind: 'cleanup' | 'cmd'): number {
