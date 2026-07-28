@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { promisify } from 'node:util';
@@ -157,10 +158,18 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('worktreeManager.closeRepoTerminals', async (node?: RepoNode) => closeRepoTerminals(node?.repo ?? selectedRepo, terminalProvider)),
     vscode.commands.registerCommand('worktreeManager.killWorktreeTerminals', async (node?: WorktreeNode) => killWorktreeTerminals(node?.worktree ?? selectedWorktree, terminalProvider)),
     vscode.commands.registerCommand('worktreeManager.showMenu', async () => {
+      log('bottom menu opened', {
+        hasSelectedWorktree: Boolean(selectedWorktree),
+        selectedWorktree: selectedWorktree?.name,
+        selectedRepo: selectedRepo?.label
+      });
       const choice = await vscode.window.showQuickPick(menuItems(Boolean(selectedWorktree)), { placeHolder: 'Worktree Workspace' });
-      if (choice) {
-        await vscode.commands.executeCommand(choice.command);
+      if (!choice) {
+        log('bottom menu cancelled');
+        return;
       }
+      log('bottom menu selected', { label: choice.label, command: choice.command });
+      await vscode.commands.executeCommand(choice.command);
     })
   );
 }
@@ -231,12 +240,26 @@ async function killWorktreeTerminals(worktree: Worktree | undefined, terminalPro
 async function addWorktree(repo?: BareRepository): Promise<void> {
   repo = repo ?? await pickRepo();
   if (!repo) return;
-  const branch = await vscode.window.showInputBox({ prompt: 'Branch name for the new worktree' });
+  const branchInput = await vscode.window.showInputBox({ prompt: 'Branch name for the new worktree' });
+  const branch = branchInput?.trim();
   if (!branch) return;
-  const defaultPath = path.join(path.dirname(repo.fsPath), branch.replace(/[\\/:*?"<>|]+/g, '-'));
-  const worktreePath = await vscode.window.showInputBox({ prompt: 'Worktree path', value: defaultPath });
+  const defaultPath = path.join(defaultWorktreeParent(repo), branch.replace(/[\\/:*?"<>|]+/g, '-'));
+  const worktreePathInput = await vscode.window.showInputBox({ prompt: 'Worktree path', value: defaultPath });
+  const worktreePath = worktreePathInput?.trim();
   if (!worktreePath) return;
-  await runGit(['--git-dir', repo.gitDir, 'worktree', 'add', worktreePath, branch], `Added ${branch}`);
+
+  if (await localBranchExists(repo, branch)) {
+    await runGit(['--git-dir', repo.gitDir, 'worktree', 'add', worktreePath, branch], `Added ${branch}`);
+    return;
+  }
+
+  const confirmed = await vscode.window.showWarningMessage(
+    `Branch ${branch} does not exist in ${repo.label}. Create it from HEAD?`,
+    { modal: true, detail: `git worktree add -b ${branch} ${worktreePath} HEAD` },
+    'Create Branch'
+  );
+  if (confirmed !== 'Create Branch') return;
+  await runGit(['--git-dir', repo.gitDir, 'worktree', 'add', '-b', branch, worktreePath, 'HEAD'], `Created ${branch}`);
 }
 
 async function addExistingBareRepository(): Promise<void> {
@@ -266,11 +289,17 @@ async function addExistingBareRepository(): Promise<void> {
 }
 
 async function cloneBareRepository(): Promise<void> {
-  const remoteUrl = await vscode.window.showInputBox({
+  log('clone bare repository invoked');
+  const remoteUrlInput = await vscode.window.showInputBox({
     prompt: 'Git remote URL to clone as a bare repository',
     placeHolder: 'git@github.com:owner/project.git'
   });
-  if (!remoteUrl) return;
+  const remoteUrl = remoteUrlInput?.trim();
+  if (!remoteUrl) {
+    log('clone bare repository cancelled: no remote URL');
+    return;
+  }
+  log('clone bare repository remote accepted', { remoteUrl });
 
   const folderChoice = await vscode.window.showOpenDialog({
     canSelectFiles: false,
@@ -280,32 +309,74 @@ async function cloneBareRepository(): Promise<void> {
     title: 'Choose the directory that will contain the bare repository'
   });
   const parentDir = folderChoice?.[0]?.fsPath;
-  if (!parentDir) return;
+  if (!parentDir) {
+    log('clone bare repository cancelled: no parent directory');
+    return;
+  }
+  log('clone bare repository parent selected', { parentDir });
 
-  const defaultRepoPath = path.join(parentDir, inferBareRepoName(remoteUrl));
-  const repoPath = await vscode.window.showInputBox({
-    prompt: 'Bare repository path',
+  const defaultRepoPath = path.join(parentDir, inferRepositoryRootName(remoteUrl));
+  const repoPathInput = await vscode.window.showInputBox({
+    prompt: 'Repository workspace path (bare metadata will be stored in .bare)',
     value: defaultRepoPath
   });
-  if (!repoPath) return;
+  const repoPath = repoPathInput?.trim();
+  if (!repoPath) {
+    log('clone bare repository cancelled: no repository path');
+    return;
+  }
+  const barePath = path.join(repoPath, '.bare');
+  log('clone bare repository path accepted', { repoPath, barePath });
 
-  const taskCommand = await vscode.window.showInputBox({
-    prompt: `Task command for ${path.basename(repoPath)} (stored as worktreeManager.tasks without cleanup)`,
+  if (fs.existsSync(repoPath)) {
+    log('clone bare repository blocked: target path already exists', { repoPath, barePath });
+    void vscode.window.showErrorMessage(`Cannot clone: ${repoPath} already exists.`);
+    return;
+  }
+
+  const taskCommandInput = await vscode.window.showInputBox({
+    prompt: `Task command for ${path.basename(repoPath)} (optional; blank uses default echo task)`,
+    value: defaultTaskCommand(repoPath),
     placeHolder: 'npm run dev'
   });
-  if (!taskCommand) return;
+  if (taskCommandInput === undefined) {
+    log('clone bare repository cancelled: task command prompt dismissed', { repoPath });
+    return;
+  }
+  const taskCommand = taskCommandInput.trim() || defaultTaskCommand(repoPath);
+  log('clone bare repository task accepted', { repoPath, taskCommand });
 
   await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Worktree Manager' }, async () => {
     try {
-      await execFileAsync('git', ['clone', '--bare', remoteUrl, repoPath]);
+      await fs.promises.mkdir(repoPath, { recursive: true });
+      log('clone bare repository git clone start', { remoteUrl, repoPath, barePath });
+      await execFileAsync('git', ['clone', '--bare', remoteUrl, barePath]);
+      log('clone bare repository git clone complete', { remoteUrl, repoPath, barePath });
+
+      const isBare = await isBareRepository(repoPath);
+      if (!isBare) {
+        throw new Error(`Cloned path is not a bare git repository: ${repoPath}`);
+      }
+
       await addRepositoryAndTask(repoPath, taskCommand);
-      log('cloned bare repository and updated config', { remoteUrl, repoPath, taskCommand });
+      await addFolderToWorkspace(repoPath);
+      await openWorkspaceConfigurationFile();
+      log('cloned bare repository and updated workspace/config', { remoteUrl, repoPath, taskCommand });
       void vscode.window.showInformationMessage(`Cloned ${path.basename(repoPath)} and updated Worktree Manager settings.`);
     } catch (error) {
       logError('clone bare repository failed', { remoteUrl, repoPath, error });
-      void vscode.window.showErrorMessage(String(error));
+      void vscode.window.showErrorMessage(`Failed to clone bare repository: ${gitErrorMessage(error)}`);
     }
   });
+}
+
+async function localBranchExists(repo: BareRepository, branch: string): Promise<boolean> {
+  try {
+    await execFileAsync('git', ['--git-dir', repo.gitDir, 'show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function isBareRepository(repoPath: string): Promise<boolean> {
@@ -319,10 +390,16 @@ async function isBareRepository(repoPath: string): Promise<boolean> {
   }
 }
 
-function inferBareRepoName(remoteUrl: string): string {
+function inferRepositoryRootName(remoteUrl: string): string {
   const trimmed = remoteUrl.trim().replace(/[\\/]+$/, '');
-  const last = trimmed.split(/[\\/:]/).filter(Boolean).pop() || 'repository.git';
-  return last.endsWith('.git') ? last : `${last}.git`;
+  const last = trimmed.split(/[\\/:]/).filter(Boolean).pop() || 'repository';
+  return last.endsWith('.git') ? last.slice(0, -'.git'.length) : last;
+}
+
+function defaultWorktreeParent(repo: BareRepository): string {
+  return path.resolve(repo.gitDir) === path.resolve(path.join(repo.fsPath, '.bare'))
+    ? repo.fsPath
+    : path.dirname(repo.fsPath);
 }
 
 function defaultTaskCommand(repoPath: string): string {
@@ -361,8 +438,14 @@ async function addRepositoryToConfig(repoPath: string): Promise<void> {
   const config = vscode.workspace.getConfiguration('worktreeManager');
   const target = configurationTarget();
   const repositories = config.get<string[]>('repositories', []);
-  if (!repositories.some(value => path.resolve(expandMaybeHome(value)) === path.resolve(repoPath))) {
-    await config.update('repositories', [...repositories, repoPath], target);
+  const normalizedRepoPath = path.resolve(repoPath);
+  const legacyGitPath = path.resolve(`${repoPath}.git`);
+  const next = repositories.filter(value => path.resolve(expandMaybeHome(value)) !== legacyGitPath);
+  if (!next.some(value => path.resolve(expandMaybeHome(value)) === normalizedRepoPath)) {
+    next.push(repoPath);
+  }
+  if (next.length !== repositories.length || next.some((value, index) => value !== repositories[index])) {
+    await config.update('repositories', next, target);
   }
 }
 
@@ -435,7 +518,7 @@ async function runGit(args: string[], success: string): Promise<void> {
       void vscode.window.showInformationMessage(stderr.trim() || success);
     } catch (error) {
       logError('git failed', { args, error });
-      void vscode.window.showErrorMessage(String(error));
+      void vscode.window.showErrorMessage(gitErrorMessage(error));
     }
   });
 }
@@ -458,6 +541,16 @@ async function pickWorktree(): Promise<Worktree | undefined> {
   }));
   const choice = await vscode.window.showQuickPick(items, { placeHolder: 'Choose a worktree' });
   return choice?.worktree;
+}
+
+function gitErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const stderr = (error as { stderr?: unknown }).stderr;
+    if (typeof stderr === 'string' && stderr.trim()) return stderr.trim();
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message.trim();
+  }
+  return String(error);
 }
 
 function menuItems(hasSelectedWorktree: boolean): Array<{ label: string; command: string }> {

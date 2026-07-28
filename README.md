@@ -94,7 +94,7 @@ The extension is built around two simple principles:
 
 ### Step 2 — (Optional) define per-repo tasks
 
-Tasks are keyed by the **bare repo's basename including `.git`**. `cmd` runs when a worktree is selected; `cleanup` runs on the _previous_ worktree before the switch.
+Tasks are keyed by the **configured repo root basename** (for legacy direct bare repos this may include `.git`). `cmd` runs when a worktree is selected; `cleanup` runs on the _previous_ worktree before the switch.
 
 ```jsonc
 "worktreeManager.tasks": {
@@ -123,8 +123,8 @@ Tasks are keyed by the **bare repo's basename including `.git`**. `cmd` runs whe
 
 | Action                      | What it does                                                            |
 | --------------------------- | ----------------------------------------------------------------------- |
-| **Clone Bare Repository…**  | Clone a remote with `git clone --bare`, add it to `worktreeManager.repositories`, and create a `worktreeManager.tasks` entry with `cmd` only. |
-| **Add Existing Bare Repository…** | Pick an existing bare repo folder, add it to workspace `folders` and `worktreeManager.repositories`, create a `cmd`-only echo task, and open the workspace config file. |
+| **Clone Bare Repository…**  | Clone a remote into `<repo>/.bare`, add `<repo>` to `worktreeManager.repositories`, and create a `worktreeManager.tasks` entry with `cmd` only. |
+| **Add Existing Bare Repository…** | Pick an existing repo root with `.bare` metadata, or a legacy direct bare repo folder; add it to workspace `folders` and `worktreeManager.repositories`, create a `cmd`-only echo task, and open the workspace config file. |
 | **Add Worktree…**           | Pick a repo → name a branch → `git worktree add`.                       |
 | **Check Worktree**          | Focus a worktree: hide the others, close foreign editors, run its task. |
 | **Open Terminal Here**      | Launch an embedded terminal scoped to a worktree.                       |

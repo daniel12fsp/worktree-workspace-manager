@@ -51,6 +51,11 @@ export function expandHome(input: string): string {
 }
 
 export function resolveGitDir(fsPath: string): string {
+  const bareDir = path.join(fsPath, '.bare');
+  if (fs.existsSync(bareDir) && fs.statSync(bareDir).isDirectory()) {
+    return bareDir;
+  }
+
   const gitFile = path.join(fsPath, '.git');
   if (!fs.existsSync(gitFile) || !fs.statSync(gitFile).isFile()) {
     return fsPath;
@@ -70,11 +75,27 @@ export function getConfiguredRepositories(): BareRepository[] {
     .get<string[]>('repositories', []);
 
   const repos = values.map(configPath => {
-    const fsPath = expandHome(configPath);
+    const fsPath = normalizeConfiguredRepositoryPath(expandHome(configPath));
     return { configPath, fsPath, gitDir: resolveGitDir(fsPath), label: path.basename(fsPath) };
   });
   log('configured repositories', { count: repos.length });
   return repos;
+}
+
+function normalizeConfiguredRepositoryPath(fsPath: string): string {
+  if (fs.existsSync(path.join(fsPath, '.bare'))) {
+    return fsPath;
+  }
+
+  if (fsPath.endsWith('.git')) {
+    const repoRoot = fsPath.slice(0, -'.git'.length);
+    if (fs.existsSync(path.join(repoRoot, '.bare'))) {
+      log('normalized legacy .git config path to .bare repo root', { configPath: fsPath, repoRoot });
+      return repoRoot;
+    }
+  }
+
+  return fsPath;
 }
 
 export async function listWorktrees(repo: BareRepository): Promise<Worktree[]> {

@@ -98,7 +98,7 @@
         "worktreeManager.tasks": {
           "type": "object",
           "default": {},
-          "description": "Repo-scoped task definitions keyed by bare repository basename, including .git.",
+          "description": "Repo-scoped task definitions keyed by configured repository root basename. Legacy direct bare repos may include .git.",
           "additionalProperties": {
             "type": "object",
             "required": ["cmd"],
