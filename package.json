@@ -2,7 +2,7 @@
   "name": "worktree-workspace-manager",
   "displayName": "Worktree Workspace Manager",
   "description": "Group terminals by git worktree, switch branches in one click, and auto-tidy editors from a single tree — built for bare-repo + worktree workflows.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "daniel12fsp",
   "author": "Daniel Pereira <daniel12fsp@yahoo.com.br>",
   "license": "MIT",
@@ -84,7 +84,9 @@
           "description": "Worktree colors keyed as <repo.git>/<worktree-name>. Missing entries are populated automatically from the default palette.",
           "additionalProperties": {
             "type": "object",
-            "required": ["color"],
+            "required": [
+              "color"
+            ],
             "properties": {
               "color": {
                 "type": "string",
@@ -101,7 +103,9 @@
           "description": "Repo-scoped task definitions keyed by configured repository root basename. Legacy direct bare repos may include .git.",
           "additionalProperties": {
             "type": "object",
-            "required": ["cmd"],
+            "required": [
+              "cmd"
+            ],
             "properties": {
               "env": {
                 "type": "object",
