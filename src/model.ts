@@ -24,7 +24,14 @@ export interface Worktree {
   readonly prunable?: string | true;
   readonly name: string;
   readonly color: string;
+  readonly colorKey: string;
 }
+
+export interface WorktreeColorConfig {
+  readonly color: string;
+}
+
+export type WorktreeColors = Record<string, WorktreeColorConfig>;
 
 export const palette = [
   '#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4',
@@ -94,7 +101,9 @@ export async function listAllWorktrees(): Promise<Map<BareRepository, Worktree[]
       return [repo, [] as Worktree[]] as const;
     }
   }));
-  return new Map(entries);
+  const all = new Map(entries);
+  void ensureConfiguredColorsForWorktrees(all).catch(error => logError('failed to populate worktree colors', { error }));
+  return all;
 }
 
 export function parseWorktreePorcelain(output: string, repo: BareRepository): Worktree[] {
@@ -122,7 +131,8 @@ export function parseWorktreePorcelain(output: string, repo: BareRepository): Wo
       locked: current.locked,
       prunable: current.prunable,
       name,
-      color: colorForName(name)
+      color: colorForWorktree(repo, name),
+      colorKey: colorKeyForWorktree(repo, name)
     });
     current = undefined;
   };
@@ -157,6 +167,73 @@ export function shortBranch(ref?: string): string | undefined {
 
 export function colorForName(name: string): string {
   return palette[Math.abs(hash(name)) % palette.length];
+}
+
+export function colorKeyForWorktree(repo: BareRepository, name: string): string {
+  return `${repo.label}/${name}`;
+}
+
+export function colorForWorktree(repo: BareRepository, name: string): string {
+  const configured = configuredColors()[colorKeyForWorktree(repo, name)]?.color;
+  return isValidHexColor(configured) ? configured : colorForName(name);
+}
+
+export async function ensureConfiguredColorsForWorktrees(all: Map<BareRepository, Worktree[]>): Promise<void> {
+  const existing = configuredColors();
+  const next: WorktreeColors = { ...existing };
+  let changed = false;
+
+  for (const [repo, worktrees] of all) {
+    for (const worktree of worktrees) {
+      if (!isValidHexColor(next[worktree.colorKey]?.color)) {
+        next[worktree.colorKey] = { color: colorForName(worktree.name) };
+        changed = true;
+      }
+    }
+  }
+
+  if (!changed) return;
+  await vscode.workspace
+    .getConfiguration('worktreeManager')
+    .update('colors', next, configurationTarget());
+  log('populated missing worktree colors', { count: Object.keys(next).length });
+}
+
+export async function updateWorktreeColor(worktree: Worktree, color: string): Promise<void> {
+  if (!isValidHexColor(color)) {
+    throw new Error('Color must be a hex value like #3cb44b');
+  }
+  const next: WorktreeColors = {
+    ...configuredColors(),
+    [worktree.colorKey]: { color }
+  };
+  await vscode.workspace
+    .getConfiguration('worktreeManager')
+    .update('colors', next, configurationTarget());
+  log('updated worktree color', { key: worktree.colorKey, color });
+}
+
+function configuredColors(): WorktreeColors {
+  const raw = vscode.workspace.getConfiguration('worktreeManager').get<Record<string, unknown>>('colors', {});
+  const colors: WorktreeColors = {};
+  for (const [key, value] of Object.entries(raw ?? {})) {
+    if (typeof value === 'string') {
+      colors[key] = { color: value };
+    } else if (value && typeof value === 'object' && typeof (value as { color?: unknown }).color === 'string') {
+      colors[key] = { color: (value as { color: string }).color };
+    }
+  }
+  return colors;
+}
+
+function configurationTarget(): vscode.ConfigurationTarget {
+  return vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length
+    ? vscode.ConfigurationTarget.Workspace
+    : vscode.ConfigurationTarget.Global;
+}
+
+function isValidHexColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value);
 }
 
 function hash(input: string): number {

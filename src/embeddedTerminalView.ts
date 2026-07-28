@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import * as pty from 'node-pty';
 import * as vscode from 'vscode';
 import { closeEditorsOutsideWorktree } from './editorTabs';
-import { BareRepository, Worktree, listAllWorktrees } from './model';
+import { BareRepository, Worktree, listAllWorktrees, updateWorktreeColor } from './model';
 import { checkWorktreeInLiveWorkspace, getCheckedWorktreePaths, normalizePath } from './workspaceFile';
 import { WorktreeTaskConfig, WorktreeTaskManager } from './taskManager';
 import { log, logError } from './logger';
@@ -164,6 +164,22 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       if (confirmed === 'Kill Terminals') {
         const killed = this.killSessions(session => path.resolve(session.worktree.path) === path.resolve(worktreePath));
         void vscode.window.showInformationMessage(killed ? `Killed ${killed} terminal(s).` : 'No terminals to kill.');
+      }
+    } else if (message?.type === 'changeColor') {
+      const worktree = await this.findWorktree(String(message.path));
+      if (worktree) {
+        const color = await vscode.window.showInputBox({
+          prompt: `Hex color for ${worktree.name}`,
+          value: worktree.color,
+          placeHolder: '#3cb44b',
+          validateInput: value => /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value)
+            ? undefined
+            : 'Enter a hex color like #3cb44b'
+        });
+        if (color) {
+          await updateWorktreeColor(worktree, color);
+          await this.renderSessions();
+        }
       }
     }
   }
@@ -358,6 +374,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     const taskSessions = [...this.sessions.values()].filter(session => session.isTask);
     const taskRows = this.taskManager?.getTaskActivityRows() ?? [];
     const taskStatusByPath = new Map(taskRows.map(row => [normalizePath(row.worktreePath), row.status]));
+    const currentWorktreeByPath = new Map([...all.values()].flat().map(worktree => [normalizePath(worktree.path), worktree]));
     const repos = [...all].map(([repo, worktrees]) => ({
       label: repo.label,
       path: repo.fsPath,
@@ -391,7 +408,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
             label: row.kind,
             worktreeName: row.worktreeName,
             worktreePath: row.worktreePath,
-            worktreeColor: row.worktreeColor,
+            worktreeColor: currentWorktreeByPath.get(normalizePath(row.worktreePath))?.color ?? row.worktreeColor,
             command: row.command,
             status: row.status,
             exitValue: row.exitValue,
@@ -518,7 +535,10 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         for (const wt of repo.worktrees) {
           const row = document.createElement('div');
           row.className = 'wt';
-          row.oncontextmenu = event => showContextMenu(event, [{ label: 'Kill Related Terminals', message: { type: 'killWorktree', path: wt.path } }]);
+          row.oncontextmenu = event => showContextMenu(event, [
+            { label: 'Change Color…', message: { type: 'changeColor', path: wt.path } },
+            { label: 'Kill Related Terminals', message: { type: 'killWorktree', path: wt.path } }
+          ]);
           const dot = document.createElement('span');
           dot.className = 'dot';
           dot.style.background = wt.color;

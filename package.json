@@ -44,6 +44,7 @@
     "onCommand:worktreeManager.addWorktree",
     "onCommand:worktreeManager.checkWorktree",
     "onCommand:worktreeManager.runWorktreeTask",
+    "onCommand:worktreeManager.changeColor",
     "onCommand:worktreeManager.removeWorktree",
     "onCommand:worktreeManager.fetch",
     "onCommand:worktreeManager.pruneStale",
@@ -74,6 +75,23 @@
             "type": "string"
           },
           "description": "Bare git repositories to manage. Leading ~ is expanded; environment variables are not."
+        },
+        "worktreeManager.colors": {
+          "type": "object",
+          "default": {},
+          "description": "Worktree colors keyed as <repo.git>/<worktree-name>. Missing entries are populated automatically from the default palette.",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["color"],
+            "properties": {
+              "color": {
+                "type": "string",
+                "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
+                "description": "Hex color used for this worktree in Worktree and Terminals by Worktree."
+              }
+            },
+            "additionalProperties": false
+          }
         },
         "worktreeManager.tasks": {
           "type": "object",
@@ -163,6 +181,10 @@
         "title": "Run Worktree Task"
       },
       {
+        "command": "worktreeManager.changeColor",
+        "title": "Change Worktree Color…"
+      },
+      {
         "command": "worktreeManager.removeWorktree",
         "title": "Remove Worktree"
       },
@@ -235,6 +257,11 @@
           "command": "worktreeManager.runWorktreeTask",
           "when": "view == worktreeManager.worktrees && viewItem == worktree",
           "group": "inline"
+        },
+        {
+          "command": "worktreeManager.changeColor",
+          "when": "viewItem == worktree",
+          "group": "navigation"
         },
         {
           "command": "worktreeManager.removeWorktree",

@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import * as vscode from 'vscode';
 import { EmbeddedTerminalViewProvider } from './embeddedTerminalView';
 import { disposeLogger, log, logError } from './logger';
-import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees } from './model';
+import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees, updateWorktreeColor } from './model';
 import { closeEditorsOutsideWorktree } from './editorTabs';
 import { checkWorktreeInLiveWorkspace, hideBareRepositoryFolders } from './workspaceFile';
 import { pickTaskWorktree, WorktreeTaskManager } from './taskManager';
@@ -89,7 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
       terminalProvider.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('worktreeManager.repositories') || event.affectsConfiguration('worktreeManager.tasks')) {
+      if (event.affectsConfiguration('worktreeManager.repositories') || event.affectsConfiguration('worktreeManager.tasks') || event.affectsConfiguration('worktreeManager.colors')) {
         refreshAll();
         refreshTerminalsUnlessSuppressed();
       } else if (event.affectsConfiguration('files.exclude') || event.affectsConfiguration('search.exclude')) {
@@ -114,6 +114,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('worktreeManager.pruneStale', async (node?: RepoNode) => {
       await runRepoGit(node?.repo ?? selectedRepo, ['worktree', 'prune'], 'Prune complete');
       refreshAll();
+    }),
+    vscode.commands.registerCommand('worktreeManager.changeColor', async (node?: WorktreeNode) => {
+      await changeWorktreeColor(node?.worktree ?? selectedWorktree);
+      refreshAll();
+      terminalProvider.refresh();
     }),
     vscode.commands.registerCommand('worktreeManager.configureRepositories', () => vscode.commands.executeCommand('workbench.action.openSettingsJson')),
     vscode.commands.registerCommand('worktreeManager.checkWorktree', async (node?: WorktreeNode) => {
@@ -237,6 +242,21 @@ async function removeWorktree(worktree?: Worktree): Promise<void> {
   await runGit(['--git-dir', worktree.repo.gitDir, 'worktree', 'remove', worktree.path], `Removed ${worktree.name}`);
 }
 
+async function changeWorktreeColor(worktree?: Worktree): Promise<void> {
+  worktree = worktree ?? await pickWorktree();
+  if (!worktree) return;
+  const color = await vscode.window.showInputBox({
+    prompt: `Hex color for ${worktree.name}`,
+    value: worktree.color,
+    placeHolder: '#3cb44b',
+    validateInput: value => /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value)
+      ? undefined
+      : 'Enter a hex color like #3cb44b'
+  });
+  if (!color) return;
+  await updateWorktreeColor(worktree, color);
+}
+
 async function runRepoGit(repo: BareRepository | undefined, args: string[], success: string): Promise<void> {
   repo = repo ?? await pickRepo();
   if (!repo) return;
@@ -281,6 +301,7 @@ function menuItems(hasSelectedWorktree: boolean): Array<{ label: string; command
     { label: 'Check Worktree', command: 'worktreeManager.checkWorktree' },
     { label: 'Open Terminal Here', command: 'worktreeManager.openTerminalHere' },
     { label: 'Run Worktree Task', command: 'worktreeManager.runWorktreeTask' },
+    { label: 'Change Color…', command: 'worktreeManager.changeColor' },
     { label: 'Remove Worktree', command: 'worktreeManager.removeWorktree' }
   ];
   const repoActions = [
