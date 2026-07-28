@@ -8,7 +8,7 @@ import { EmbeddedTerminalViewProvider } from './embeddedTerminalView';
 import { disposeLogger, log, logError } from './logger';
 import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees, resolveGitDir, updateWorktreeColor } from './model';
 import { closeEditorsOutsideWorktree } from './editorTabs';
-import { checkWorktreeInLiveWorkspace, hideBareRepositoryFolders } from './workspaceFile';
+import { checkWorktreeInLiveWorkspace, getCheckedWorktreePaths, hideBareRepositoryFolders, normalizePath } from './workspaceFile';
 import { pickTaskWorktree, WorktreeTaskManager } from './taskManager';
 import { RepoNode, WorktreeNode, WorktreeProvider } from './worktreeView';
 
@@ -182,6 +182,33 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand(choice.command);
     })
   );
+
+  void runInitialConfiguredTasks(taskManager, terminalProvider);
+}
+
+async function runInitialConfiguredTasks(taskManager: WorktreeTaskManager, terminalProvider: EmbeddedTerminalViewProvider): Promise<void> {
+  if (!vscode.workspace.workspaceFile && !vscode.workspace.workspaceFolders?.length) return;
+
+  try {
+    const [all, checkedPaths] = await Promise.all([listAllWorktrees(), getCheckedWorktreePaths()]);
+    const initialWorktrees: Worktree[] = [];
+    for (const [, worktrees] of all) {
+      const selected = worktrees.find(worktree => checkedPaths.has(normalizePath(worktree.path)));
+      if (selected) initialWorktrees.push(selected);
+    }
+
+    log('initial configured tasks resolved from workspace state', {
+      count: initialWorktrees.length,
+      worktrees: initialWorktrees.map(worktree => ({ repo: worktree.repo.label, name: worktree.name, path: worktree.path }))
+    });
+
+    for (const worktree of initialWorktrees) {
+      await taskManager.runForSelection(worktree);
+    }
+    terminalProvider.refresh();
+  } catch (error) {
+    logError('failed to run initial configured tasks', { error });
+  }
 }
 
 async function updateWorktreeViewContexts(): Promise<void> {
