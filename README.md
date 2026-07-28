@@ -115,7 +115,7 @@ Tasks are keyed by the **bare repo's basename including `.git`**. `cmd` runs whe
 
 - Open the **🌳 Worktree Workspace** activity bar.
 - Expand a repo, **click a worktree** (or hit its ✓ checkbox) to focus it — editors tidy up, the old task cleans up, the new one starts.
-- Use the **status bar** menu for repo-level actions (add, fetch, prune, configure).
+- Use the **status bar** menu for repo-level actions (clone/add bare repos, add worktrees, fetch, prune, configure).
 
 ---
 
@@ -123,6 +123,8 @@ Tasks are keyed by the **bare repo's basename including `.git`**. `cmd` runs whe
 
 | Action                      | What it does                                                            |
 | --------------------------- | ----------------------------------------------------------------------- |
+| **Clone Bare Repository…**  | Clone a remote with `git clone --bare`, add it to `worktreeManager.repositories`, and create a `worktreeManager.tasks` entry with `cmd` only. |
+| **Add Existing Bare Repository…** | Pick an existing bare repo folder, add it to workspace `folders` and `worktreeManager.repositories`, create a `cmd`-only echo task, and open the workspace config file. |
 | **Add Worktree…**           | Pick a repo → name a branch → `git worktree add`.                       |
 | **Check Worktree**          | Focus a worktree: hide the others, close foreign editors, run its task. |
 | **Open Terminal Here**      | Launch an embedded terminal scoped to a worktree.                       |

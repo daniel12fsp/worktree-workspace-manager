@@ -41,6 +41,8 @@
     "onView:worktreeManager.terminals",
     "onCommand:worktreeManager.refresh",
     "onCommand:worktreeManager.showMenu",
+    "onCommand:worktreeManager.cloneBareRepository",
+    "onCommand:worktreeManager.addExistingBareRepository",
     "onCommand:worktreeManager.addWorktree",
     "onCommand:worktreeManager.checkWorktree",
     "onCommand:worktreeManager.runWorktreeTask",
@@ -163,6 +165,14 @@
       {
         "command": "worktreeManager.showMenu",
         "title": "Worktree Manager: Show Menu"
+      },
+      {
+        "command": "worktreeManager.cloneBareRepository",
+        "title": "Clone Bare Repository…"
+      },
+      {
+        "command": "worktreeManager.addExistingBareRepository",
+        "title": "Add Existing Bare Repository…"
       },
       {
         "command": "worktreeManager.addWorktree",
