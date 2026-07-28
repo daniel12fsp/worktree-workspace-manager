@@ -396,7 +396,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
 
   private async renderSessions(): Promise<void> {
     if (!this.view) return;
-    const hasWorkspace = Boolean(vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length);
+    const hasWorkspace = Boolean(vscode.workspace.workspaceFile);
     const all = await listAllWorktrees();
     const activeWorkspaceFolders = await getCheckedWorktreePaths();
     const taskSessions = [...this.sessions.values()].filter(session => session.isTask);
@@ -480,6 +480,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     .terminalLeaf { margin-left: 22px; color: var(--vscode-foreground); }
     .wt:hover, .terminalLeaf:hover, .wt.active, .terminalLeaf.active { background: var(--vscode-list-hoverBackground); }
     .terminalIcon { color: var(--vscode-terminal-ansiGreen); }
+    .expandIcon { width: 12px; flex: 0 0 12px; text-align: center; color: var(--vscode-foreground); opacity: 0.85; }
     .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
     .workspaceState { flex: 0 0 auto; accent-color: #2ea043; cursor: pointer; }
     .loadingCheckbox { width: 13px; height: 13px; flex: 0 0 auto; border: 2px solid var(--vscode-progressBar-background, #0e70c0); border-top-color: transparent; border-radius: 50%; box-sizing: border-box; animation: spin 0.8s linear infinite; }
@@ -515,6 +516,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     const contextMenuEl = document.getElementById('contextMenu');
     let activeSessionId;
     const collapsedRepos = new Set();
+    const collapsedWorktrees = new Set();
     let tasksCollapsed = true;
     const collapsedTaskRepos = new Set();
     const collapsedTaskRows = new Set();
@@ -581,10 +583,22 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         for (const wt of repo.worktrees) {
           const row = document.createElement('div');
           row.className = 'wt';
+          const worktreeKey = repo.label + ':' + wt.path;
+          const isWorktreeCollapsed = collapsedWorktrees.has(worktreeKey);
+          row.onclick = event => {
+            event.stopPropagation();
+            isWorktreeCollapsed ? collapsedWorktrees.delete(worktreeKey) : collapsedWorktrees.add(worktreeKey);
+            vscode.postMessage({ type: 'collapseAll' });
+            renderList(repos, tasks);
+          };
           row.oncontextmenu = event => showContextMenu(event, [
             { label: 'Change Color…', message: { type: 'changeColor', path: wt.path } },
             { label: 'Kill Related Terminals', message: { type: 'killWorktree', path: wt.path } }
           ]);
+          const expandIcon = document.createElement('span');
+          expandIcon.className = 'expandIcon';
+          expandIcon.textContent = isWorktreeCollapsed ? '▸' : '▾';
+          expandIcon.title = isWorktreeCollapsed ? 'Expand worktree' : 'Collapse worktree';
           const dot = document.createElement('span');
           dot.className = 'dot';
           dot.style.background = wt.color;
@@ -618,8 +632,9 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
             event.stopPropagation();
             vscode.postMessage({ type: 'create', path: wt.path });
           };
-          row.append(dot, state, label, addButton);
+          row.append(expandIcon, dot, state, label, addButton);
           list.appendChild(row);
+          if (isWorktreeCollapsed) continue;
           for (const session of wt.sessions || []) {
             const terminal = document.createElement('div');
             terminal.className = 'terminalLeaf' + (session.id === activeSessionId ? ' active' : '');

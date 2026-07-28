@@ -111,12 +111,10 @@ export function activate(context: vscode.ExtensionContext): void {
       refreshAll();
     }),
     vscode.commands.registerCommand('worktreeManager.cloneBareRepository', async () => {
-      if (!ensureWorkspaceForConfigurationFeature()) return;
       await cloneBareRepository();
       refreshAll();
     }),
     vscode.commands.registerCommand('worktreeManager.addExistingBareRepository', async () => {
-      if (!ensureWorkspaceForConfigurationFeature()) return;
       await addExistingBareRepository();
       refreshAll();
     }),
@@ -187,7 +185,7 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 async function runInitialConfiguredTasks(taskManager: WorktreeTaskManager, terminalProvider: EmbeddedTerminalViewProvider): Promise<void> {
-  if (!vscode.workspace.workspaceFile && !vscode.workspace.workspaceFolders?.length) return;
+  if (!vscode.workspace.workspaceFile) return;
 
   try {
     const [all, checkedPaths] = await Promise.all([listAllWorktrees(), getCheckedWorktreePaths()]);
@@ -212,7 +210,7 @@ async function runInitialConfiguredTasks(taskManager: WorktreeTaskManager, termi
 }
 
 async function updateWorktreeViewContexts(): Promise<void> {
-  const hasWorkspace = Boolean(vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length);
+  const hasWorkspace = Boolean(vscode.workspace.workspaceFile);
   await vscode.commands.executeCommand('setContext', 'worktreeManager.hasWorkspace', hasWorkspace);
   await vscode.commands.executeCommand('setContext', 'worktreeManager.hasRepositories', hasWorkspace && getConfiguredRepositories().length > 0);
 }
@@ -329,6 +327,8 @@ async function addExistingBareRepository(): Promise<void> {
   }
 
   const taskCommand = defaultTaskCommand(repoPath);
+  if (await createAndOpenWorkspaceIfNeeded(repoPath, taskCommand)) return;
+
   await addRepositoryAndTask(repoPath, taskCommand);
   await addFolderToWorkspace(repoPath);
   await openWorkspaceConfigurationFile();
@@ -407,6 +407,8 @@ async function cloneBareRepository(): Promise<void> {
         throw new Error(`Cloned path is not a bare git repository: ${repoPath}`);
       }
 
+      if (await createAndOpenWorkspaceIfNeeded(repoPath, taskCommand)) return;
+
       await addRepositoryAndTask(repoPath, taskCommand);
       await addFolderToWorkspace(repoPath);
       await openWorkspaceConfigurationFile();
@@ -453,6 +455,36 @@ function defaultWorktreeParent(repo: BareRepository): string {
 
 function defaultTaskCommand(repoPath: string): string {
   return `echo Worktree task for ${path.basename(repoPath)}`;
+}
+
+async function createAndOpenWorkspaceIfNeeded(repoPath: string, taskCommand: string): Promise<boolean> {
+  if (vscode.workspace.workspaceFile) return false;
+
+  const repoLabel = path.basename(repoPath);
+  const workspacePath = path.join(workspaceFileParent(repoPath), `${workspaceFileBaseName(repoLabel)}.code-workspace`);
+  const workspace = {
+    folders: [{ name: repoLabel, path: repoPath }],
+    settings: {
+      'worktreeManager.repositories': [repoPath],
+      'worktreeManager.tasks': {
+        [repoLabel]: { cmd: [taskCommand] }
+      }
+    }
+  };
+
+  await fs.promises.writeFile(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`, 'utf8');
+  log('created first workspace for bare repository', { workspacePath, repoPath, taskCommand });
+  void vscode.window.showInformationMessage(`Created workspace ${path.basename(workspacePath)} for ${repoLabel}.`);
+  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(workspacePath), { forceReuseWindow: true });
+  return true;
+}
+
+function workspaceFileParent(repoPath: string): string {
+  return path.basename(repoPath) === '.bare' ? path.dirname(path.dirname(repoPath)) : path.dirname(repoPath);
+}
+
+function workspaceFileBaseName(repoLabel: string): string {
+  return repoLabel.endsWith('.git') ? repoLabel.slice(0, -'.git'.length) : repoLabel;
 }
 
 async function openWorkspaceConfigurationFile(): Promise<void> {

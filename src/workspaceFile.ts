@@ -12,6 +12,8 @@ const END_MARKER = '// END worktreeManager';
 export type CheckWorktreeResult = 'updated' | 'noWorkspaceFile' | 'missingFolders' | 'rootFoldersCannotBeHidden' | 'failed';
 
 export async function hideBareRepositoryFolders(): Promise<void> {
+  if (!hasWorkspaceFile()) return;
+
   try {
     await Promise.all([
       ensureBareHidden('files.exclude'),
@@ -24,7 +26,7 @@ export async function hideBareRepositoryFolders(): Promise<void> {
 
 export async function checkWorktreeInLiveWorkspace(target: Worktree): Promise<CheckWorktreeResult> {
   const folders = vscode.workspace.workspaceFolders;
-  if (!folders) return 'noWorkspaceFile';
+  if (!vscode.workspace.workspaceFile || !folders) return 'noWorkspaceFile';
 
   const all = await listAllWorktrees();
   const previousActivePaths = [...await getCheckedWorktreePaths()];
@@ -286,7 +288,12 @@ function getWorkspaceExclude(section: 'search.exclude' | 'files.exclude'): Recor
 }
 
 async function writeWorkspaceExclude(section: 'search.exclude' | 'files.exclude', value: Record<string, boolean>): Promise<void> {
+  if (!hasWorkspaceFile()) return;
   await vscode.workspace.getConfiguration(undefined, null).update(section, value, vscode.ConfigurationTarget.Workspace);
+}
+
+function hasWorkspaceFile(): boolean {
+  return Boolean(vscode.workspace.workspaceFile);
 }
 
 function unique<T>(values: T[]): T[] {

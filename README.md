@@ -37,6 +37,8 @@ Worktree Workspace Manager is for teams that use **git worktrees** with a **bare
 3. Choose one of:
    - **Clone Bare Repository…** — clones a remote into `<repo>/.bare`, adds the repo to the workspace, creates a default task, and opens the workspace config.
    - **Add Existing Bare Repository…** — picks an existing bare repo, adds it to `worktreeManager.repositories`, creates a default task, and opens the workspace config.
+
+If no workspace is open yet, either setup action creates a `.code-workspace` file for the repo and reopens VS Code with it.
 4. Edit the generated task command if needed.
 5. Add worktrees and select/check one to start working.
 
@@ -90,8 +92,8 @@ Tasks are keyed by the configured repo basename. `cmd` runs when a worktree is s
 
 | Action | What it does |
 | --- | --- |
-| **Clone Bare Repository…** | Clone a remote into `<repo>/.bare` and add config automatically. |
-| **Add Existing Bare Repository…** | Add an existing bare repo to workspace settings automatically. |
+| **Clone Bare Repository…** | Clone a remote into `<repo>/.bare`; creates/updates workspace config automatically. |
+| **Add Existing Bare Repository…** | Add an existing bare repo; creates/updates workspace config automatically. |
 | **Add Worktree…** | Create a new git worktree. |
 | **Check Worktree** | Focus that worktree, hide the others, and run its task. |
 | **Open Terminal Here** | Open a terminal scoped to the worktree. |
