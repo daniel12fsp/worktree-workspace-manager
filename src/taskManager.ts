@@ -114,6 +114,27 @@ export class WorktreeTaskManager implements vscode.Disposable {
     return [...this.activityRows.values()].sort((a, b) => a.repo.localeCompare(b.repo) || kindOrder(a.kind) - kindOrder(b.kind) || a.index - b.index);
   }
 
+  closeTaskTerminal(worktreePath: string): boolean {
+    const key = normalize(worktreePath);
+    const active = this.activeByPath.get(key);
+    if (!active) return false;
+    active.handle.dispose();
+    this.activeByPath.delete(key);
+    this.clearRows(active.worktree.repo.label, 'cmd');
+    this.changed.fire();
+    log('TASK terminal closed manually', { repo: active.worktree.repo.label, worktree: active.worktree.name, path: active.worktree.path });
+    return true;
+  }
+
+  clearTaskActivityRow(rowId: string): boolean {
+    const deleted = this.activityRows.delete(rowId);
+    if (deleted) {
+      this.changed.fire();
+      log('TASK activity row cleared manually', { rowId });
+    }
+    return deleted;
+  }
+
   private async drainQueue(): Promise<void> {
     this.transitionRunning = true;
     try {

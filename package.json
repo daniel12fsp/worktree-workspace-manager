@@ -157,6 +157,18 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "worktreeManager.worktrees",
+        "contents": "This feature only works with a workspace.\n[Open Worktree Manager Menu](command:worktreeManager.showMenu)",
+        "when": "!worktreeManager.hasWorkspace"
+      },
+      {
+        "view": "worktreeManager.worktrees",
+        "contents": "No repositories configured yet.\n[Open Worktree Manager Menu](command:worktreeManager.showMenu)",
+        "when": "worktreeManager.hasWorkspace && !worktreeManager.hasRepositories"
+      }
+    ],
     "commands": [
       {
         "command": "worktreeManager.refresh",

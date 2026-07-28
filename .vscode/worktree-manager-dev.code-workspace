@@ -4,13 +4,17 @@
   // are browsable in the Explorer) and managed repositories.
   "folders": [
     {
-      "name": "be-project.git",
-      "path": "../../examples-bare-repo/be-project.git",
+      "name": "fe-project.git",
+      "path": "../../examples-bare-repo/fe-project.git"
     },
     {
-      "name": "fe-project.git",
-      "path": "../../examples-bare-repo/fe-project.git",
+      "name": "be-project.git",
+      "path": "../../examples-bare-repo/be-project.git"
     },
+    {
+      "name": "test",
+      "path": "../../test"
+    }
   ],
   "settings": {
     "files.exclude": {
@@ -23,22 +27,6 @@
       ".bare/**": true,
       "**/.bare": true,
       "**/.bare/**": true,
-      "be-project.git/be-1": true,
-      "be-project.git/be-1/**": true,
-      "be-1": true,
-      "be-1/**": true,
-      "**/be-1": true,
-      "**/be-1/**": true,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-1": true,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-1/**": true,
-      "be-project.git/be-2": false,
-      "be-project.git/be-2/**": false,
-      "be-2": false,
-      "be-2/**": false,
-      "**/be-2": false,
-      "**/be-2/**": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-2": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-2/**": false,
       "fe-project.git/fe-1": true,
       "fe-project.git/fe-1/**": true,
       "fe-1": true,
@@ -55,14 +43,22 @@
       "**/fe-2/**": false,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2": false,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": false,
-      "test/main": false,
-      "test/main/**": false,
-      "main": false,
-      "main/**": false,
-      "**/main": false,
-      "**/main/**": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/test/main": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/test/main/**": false,
+      "be-project.git/be-1": false,
+      "be-project.git/be-1/**": false,
+      "be-1": false,
+      "be-1/**": false,
+      "**/be-1": false,
+      "**/be-1/**": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-1": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-1/**": false,
+      "be-project.git/be-2": true,
+      "be-project.git/be-2/**": true,
+      "be-2": true,
+      "be-2/**": true,
+      "**/be-2": true,
+      "**/be-2/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-2": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-2/**": true
     },
     "search.exclude": {
       "**/node_modules": true,
@@ -72,22 +68,6 @@
       ".bare/**": true,
       "**/.bare": true,
       "**/.bare/**": true,
-      "be-project.git/be-1": true,
-      "be-project.git/be-1/**": true,
-      "be-1": true,
-      "be-1/**": true,
-      "**/be-1": true,
-      "**/be-1/**": true,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-1": true,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-1/**": true,
-      "be-project.git/be-2": false,
-      "be-project.git/be-2/**": false,
-      "be-2": false,
-      "be-2/**": false,
-      "**/be-2": false,
-      "**/be-2/**": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-2": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-2/**": false,
       "fe-project.git/fe-1": true,
       "fe-project.git/fe-1/**": true,
       "fe-1": true,
@@ -104,43 +84,58 @@
       "**/fe-2/**": false,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2": false,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": false,
-      "test/main": false,
-      "test/main/**": false,
-      "main": false,
-      "main/**": false,
-      "**/main": false,
-      "**/main/**": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/test/main": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/test/main/**": false,
+      "be-project.git/be-1": false,
+      "be-project.git/be-1/**": false,
+      "be-1": false,
+      "be-1/**": false,
+      "**/be-1": false,
+      "**/be-1/**": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-1": false,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-1/**": false,
+      "be-project.git/be-2": true,
+      "be-project.git/be-2/**": true,
+      "be-2": true,
+      "be-2/**": true,
+      "**/be-2": true,
+      "**/be-2/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-2": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git/be-2/**": true
     },
     "worktreeManager.repositories": [
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git",
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git",
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git",
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/test"
     ],
+    "worktreeManager.tasks": {
+ "fe-project.git": {
+        "env": { "PORT": "4000" },
+        "cleanup": ["echo cleanup fe-project.git", "pwd"],
+        "cmd": ["pwd", "python -m http.server $PORT"],
+      },
+      "be-project.git": {
+        "env": { "PORT": "5000" },
+        "cleanup": ["echo cleanup be-project.git", "pwd"],
+        "cmd": ["pwd", "python -m http.server $PORT"],
+      },
+      "test": {
+        "cmd": [
+          "echo Worktree task for test"
+        ]
+      }
+    },
     "worktreeManager.colors": {
-      "be-project.git/be-1": {
-        "color": "#b15928",
-      },
-      "be-project.git/be-2": {
-        "color": "#8dd3c7",
-      },
       "fe-project.git/fe-1": {
-        "color": "#008080",
+        "color": "#008080"
       },
       "fe-project.git/fe-2": {
-        "color": "#fabebe",
+        "color": "#fabebe"
       },
-      "test/main": {
-        "color": "#46f0f0",
+      "be-project.git/be-1": {
+        "color": "#b15928"
       },
-      "test/dev": {
-        "color": "#ffe119",
-      },
-    },
-    "worktreeManager.tasks": {
-      "test": {
-        "cmd": ["echo Worktree task for test"],
-      },
-    },
+      "be-project.git/be-2": {
+        "color": "#8dd3c7"
+      }
+    }
   },
 }

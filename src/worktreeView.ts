@@ -57,8 +57,9 @@ export class WorktreeProvider implements vscode.TreeDataProvider<Node> {
 
   async getChildren(element?: Node): Promise<Node[]> {
     if (!element) {
+      if (!vscode.workspace.workspaceFile && !vscode.workspace.workspaceFolders?.length) return [];
       const repos = getConfiguredRepositories();
-      return repos.length ? repos.map(repo => new RepoNode(repo)) : [new EmptyNode('Configure worktreeManager.repositories')];
+      return repos.length ? repos.map(repo => new RepoNode(repo)) : [];
     }
 
     if (element instanceof RepoNode) {

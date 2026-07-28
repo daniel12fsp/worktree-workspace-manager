@@ -34,6 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
   status.show();
   void updateStatus(status);
   void hideBareRepositoryFolders();
+  void updateWorktreeViewContexts();
 
   let selectedWorktree: Worktree | undefined;
   let selectedRepo: BareRepository | undefined;
@@ -44,6 +45,7 @@ export function activate(context: vscode.ExtensionContext): void {
     worktreeProvider.refresh();
     void updateStatus(status);
     void hideBareRepositoryFolders();
+    void updateWorktreeViewContexts();
   };
 
   const refreshTerminalsUnlessSuppressed = () => {
@@ -99,17 +101,22 @@ export function activate(context: vscode.ExtensionContext): void {
         terminalProvider.refresh();
       }
     }),
-    vscode.workspace.onDidChangeWorkspaceFolders(refreshTerminalsUnlessSuppressed),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      refreshAll();
+      refreshTerminalsUnlessSuppressed();
+    }),
     vscode.commands.registerCommand('worktreeManager.refresh', refreshAll),
     vscode.commands.registerCommand('worktreeManager.addWorktree', async (node?: RepoNode) => {
       await addWorktree(node?.repo ?? selectedRepo);
       refreshAll();
     }),
     vscode.commands.registerCommand('worktreeManager.cloneBareRepository', async () => {
+      if (!ensureWorkspaceForConfigurationFeature()) return;
       await cloneBareRepository();
       refreshAll();
     }),
     vscode.commands.registerCommand('worktreeManager.addExistingBareRepository', async () => {
+      if (!ensureWorkspaceForConfigurationFeature()) return;
       await addExistingBareRepository();
       refreshAll();
     }),
@@ -130,7 +137,10 @@ export function activate(context: vscode.ExtensionContext): void {
       refreshAll();
       terminalProvider.refresh();
     }),
-    vscode.commands.registerCommand('worktreeManager.configureRepositories', () => vscode.commands.executeCommand('workbench.action.openSettingsJson')),
+    vscode.commands.registerCommand('worktreeManager.configureRepositories', () => {
+      if (!ensureWorkspaceForConfigurationFeature()) return;
+      return openWorkspaceConfigurationFile();
+    }),
     vscode.commands.registerCommand('worktreeManager.checkWorktree', async (node?: WorktreeNode) => {
       const target = node?.worktree ?? selectedWorktree;
       log('check worktree command invoked', {
@@ -174,6 +184,12 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
+async function updateWorktreeViewContexts(): Promise<void> {
+  const hasWorkspace = Boolean(vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length);
+  await vscode.commands.executeCommand('setContext', 'worktreeManager.hasWorkspace', hasWorkspace);
+  await vscode.commands.executeCommand('setContext', 'worktreeManager.hasRepositories', hasWorkspace && getConfiguredRepositories().length > 0);
+}
+
 async function checkWorktree(worktree?: Worktree): Promise<void> {
   worktree = worktree ?? await pickWorktree();
   if (!worktree) return;
@@ -193,7 +209,7 @@ async function checkWorktree(worktree?: Worktree): Promise<void> {
       log('check worktree: finished close non-selected editor tabs after root warning', { worktree: worktree.name });
       void vscode.window.showWarningMessage('Updated Search/exclude settings, but VS Code cannot hide inactive worktrees that are top-level workspace folders without changing workspace folders.');
     } else if (result === 'noWorkspaceFile') {
-      void vscode.window.showErrorMessage('Check Worktree requires an open workspace');
+      void vscode.window.showErrorMessage('This feature only works with a workspace.');
     } else if (result === 'missingFolders') {
       void vscode.window.showErrorMessage('Workspace file must contain a folders array');
     } else {
@@ -260,6 +276,12 @@ async function addWorktree(repo?: BareRepository): Promise<void> {
   );
   if (confirmed !== 'Create Branch') return;
   await runGit(['--git-dir', repo.gitDir, 'worktree', 'add', '-b', branch, worktreePath, 'HEAD'], `Created ${branch}`);
+}
+
+function ensureWorkspaceForConfigurationFeature(): boolean {
+  if (vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length) return true;
+  void vscode.window.showErrorMessage('This feature only works with a workspace.');
+  return false;
 }
 
 async function addExistingBareRepository(): Promise<void> {
@@ -454,15 +476,24 @@ async function addTaskToConfig(repoPath: string, taskCommand: string): Promise<v
   const target = configurationTarget();
   const repoLabel = path.basename(repoPath);
   const tasks = config.get<Record<string, unknown>>('tasks', {});
-  if (tasks[repoLabel] !== undefined) {
-    const overwrite = await vscode.window.showWarningMessage(
-      `worktreeManager.tasks.${repoLabel} already exists. Replace it with the new command?`,
+  const existingTask = tasks[repoLabel];
+  if (existingTask !== undefined) {
+    const update = await vscode.window.showWarningMessage(
+      `worktreeManager.tasks.${repoLabel} already exists. Update its command and keep existing env/cleanup settings?`,
       { modal: true },
-      'Replace Task'
+      'Update Task Command'
     );
-    if (overwrite !== 'Replace Task') return;
+    if (update !== 'Update Task Command') return;
   }
-  await config.update('tasks', { ...tasks, [repoLabel]: { cmd: [taskCommand] } }, target);
+
+  const nextTask = isPlainObject(existingTask)
+    ? { ...existingTask, cmd: [taskCommand] }
+    : { cmd: [taskCommand] };
+  await config.update('tasks', { ...tasks, [repoLabel]: nextTask }, target);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function expandMaybeHome(input: string): string {

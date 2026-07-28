@@ -87,6 +87,8 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
   private async handleWebviewMessage(message: any): Promise<void> {
     if (message?.type === 'ready') {
       await this.renderSessions();
+    } else if (message?.type === 'openMenu') {
+      await vscode.commands.executeCommand('worktreeManager.showMenu');
     } else if (message?.type === 'select') {
       this.activeSessionId = String(message.id);
       this.renderSessions();
@@ -127,13 +129,26 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
           this.view?.webview.postMessage({ type: 'loadingDone', path: worktree.path });
         }
       }
-    } else if (message?.type === 'runTask') {
+    } else if (message?.type === 'runTask' || message?.type === 'restartTask') {
       const worktree = await this.findWorktree(String(message.path));
-      log('TERMINALS BY WORKTREE click: worktree row requested task run', { path: String(message.path), found: Boolean(worktree), repo: worktree?.repo.label, worktree: worktree?.name });
+      log('TERMINALS BY WORKTREE click: worktree row requested task run/restart', { type: message.type, path: String(message.path), found: Boolean(worktree), repo: worktree?.repo.label, worktree: worktree?.name });
       if (worktree && this.taskManager) {
-        await this.taskManager.runForSelection(worktree);
+        if (message.type === 'restartTask') {
+          await this.taskManager.rerun(worktree);
+        } else {
+          await this.taskManager.runForSelection(worktree);
+        }
         await this.renderSessions();
       }
+    } else if (message?.type === 'closeTask') {
+      const terminalId = message.terminalId ? String(message.terminalId) : undefined;
+      let closed = this.taskManager?.closeTaskTerminal(String(message.path)) ?? false;
+      if (!closed && terminalId) {
+        closed = this.closeSessionById(terminalId);
+      }
+      const cleared = this.taskManager?.clearTaskActivityRow(String(message.id)) ?? false;
+      void vscode.window.showInformationMessage(closed ? 'Closed task terminal.' : cleared ? 'Cleared task item.' : 'No task terminal to close.');
+      await this.renderSessions();
     } else if (message?.type === 'focusTask') {
       const id = String(message.id);
       const isCollapsing = this.activeSessionId === id;
@@ -225,6 +240,18 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     }
     void this.renderSessions();
     return matches.length;
+  }
+
+  private closeSessionById(id: string): boolean {
+    const session = this.sessions.get(id);
+    if (!session) return false;
+    this.sessions.delete(id);
+    session.process.kill();
+    if (this.activeSessionId === id) {
+      this.activeSessionId = undefined;
+    }
+    log('closed embedded session by id', { id, repo: session.worktree.repo.label, worktree: session.worktree.name, isTask: Boolean(session.isTask) });
+    return true;
   }
 
   private createSession(worktree: Worktree, options: { isTask?: boolean; env?: Record<string, string>; label?: string; onExit?: (exitCode: number | undefined) => void } = {}): EmbeddedSession {
@@ -369,6 +396,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
 
   private async renderSessions(): Promise<void> {
     if (!this.view) return;
+    const hasWorkspace = Boolean(vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length);
     const all = await listAllWorktrees();
     const activeWorkspaceFolders = await getCheckedWorktreePaths();
     const taskSessions = [...this.sessions.values()].filter(session => session.isTask);
@@ -423,6 +451,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
       tasks,
       activeSessionId: this.activeSessionId,
       activeOutput: active?.output.join('') ?? '',
+      hasWorkspace,
       home: os.homedir()
     });
   }
@@ -460,9 +489,16 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     .badge { margin-left: auto; opacity: 0.7; font-size: 11px; }
     .addTerminal { margin-left: auto; border: none; background: transparent; color: var(--vscode-foreground); cursor: pointer; opacity: 0.8; }
     .addTerminal:hover { opacity: 1; background: var(--vscode-button-secondaryHoverBackground); }
+    .taskActions { margin-left: auto; display: inline-flex; gap: 2px; }
+    .taskAction { border: none; border-radius: 3px; background: transparent; color: var(--vscode-foreground); cursor: pointer; opacity: 0.75; padding: 1px 5px; }
+    .taskAction:hover { opacity: 1; background: var(--vscode-button-secondaryHoverBackground); }
     .contextMenu { position: fixed; z-index: 10; min-width: 180px; padding: 4px 0; background: var(--vscode-menu-background); color: var(--vscode-menu-foreground); border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border)); box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
     .contextMenu button { display: block; width: 100%; padding: 6px 12px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
     .contextMenu button:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
+    .welcome { height: calc(100vh - 16px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; color: var(--vscode-descriptionForeground); }
+    .welcome strong { color: var(--vscode-foreground); font-weight: 600; }
+    .welcome button { border: 0; border-radius: 2px; padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); cursor: pointer; }
+    .welcome button:hover { background: var(--vscode-button-hoverBackground); }
   </style>
 </head>
 <body>
@@ -485,6 +521,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     const loadingWorktreePaths = new Set();
     let currentRepos = [];
     let currentTasks = [];
+    let currentHasWorkspace = true;
     term.open(terminalEl);
     term.onData(data => activeSessionId && vscode.postMessage({ type: 'input', id: activeSessionId, data }));
     window.addEventListener('resize', resize);
@@ -498,6 +535,7 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         activeSessionId = message.activeSessionId;
         currentRepos = message.repos || [];
         currentTasks = message.tasks || [];
+        currentHasWorkspace = Boolean(message.hasWorkspace);
         for (const repo of currentRepos) {
           for (const wt of repo.worktrees || []) {
             if (wt.taskStatus && wt.taskStatus !== 'starting') loadingWorktreePaths.delete(wt.path);
@@ -519,6 +557,14 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
     function renderList(repos, tasks) {
       const list = document.getElementById('list');
       list.textContent = '';
+      if (!currentHasWorkspace) {
+        renderWelcome(list, 'This feature only works with a workspace.');
+        return;
+      }
+      if (!repos.length) {
+        renderWelcome(list, 'No repositories configured yet.');
+        return;
+      }
       for (const repo of repos) {
         const header = document.createElement('div');
         header.className = 'repo';
@@ -664,7 +710,8 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
             dot.className = 'dot';
             dot.style.background = task.worktreeColor;
             const label = taskRowLabel(task);
-            taskRow.append(icon, dot, label);
+            const actions = taskRowActions(task);
+            taskRow.append(icon, dot, label, actions);
             list.appendChild(taskRow);
             if (!rowCollapsed && task.preview) {
               const preview = document.createElement('div');
@@ -689,6 +736,41 @@ export class EmbeddedTerminalViewProvider implements vscode.WebviewViewProvider,
         terminalEl.style.display = 'none';
         document.body.appendChild(terminalEl);
       }
+    }
+    function taskRowActions(task) {
+      const actions = document.createElement('span');
+      actions.className = 'taskActions';
+      const restart = document.createElement('button');
+      restart.className = 'taskAction';
+      restart.title = 'Restart task';
+      restart.textContent = '↻';
+      restart.onclick = event => {
+        event.stopPropagation();
+        vscode.postMessage({ type: 'restartTask', path: task.worktreePath });
+      };
+      const close = document.createElement('button');
+      close.className = 'taskAction';
+      close.title = task.terminalId ? 'Close task terminal' : 'Clear task item';
+      close.textContent = '×';
+      close.onclick = event => {
+        event.stopPropagation();
+        vscode.postMessage({ type: 'closeTask', id: task.id, terminalId: task.terminalId, path: task.worktreePath });
+      };
+      actions.append(restart, close);
+      return actions;
+    }
+    function renderWelcome(list, message) {
+      const box = document.createElement('div');
+      box.className = 'welcome';
+      const text = document.createElement('strong');
+      text.textContent = message;
+      const button = document.createElement('button');
+      button.textContent = 'Open Worktree Manager Menu';
+      button.onclick = () => vscode.postMessage({ type: 'openMenu' });
+      box.append(text, button);
+      list.appendChild(box);
+      terminalEl.style.display = 'none';
+      document.body.appendChild(terminalEl);
     }
     function taskRowLabel(task) {
       const label = document.createElement('span');
