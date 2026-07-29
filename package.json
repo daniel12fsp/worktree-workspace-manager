@@ -37,6 +37,7 @@
     "url": "https://github.com/daniel12fsp/worktree-workspace-manager/issues"
   },
   "activationEvents": [
+    "onStartupFinished",
     "onView:worktreeManager.worktrees",
     "onView:worktreeManager.terminals",
     "onCommand:worktreeManager.refresh",

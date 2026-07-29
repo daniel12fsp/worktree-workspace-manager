@@ -9,7 +9,7 @@ import { disposeLogger, log, logError } from './logger';
 import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees, resolveGitDir, updateWorktreeColor } from './model';
 import { closeEditorsOutsideWorktree } from './editorTabs';
 import { checkWorktreeInLiveWorkspace, getCheckedWorktreePaths, hideBareRepositoryFolders, normalizePath } from './workspaceFile';
-import { pickTaskWorktree, WorktreeTaskManager } from './taskManager';
+import { hasConfiguredTaskDefinitions, pickTaskWorktree, taskConfigFor, WorktreeTaskManager } from './taskManager';
 import { RepoNode, WorktreeNode, WorktreeProvider } from './worktreeView';
 
 const execFileAsync = promisify(execFile);
@@ -64,7 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const node = event.selection[0];
       selectedWorktree = node instanceof WorktreeNode ? node.worktree : undefined;
       selectedRepo = node instanceof RepoNode ? node.repo : selectedWorktree?.repo;
-      if (selectedWorktree) {
+      if (selectedWorktree && hasConfiguredTaskDefinitions() && taskConfigFor(selectedWorktree, { silent: true, source: 'tree selection' })) {
         void taskManager.runForSelection(selectedWorktree).finally(() => terminalProvider.refresh());
       }
     }),
@@ -82,7 +82,9 @@ export function activate(context: vscode.ExtensionContext): void {
         suppressTerminalRefreshUntil = Date.now() + 3000;
         await checkWorktree(node.worktree);
         log('worktree checkbox flow: starting task after check', { repo: node.worktree.repo.label, worktree: node.worktree.name });
-        await taskManager.runForSelection(node.worktree);
+        if (hasConfiguredTaskDefinitions() && taskConfigFor(node.worktree, { silent: true, source: 'worktree checkbox' })) {
+          await taskManager.runForSelection(node.worktree);
+        }
         log('worktree checkbox flow: refreshing views after check/task');
         refreshAll();
         terminalProvider.refresh();
@@ -157,7 +159,9 @@ export function activate(context: vscode.ExtensionContext): void {
       await checkWorktree(target);
       if (target) {
         log('check worktree command flow: starting task after check', { repo: target.repo.label, worktree: target.name });
-        await taskManager.runForSelection(target);
+        if (hasConfiguredTaskDefinitions() && taskConfigFor(target, { silent: true, source: 'check worktree command' })) {
+          await taskManager.runForSelection(target);
+        }
       }
       log('check worktree command flow: refreshing views after check/task');
       refreshAll();
@@ -193,7 +197,7 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 async function runInitialConfiguredTasks(taskManager: WorktreeTaskManager, terminalProvider: EmbeddedTerminalViewProvider): Promise<void> {
-  if (!vscode.workspace.workspaceFile) return;
+  if (!vscode.workspace.workspaceFile || !hasConfiguredTaskDefinitions()) return;
 
   try {
     const [all, checkedPaths] = await Promise.all([listAllWorktrees(), getCheckedWorktreePaths()]);
@@ -209,7 +213,9 @@ async function runInitialConfiguredTasks(taskManager: WorktreeTaskManager, termi
     });
 
     for (const worktree of initialWorktrees) {
-      await taskManager.runForSelection(worktree);
+      if (taskConfigFor(worktree, { silent: true, source: 'initial configured tasks' })) {
+        await taskManager.runForSelection(worktree);
+      }
     }
     terminalProvider.refresh();
   } catch (error) {
@@ -221,6 +227,24 @@ async function updateWorktreeViewContexts(): Promise<void> {
   const hasWorkspace = Boolean(vscode.workspace.workspaceFile);
   await vscode.commands.executeCommand('setContext', 'worktreeManager.hasWorkspace', hasWorkspace);
   await vscode.commands.executeCommand('setContext', 'worktreeManager.hasRepositories', hasWorkspace && getConfiguredRepositories().length > 0);
+  await vscode.commands.executeCommand('setContext', 'worktreeManager.hasTasksConfig', hasConfiguredTasksKey());
+}
+
+function hasConfiguredTasksKey(): boolean {
+  const inspection = vscode.workspace.getConfiguration('worktreeManager').inspect('tasks');
+  const hasTasksKey = Boolean(
+    inspection?.globalValue !== undefined ||
+    inspection?.workspaceValue !== undefined ||
+    inspection?.workspaceFolderValue !== undefined
+  );
+  log('tasks visibility context resolved', {
+    hasTasksKey,
+    hasGlobalTasksKey: inspection?.globalValue !== undefined,
+    hasWorkspaceTasksKey: inspection?.workspaceValue !== undefined,
+    hasWorkspaceFolderTasksKey: inspection?.workspaceFolderValue !== undefined,
+    hasTaskDefinitions: hasConfiguredTaskDefinitions()
+  });
+  return hasTasksKey;
 }
 
 async function checkWorktree(worktree?: Worktree): Promise<void> {

@@ -21,6 +21,7 @@ let draggedSessionId;
 let currentRepos = [];
 let currentTasks = [];
 let currentHasWorkspace = true;
+let currentHasTasksConfig = false;
 function initTerminal() {
   if (term) return;
   try {
@@ -52,6 +53,7 @@ window.addEventListener('message', event => {
     currentRepos = message.repos || [];
     currentTasks = message.tasks || [];
     currentHasWorkspace = Boolean(message.hasWorkspace);
+    currentHasTasksConfig = Boolean(message.hasTasksConfig);
     for (const repo of currentRepos) {
       for (const wt of repo.worktrees || []) {
         if (wt.taskStatus && wt.taskStatus !== 'starting') loadingWorktreePaths.delete(wt.path);
@@ -287,6 +289,13 @@ function renderList(repos, tasks) {
   });
   if (renderSummary.sessionCount > 0 && !list.textContent.trim()) {
     throw new Error('Rendered terminal state contains sessions, but no visible UI text was produced.');
+  }
+  if (!currentHasTasksConfig) {
+    if (!activeSessionId || !terminalEl.parentElement || !terminalEl.parentElement.classList.contains('terminalInline')) {
+      terminalEl.style.display = 'none';
+      document.body.appendChild(terminalEl);
+    }
+    return;
   }
   const hasTaskRows = tasks.some(repo => (repo.rows || []).length);
   const tasksHeader = document.createElement('div');

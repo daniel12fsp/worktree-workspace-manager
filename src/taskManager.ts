@@ -327,10 +327,17 @@ export class WorktreeTaskManager implements vscode.Disposable {
   }
 }
 
+export function hasConfiguredTaskDefinitions(): boolean {
+  const all = vscode.workspace.getConfiguration('worktreeManager').get<Record<string, unknown>>('tasks', {});
+  return Boolean(all && Object.keys(all).length > 0);
+}
+
 export function taskConfigFor(worktree: Worktree, options: { readonly silent?: boolean; readonly source?: string } = {}): WorktreeTaskConfig | undefined {
   const all = vscode.workspace.getConfiguration('worktreeManager').get<Record<string, unknown>>('tasks', {});
   const configuredRepos = Object.keys(all ?? {});
-  const raw = all?.[worktree.repo.label];
+  const lookupKeys = taskLookupKeys(worktree);
+  const matchedKey = lookupKeys.find(key => all?.[key] !== undefined);
+  const raw = matchedKey ? all?.[matchedKey] : undefined;
   const rawFields = rawTaskFields(raw);
   log('task config lookup fields', {
     source: options.source ?? 'taskConfigFor',
@@ -338,6 +345,8 @@ export function taskConfigFor(worktree: Worktree, options: { readonly silent?: b
     worktree: worktree.name,
     worktreePath: worktree.path,
     configuredRepos,
+    lookupKeys,
+    matchedKey,
     found: raw !== undefined,
     rawType: raw === undefined ? 'undefined' : Array.isArray(raw) ? 'array' : typeof raw,
     rawKeys: raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.keys(raw as Record<string, unknown>) : undefined,
@@ -349,7 +358,7 @@ export function taskConfigFor(worktree: Worktree, options: { readonly silent?: b
   if (validation.error) {
     log('task config invalid fields', { source: options.source ?? 'taskConfigFor', repo: worktree.repo.label, error: validation.error, raw });
     if (!options.silent) {
-      void vscode.window.showErrorMessage(`Invalid worktreeManager.tasks.${worktree.repo.label}: ${validation.error}`);
+      void vscode.window.showErrorMessage(`Invalid worktreeManager.tasks.${matchedKey ?? worktree.repo.label}: ${validation.error}`);
     }
     return undefined;
   }
@@ -377,6 +386,19 @@ export async function pickTaskWorktree(): Promise<Worktree | undefined> {
   }));
   const choice = await vscode.window.showQuickPick(items, { placeHolder: 'Choose a worktree task to run' });
   return choice?.worktree;
+}
+
+function taskLookupKeys(worktree: Worktree): string[] {
+  return unique([
+    worktree.repo.label,
+    worktree.repo.label.replace(/\.git$/, ''),
+    path.basename(worktree.repo.fsPath),
+    path.basename(worktree.repo.fsPath).replace(/\.git$/, ''),
+  ]);
+}
+
+function unique(values: string[]): string[] {
+  return values.filter((value, index) => value && values.indexOf(value) === index);
 }
 
 function validateTaskConfig(raw: unknown): { config?: WorktreeTaskConfig; error?: string } {

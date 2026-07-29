@@ -15,7 +15,7 @@ import {
   getCheckedWorktreePaths,
   normalizePath,
 } from "./workspaceFile";
-import { WorktreeTaskConfig, WorktreeTaskManager } from "./taskManager";
+import { hasConfiguredTaskDefinitions, taskConfigFor, WorktreeTaskConfig, WorktreeTaskManager } from "./taskManager";
 import { log, logError } from "./logger";
 
 interface EmbeddedSession {
@@ -219,7 +219,7 @@ export class EmbeddedTerminalViewProvider
       if (worktree) {
         try {
           await this.checkWorktree(worktree);
-          if (this.taskManager) {
+          if (this.taskManager && hasConfiguredTaskDefinitions() && taskConfigFor(worktree, { silent: true, source: "embedded checkbox" })) {
             log(
               "TERMINALS BY WORKTREE checkbox: starting task after active worktree update",
               { repo: worktree.repo.label, worktree: worktree.name },
@@ -251,7 +251,7 @@ export class EmbeddedTerminalViewProvider
           worktree: worktree?.name,
         },
       );
-      if (worktree && this.taskManager) {
+      if (worktree && this.taskManager && hasConfiguredTaskDefinitions() && taskConfigFor(worktree, { silent: true, source: String(message.type) })) {
         if (message.type === "restartTask") {
           await this.taskManager.rerun(worktree);
         } else {
@@ -733,7 +733,8 @@ export class EmbeddedTerminalViewProvider
     const taskSessions = [...this.sessions.values()].filter(
       (session) => session.isTask,
     );
-    const taskRows = this.taskManager?.getTaskActivityRows() ?? [];
+    const hasTasksConfig = hasConfiguredTaskDefinitions();
+    const taskRows = hasTasksConfig ? this.taskManager?.getTaskActivityRows() ?? [] : [];
     const taskStatusByPath = new Map(
       taskRows.map((row) => [normalizePath(row.worktreePath), row.status]),
     );
@@ -824,7 +825,7 @@ export class EmbeddedTerminalViewProvider
       rowCount: taskRows.length,
       rows: taskRows,
     });
-    const tasks = [...all].map(([repo]) => ({
+    const tasks = hasTasksConfig ? [...all].map(([repo]) => ({
       label: repo.label,
       path: repo.fsPath,
       rows: taskRows
@@ -852,7 +853,7 @@ export class EmbeddedTerminalViewProvider
                 : undefined,
           };
         }),
-    }));
+    })) : [];
     const active = this.activeSessionId
       ? this.sessions.get(this.activeSessionId)
       : undefined;
@@ -860,6 +861,7 @@ export class EmbeddedTerminalViewProvider
       type: "state",
       repos,
       tasks,
+      hasTasksConfig,
       activeSessionId: this.activeSessionId,
       activeOutput: active?.output.join("") ?? "",
       hasWorkspace,
@@ -1063,21 +1065,23 @@ function staticTerminalListHtml(state: any): string {
     }
     parts.push(`</details>`);
   }
-  parts.push(`<details class="staticGroup" open><summary class="repo">tasks</summary>`);
-  for (const repo of tasks) {
-    const rows = Array.isArray(repo.rows) ? repo.rows : [];
-    if (!rows.length) continue;
-    parts.push(`<details class="staticGroup" open><summary class="repo" style="margin-left:14px">${htmlEscape(repo.label)}</summary>`);
-    for (const task of rows) {
-      const color = htmlEscape(task.worktreeColor);
-      const status = task.status === "starting" ? "loading…" : task.status === "running" ? "running" : htmlEscape(task.status);
-      const preview = htmlEscape(task.preview);
-      const nativeHref = htmlEscape(commandUri("worktreeManager.openNativeTerminalForPath", task.worktreePath));
-      parts.push(`<details class="staticGroup" open><summary class="terminalLeaf" style="margin-left:36px"><span class="dot" style="background:${color}"></span><span>${htmlEscape(task.label)} [<span style="color:${color};font-weight:600">${htmlEscape(task.worktreeName)}</span>] ${status} — ${htmlEscape(task.command)}</span><a class="addTerminal" href="${nativeHref}" title="Open interactive VS Code terminal here">open</a></summary>${preview ? `<div class="staticPreview">${preview}</div>` : `<div class="staticPreview">No captured output yet.</div>`}</details>`);
+  if (state?.hasTasksConfig) {
+    parts.push(`<details class="staticGroup" open><summary class="repo">tasks</summary>`);
+    for (const repo of tasks) {
+      const rows = Array.isArray(repo.rows) ? repo.rows : [];
+      if (!rows.length) continue;
+      parts.push(`<details class="staticGroup" open><summary class="repo" style="margin-left:14px">${htmlEscape(repo.label)}</summary>`);
+      for (const task of rows) {
+        const color = htmlEscape(task.worktreeColor);
+        const status = task.status === "starting" ? "loading…" : task.status === "running" ? "running" : htmlEscape(task.status);
+        const preview = htmlEscape(task.preview);
+        const nativeHref = htmlEscape(commandUri("worktreeManager.openNativeTerminalForPath", task.worktreePath));
+        parts.push(`<details class="staticGroup" open><summary class="terminalLeaf" style="margin-left:36px"><span class="dot" style="background:${color}"></span><span>${htmlEscape(task.label)} [<span style="color:${color};font-weight:600">${htmlEscape(task.worktreeName)}</span>] ${status} — ${htmlEscape(task.command)}</span><a class="addTerminal" href="${nativeHref}" title="Open interactive VS Code terminal here">open</a></summary>${preview ? `<div class="staticPreview">${preview}</div>` : `<div class="staticPreview">No captured output yet.</div>`}</details>`);
+      }
+      parts.push(`</details>`);
     }
     parts.push(`</details>`);
   }
-  parts.push(`</details>`);
   return parts.join("");
 }
 
