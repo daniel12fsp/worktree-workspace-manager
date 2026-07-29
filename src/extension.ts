@@ -158,6 +158,8 @@ export function activate(context: vscode.ExtensionContext): void {
       terminalProvider.refresh();
     }),
     vscode.commands.registerCommand('worktreeManager.openTerminalHere', async (node?: WorktreeNode) => openTerminalHere(node?.worktree ?? selectedWorktree, terminalProvider)),
+    vscode.commands.registerCommand('worktreeManager.openTerminalForPath', async (fsPath: string) => terminalProvider.openTerminalForPath(String(fsPath))),
+    vscode.commands.registerCommand('worktreeManager.openNativeTerminalForPath', async (fsPath: string) => terminalProvider.openNativeTerminalForPath(String(fsPath))),
     vscode.commands.registerCommand('worktreeManager.runWorktreeTask', async (node?: WorktreeNode) => {
       const target = node?.worktree ?? selectedWorktree ?? await pickTaskWorktree();
       if (target) await taskManager.rerun(target);

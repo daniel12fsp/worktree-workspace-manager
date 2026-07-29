@@ -43,6 +43,7 @@ export class EmbeddedTerminalViewProvider
   private terminalSeq = 0;
   private terminalOrderSeq = 0;
   private webviewReady = false;
+  private fallbackRendered = false;
   private readonly terminalOrder = new Map<string, number>();
 
   constructor(
@@ -69,6 +70,28 @@ export class EmbeddedTerminalViewProvider
     this.renderSessions();
   }
 
+  async openTerminalForPath(fsPath: string): Promise<void> {
+    const worktree = await this.findWorktree(fsPath);
+    if (!worktree) {
+      void vscode.window.showErrorMessage(`Worktree not found: ${fsPath}`);
+      return;
+    }
+    await this.openTerminal(worktree);
+  }
+
+  async openNativeTerminalForPath(fsPath: string): Promise<void> {
+    const worktree = await this.findWorktree(fsPath);
+    if (!worktree) {
+      void vscode.window.showErrorMessage(`Worktree not found: ${fsPath}`);
+      return;
+    }
+    const terminal = vscode.window.createTerminal({
+      cwd: worktree.path,
+      name: worktree.name,
+    });
+    terminal.show();
+  }
+
   refresh(): void {
     void this.renderSessions();
   }
@@ -89,8 +112,11 @@ export class EmbeddedTerminalViewProvider
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     log("Terminals by Worktree resolve webview view", { visible: webviewView.visible });
     this.view = webviewView;
+    this.webviewReady = false;
+    this.fallbackRendered = false;
     webviewView.webview.options = {
       enableScripts: true,
+      enableCommandUris: true,
       localResourceRoots: [
         vscode.Uri.joinPath(
           this.extensionUri,
@@ -98,9 +124,9 @@ export class EmbeddedTerminalViewProvider
           "@xterm",
           "xterm",
         ),
+        vscode.Uri.joinPath(this.extensionUri, "media"),
       ],
     };
-    webviewView.webview.html = this.html(webviewView.webview);
     webviewView.webview.onDidReceiveMessage(async (message) => {
       try {
         await this.handleWebviewMessage(message);
@@ -115,16 +141,19 @@ export class EmbeddedTerminalViewProvider
         void vscode.window.showErrorMessage(`Terminals by Worktree command failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     });
+    webviewView.webview.html = this.html(webviewView.webview);
     void this.renderSessions();
   }
 
   private async handleWebviewMessage(message: any): Promise<void> {
     if (message?.type === "ready") {
       this.webviewReady = true;
+      this.fallbackRendered = false;
       log("Terminals by Worktree webview ready", { sessionCount: this.sessions.size });
       await this.renderSessions();
     } else if (message?.type === "webviewBootstrap") {
       this.webviewReady = true;
+      this.fallbackRendered = false;
       log("Terminals by Worktree webview bootstrap script running", { sessionCount: this.sessions.size });
     } else if (message?.type === "webviewError") {
       logError("Terminals by Worktree webview error", {
@@ -410,9 +439,7 @@ export class EmbeddedTerminalViewProvider
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const label =
       options.label ?? `${worktree.name} terminal ${++this.terminalSeq}`;
-    const shell =
-      safeEnv("SHELL") ||
-      (process.platform === "win32" ? "powershell.exe" : "bash");
+    const shell = safeEnv("SHELL") || defaultShell();
     const env = ptyEnv(options.env);
     log(
       options.isTask
@@ -710,6 +737,7 @@ export class EmbeddedTerminalViewProvider
             displayName: fullCommand || session.label,
             statusText: fullCommand ? "working" : "idle",
             fullCommand,
+            preview: outputPreview(session.output),
             isTask: Boolean(session.isTask),
           };
         }),
@@ -779,13 +807,19 @@ export class EmbeddedTerminalViewProvider
       })),
       tasks: tasks.map(repo => ({ label: repo.label, rowCount: repo.rows.length }))
     });
-    if (!this.webviewReady) {
-      this.view.webview.html = this.html(this.view.webview, state);
-      log("rendered static fallback HTML for Terminals by Worktree", {
-        repoCount: repos.length,
-        sessionCount: this.sessions.size,
-        taskRowCount: taskRows.length,
-      });
+    if (!this.webviewReady && !this.fallbackRendered) {
+      this.fallbackRendered = true;
+      const view = this.view;
+      const fallbackState = state;
+      setTimeout(() => {
+        if (this.webviewReady || !this.view || this.view !== view) return;
+        view.webview.html = this.html(view.webview, fallbackState);
+        log("rendered static fallback HTML for Terminals by Worktree", {
+          repoCount: repos.length,
+          sessionCount: this.sessions.size,
+          taskRowCount: taskRows.length,
+        });
+      }, 750);
     }
     const delivered = await this.view.webview.postMessage(state);
     if (!delivered) {
@@ -835,18 +869,27 @@ export class EmbeddedTerminalViewProvider
         "xterm.css",
       ),
     );
+    const appJs = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, "media", "embeddedTerminalView.js"),
+    );
     const initialMarkup = initialState ? staticTerminalListHtml(initialState) : "";
     return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline' 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">
   <link rel="stylesheet" href="${xtermCss}">
   <style>
     html, body { height: 100%; margin: 0; color: var(--vscode-foreground); background: var(--vscode-panel-background); font-family: var(--vscode-font-family); }
     .root { height: 100%; overflow: auto; padding: 8px; box-sizing: border-box; }
     .sidebar { min-width: 0; }
     .repo { margin: 8px 0 4px; font-weight: 600; cursor: pointer; user-select: none; }
+    details.staticGroup { margin: 0; }
+    details.staticGroup > summary { list-style: none; }
+    details.staticGroup > summary::-webkit-details-marker { display: none; }
+    details.staticGroup > summary::before { content: '▸ '; }
+    details.staticGroup[open] > summary::before { content: '▾ '; }
+    .staticPreview { margin-left: 58px; opacity: 0.75; font-family: monospace; white-space: pre-wrap; word-break: break-word; }
     .wt, .terminalLeaf { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
     .terminalLeaf { margin-left: 22px; color: var(--vscode-foreground); }
     .terminalLeaf[draggable="true"] { cursor: grab; }
@@ -892,481 +935,8 @@ export class EmbeddedTerminalViewProvider
   </div>
   <div id="terminal" style="display:none"></div>
   <div id="contextMenu" class="contextMenu" style="display:none"></div>
-  <script nonce="${nonce}">
-    const vscode = acquireVsCodeApi();
-    vscode.postMessage({ type: 'webviewBootstrap' });
-    window.onerror = (message, source, line, column, error) => {
-      reportWebviewError(message, source, line, column, error && error.stack);
-    };
-    window.onunhandledrejection = event => {
-      const reason = event.reason;
-      reportWebviewError(reason && reason.message ? reason.message : String(reason), undefined, undefined, undefined, reason && reason.stack);
-    };
-    const terminalEl = document.getElementById('terminal');
-    const contextMenuEl = document.getElementById('contextMenu');
-    let term;
-    let activeSessionId;
-    const collapsedRepos = new Set();
-    const collapsedWorktrees = new Set();
-    let tasksCollapsed = true;
-    const collapsedTaskRepos = new Set();
-    const collapsedTaskRows = new Set();
-    const loadingWorktreePaths = new Set();
-    let draggedSessionId;
-    let currentRepos = [];
-    let currentTasks = [];
-    let currentHasWorkspace = true;
-    function initTerminal() {
-      if (term) return;
-      try {
-        if (typeof Terminal === 'undefined') throw new Error('xterm Terminal global is not available');
-        term = new Terminal({ convertEol: true, cursorBlink: true, fontFamily: 'monospace', theme: { background: '#000000' } });
-        term.open(terminalEl);
-        term.onData(data => {
-          if (!activeSessionId) return;
-          const sanitized = stripTerminalGeneratedInput(data);
-          if (sanitized) vscode.postMessage({ type: 'input', id: activeSessionId, data: sanitized });
-        });
-      } catch (error) {
-        reportWebviewError(error && error.message ? error.message : String(error), undefined, undefined, undefined, error && error.stack);
-      }
-    }
-    function loadXterm() {
-      const script = document.createElement('script');
-      script.setAttribute('nonce', '${nonce}');
-      script.src = '${xtermJs}';
-      script.onload = initTerminal;
-      script.onerror = () => reportWebviewError('Failed to load xterm.js', '${xtermJs}', undefined, undefined, undefined);
-      document.body.appendChild(script);
-    }
-    window.addEventListener('resize', resize);
-    window.addEventListener('click', hideContextMenu);
-    window.addEventListener('keydown', event => {
-      if (event.key === 'Escape') hideContextMenu();
-    });
-    window.addEventListener('message', event => {
-      try {
-      const message = event.data;
-      if (message.type === 'state') {
-        activeSessionId = message.activeSessionId;
-        currentRepos = message.repos || [];
-        currentTasks = message.tasks || [];
-        currentHasWorkspace = Boolean(message.hasWorkspace);
-        for (const repo of currentRepos) {
-          for (const wt of repo.worktrees || []) {
-            if (wt.taskStatus && wt.taskStatus !== 'starting') loadingWorktreePaths.delete(wt.path);
-            if ((wt.sessions || []).length) {
-              collapsedRepos.delete(repo.label);
-              collapsedWorktrees.delete(repo.label + ':' + wt.path);
-            }
-          }
-        }
-        renderList(currentRepos, currentTasks);
-        if (term) {
-          term.clear();
-          if (message.activeOutput) term.write(message.activeOutput);
-          resize();
-          focusActiveTerminalSoon();
-        }
-      } else if (message.type === 'loadingDone') {
-        loadingWorktreePaths.delete(message.path);
-        renderList(currentRepos, currentTasks);
-      } else if (message.type === 'output' && message.id === activeSessionId) {
-        if (term) {
-          term.write(message.data);
-          focusActiveTerminalSoon();
-        }
-      } else if (message.type === 'clear' && message.id === activeSessionId) {
-        if (term) term.clear();
-      }
-      } catch (error) {
-        reportWebviewError(error && error.message ? error.message : String(error), undefined, undefined, undefined, error && error.stack);
-      }
-    });
-    function reportWebviewError(message, source, line, column, stack) {
-      vscode.postMessage({ type: 'webviewError', message: String(message), source, line, column, stack });
-      const list = document.getElementById('list');
-      if (list) {
-        list.textContent = '';
-        const box = document.createElement('div');
-        box.className = 'welcome';
-        const text = document.createElement('strong');
-        text.textContent = 'Terminals by Worktree failed to render.';
-        const detail = document.createElement('div');
-        detail.textContent = String(message);
-        detail.style.maxWidth = '100%';
-        detail.style.wordBreak = 'break-word';
-        box.append(text, detail);
-        list.appendChild(box);
-      }
-    }
-    function stripTerminalGeneratedInput(data) {
-      // xterm replies to cursor-position/device-status queries with ESC[row;colR.
-      // Some macOS shells echo those replies as visible ^[[3;1R noise, so do not
-      // forward terminal-generated reports to the pty as user input.
-      return data.replace(/\x1b\[\d+;\d+R/g, '');
-    }
-    function renderList(repos, tasks) {
-      const list = document.getElementById('list');
-      list.textContent = '';
-      if (!currentHasWorkspace) {
-        renderWelcome(list, 'This feature only works with a workspace.');
-        return;
-      }
-      if (!repos.length) {
-        renderWelcome(list, 'No repositories configured yet.');
-        return;
-      }
-      for (const repo of repos) {
-        const header = document.createElement('div');
-        header.className = 'repo';
-        const isRepoCollapsed = collapsedRepos.has(repo.label);
-        header.textContent = (isRepoCollapsed ? '▸ ' : '▾ ') + repo.label;
-        header.onclick = () => {
-          isRepoCollapsed ? collapsedRepos.delete(repo.label) : collapsedRepos.add(repo.label);
-          vscode.postMessage({ type: 'collapseAll' });
-          renderList(repos, tasks);
-        };
-        header.oncontextmenu = event => showContextMenu(event, [{ label: 'Close All Terminals', message: { type: 'killRepo', path: repo.path } }]);
-        list.appendChild(header);
-        if (isRepoCollapsed) continue;
-        for (const wt of repo.worktrees) {
-          const row = document.createElement('div');
-          row.className = 'wt';
-          const worktreeKey = repo.label + ':' + wt.path;
-          const isWorktreeCollapsed = collapsedWorktrees.has(worktreeKey);
-          row.onclick = event => {
-            event.stopPropagation();
-            isWorktreeCollapsed ? collapsedWorktrees.delete(worktreeKey) : collapsedWorktrees.add(worktreeKey);
-            vscode.postMessage({ type: 'collapseAll' });
-            renderList(repos, tasks);
-          };
-          row.oncontextmenu = event => showContextMenu(event, [
-            { label: 'Change Color…', message: { type: 'changeColor', path: wt.path } },
-            { label: 'Kill Related Terminals', message: { type: 'killWorktree', path: wt.path } }
-          ]);
-          const expandIcon = document.createElement('span');
-          expandIcon.className = 'expandIcon';
-          expandIcon.textContent = isWorktreeCollapsed ? '▸' : '▾';
-          expandIcon.title = isWorktreeCollapsed ? 'Expand worktree' : 'Collapse worktree';
-          const dot = document.createElement('span');
-          dot.className = 'dot';
-          dot.style.background = wt.color;
-          const isLoadingWorktree = loadingWorktreePaths.has(wt.path) || wt.taskStatus === 'starting';
-          const state = isLoadingWorktree ? document.createElement('span') : document.createElement('input');
-          if (isLoadingWorktree) {
-            state.className = 'loadingCheckbox';
-            state.title = 'Loading worktree task…';
-          } else {
-            state.type = 'checkbox';
-            state.className = 'workspaceState';
-            state.checked = Boolean(wt.activeInExplorer);
-            state.title = wt.activeInExplorer ? 'Enabled in VSCode Explorer' : 'Enable in VSCode Explorer';
-            state.onchange = event => {
-              event.stopPropagation();
-              loadingWorktreePaths.add(wt.path);
-              renderList(currentRepos, currentTasks);
-              vscode.postMessage({ type: 'setExplorerWorktree', path: wt.path, enabled: state.checked });
-            };
-            state.onclick = event => event.stopPropagation();
-          }
-          const label = document.createElement('span');
-          label.textContent = wt.name + ' (' + wt.branch + ')';
-          label.style.color = wt.color;
-          label.style.fontWeight = '600';
-          const addButton = document.createElement('button');
-          addButton.className = 'addTerminal';
-          addButton.title = 'New terminal here';
-          addButton.textContent = '+';
-          addButton.onclick = event => {
-            event.stopPropagation();
-            vscode.postMessage({ type: 'create', path: wt.path });
-          };
-          row.append(expandIcon, dot, state, label, addButton);
-          list.appendChild(row);
-          if (isWorktreeCollapsed) continue;
-          for (const session of wt.sessions || []) {
-            const terminal = document.createElement('div');
-            terminal.className = 'terminalLeaf' + (session.id === activeSessionId ? ' active' : '');
-            terminal.draggable = true;
-            terminal.title = session.state === 'running'
-              ? 'Working: ' + (session.fullCommand || session.displayName)
-              : 'Idle: ' + session.label;
-            if (session.isTask) terminal.title = 'Task terminal — ' + terminal.title;
-            terminal.onclick = event => {
-              event.stopPropagation();
-              vscode.postMessage({ type: session.id === activeSessionId ? 'collapse' : 'select', id: session.id });
-            };
-            terminal.ondragstart = event => {
-              draggedSessionId = session.id;
-              event.dataTransfer.effectAllowed = 'move';
-              event.dataTransfer.setData('text/plain', session.id);
-            };
-            terminal.ondragover = event => {
-              if (!draggedSessionId || draggedSessionId === session.id) return;
-              event.preventDefault();
-              terminal.classList.add('dragOver');
-            };
-            terminal.ondragleave = () => terminal.classList.remove('dragOver');
-            terminal.ondrop = event => {
-              event.preventDefault();
-              event.stopPropagation();
-              terminal.classList.remove('dragOver');
-              const draggedId = event.dataTransfer.getData('text/plain') || draggedSessionId;
-              draggedSessionId = undefined;
-              if (draggedId && draggedId !== session.id) {
-                vscode.postMessage({ type: 'reorderSession', draggedId, targetId: session.id });
-              }
-            };
-            terminal.ondragend = () => {
-              draggedSessionId = undefined;
-              terminal.classList.remove('dragOver');
-            };
-            const icon = document.createElement('span');
-            icon.className = 'terminalIcon';
-            icon.textContent = session.id === activeSessionId ? '▾' : '▸';
-            const status = document.createElement('span');
-            status.className = 'terminalStatus ' + session.state;
-            status.title = session.state === 'running' ? 'Working' : 'Idle';
-            const terminalLabel = document.createElement('span');
-            terminalLabel.className = 'terminalLabel ' + session.state;
-            terminalLabel.textContent = session.displayName;
-            const stateText = document.createElement('span');
-            stateText.className = 'terminalStateText';
-            stateText.textContent = session.state === 'running' ? 'working' : 'idle';
-            const actions = document.createElement('span');
-            actions.className = 'terminalActions';
-            const close = document.createElement('button');
-            close.className = 'terminalAction';
-            close.title = 'Close terminal';
-            close.textContent = '×';
-            close.onclick = event => {
-              event.stopPropagation();
-              if (session.isTask) {
-                let task;
-                for (const taskRepo of currentTasks || []) {
-                  task = (taskRepo.rows || []).find(row => row.terminalId === session.id);
-                  if (task) break;
-                }
-                vscode.postMessage(task
-                  ? { type: 'closeTask', id: task.id, terminalId: session.id, path: task.worktreePath }
-                  : { type: 'closeSession', id: session.id });
-              } else {
-                vscode.postMessage({ type: 'closeSession', id: session.id });
-              }
-            };
-            actions.append(close);
-            terminal.append(icon, status, terminalLabel, stateText, actions);
-            list.appendChild(terminal);
-            if (session.id === activeSessionId) {
-              const inline = document.createElement('div');
-              inline.className = 'terminalInline active';
-              inline.appendChild(terminalEl);
-              terminalEl.style.display = 'block';
-              list.appendChild(inline);
-            }
-          }
-        }
-      }
-      const renderSummary = {
-        repoCount: repos.length,
-        worktreeCount: repos.reduce((count, repo) => count + (repo.worktrees || []).length, 0),
-        sessionCount: repos.reduce((count, repo) => count + (repo.worktrees || []).reduce((inner, wt) => inner + (wt.sessions || []).length, 0), 0),
-        taskRowCount: tasks.reduce((count, repo) => count + (repo.rows || []).length, 0),
-        childNodeCount: list.childElementCount
-      };
-      vscode.postMessage({
-        type: 'webviewRender',
-        repoCount: renderSummary.repoCount,
-        worktreeCount: renderSummary.worktreeCount,
-        sessionCount: renderSummary.sessionCount,
-        taskRowCount: renderSummary.taskRowCount,
-        childNodeCount: renderSummary.childNodeCount
-      });
-      if (renderSummary.sessionCount > 0 && !list.textContent.trim()) {
-        throw new Error('Rendered terminal state contains sessions, but no visible UI text was produced.');
-      }
-      const hasTaskRows = tasks.some(repo => (repo.rows || []).length);
-      const tasksHeader = document.createElement('div');
-      tasksHeader.className = 'repo';
-      tasksHeader.textContent = (tasksCollapsed ? '▸ ' : '▾ ') + 'tasks' + (hasTaskRows ? '' : ' (no task activity yet)');
-      tasksHeader.onclick = () => {
-        tasksCollapsed = !tasksCollapsed;
-        if (tasksCollapsed) {
-          for (const repo of tasks) {
-            collapsedTaskRepos.add(repo.label);
-            for (const task of repo.rows || []) collapsedTaskRows.add(task.id);
-          }
-        } else {
-          collapsedTaskRepos.clear();
-          collapsedTaskRows.clear();
-        }
-        renderList(repos, tasks);
-      };
-      list.appendChild(tasksHeader);
-      if (!tasksCollapsed) {
-        for (const repo of tasks) {
-          const repoRows = repo.rows || [];
-          const repoCollapsed = collapsedTaskRepos.has(repo.label);
-          const repoHeader = document.createElement('div');
-          repoHeader.className = 'repo';
-          repoHeader.style.marginLeft = '14px';
-          repoHeader.textContent = (repoCollapsed ? '▸ ' : '▾ ') + repo.label;
-          repoHeader.onclick = event => {
-            event.stopPropagation();
-            repoCollapsed ? collapsedTaskRepos.delete(repo.label) : collapsedTaskRepos.add(repo.label);
-            renderList(repos, tasks);
-          };
-          list.appendChild(repoHeader);
-          if (repoCollapsed) continue;
-          for (const task of repoRows) {
-            const rowCollapsed = collapsedTaskRows.has(task.id);
-            const hasChildren = Boolean(task.preview || task.terminalId);
-            const taskRow = document.createElement('div');
-            taskRow.className = 'terminalLeaf' + (task.terminalId === activeSessionId ? ' active' : '');
-            taskRow.style.marginLeft = '36px';
-            taskRow.onclick = event => {
-              event.stopPropagation();
-              if (!hasChildren) return;
-              if (task.terminalId) {
-                if (rowCollapsed) {
-                  collapsedTaskRows.delete(task.id);
-                  if (task.terminalId !== activeSessionId) vscode.postMessage({ type: 'focusTask', id: task.terminalId });
-                } else if (task.terminalId === activeSessionId) {
-                  collapsedTaskRows.add(task.id);
-                  vscode.postMessage({ type: 'focusTask', id: task.terminalId });
-                } else {
-                  collapsedTaskRows.delete(task.id);
-                  vscode.postMessage({ type: 'focusTask', id: task.terminalId });
-                }
-              } else {
-                rowCollapsed ? collapsedTaskRows.delete(task.id) : collapsedTaskRows.add(task.id);
-              }
-              renderList(repos, tasks);
-            };
-            if (!hasChildren) taskRow.style.cursor = 'default';
-            const icon = document.createElement('span');
-            icon.className = 'terminalIcon';
-            icon.textContent = hasChildren ? (rowCollapsed ? '▸' : '▾') : '•';
-            const dot = document.createElement('span');
-            dot.className = 'dot';
-            dot.style.background = task.worktreeColor;
-            const label = taskRowLabel(task);
-            const actions = taskRowActions(task);
-            taskRow.append(icon, dot, label, actions);
-            list.appendChild(taskRow);
-            if (!rowCollapsed && task.preview) {
-              const preview = document.createElement('div');
-              preview.className = 'terminalLeaf';
-              preview.style.marginLeft = '58px';
-              preview.style.opacity = '0.75';
-              preview.style.fontFamily = 'monospace';
-              preview.textContent = task.preview;
-              list.appendChild(preview);
-            }
-            if (!rowCollapsed && task.terminalId && task.terminalId === activeSessionId) {
-              const inline = document.createElement('div');
-              inline.className = 'terminalInline active';
-              inline.appendChild(terminalEl);
-              terminalEl.style.display = 'block';
-              list.appendChild(inline);
-            }
-          }
-        }
-      }
-      if (!activeSessionId || !terminalEl.parentElement || !terminalEl.parentElement.classList.contains('terminalInline')) {
-        terminalEl.style.display = 'none';
-        document.body.appendChild(terminalEl);
-      }
-    }
-    function taskRowActions(task) {
-      const actions = document.createElement('span');
-      actions.className = 'taskActions';
-      const restart = document.createElement('button');
-      restart.className = 'taskAction';
-      restart.title = 'Restart task';
-      restart.textContent = '↻';
-      restart.onclick = event => {
-        event.stopPropagation();
-        vscode.postMessage({ type: 'restartTask', path: task.worktreePath });
-      };
-      const close = document.createElement('button');
-      close.className = 'taskAction';
-      close.title = task.terminalId ? 'Close task terminal' : 'Clear task item';
-      close.textContent = '×';
-      close.onclick = event => {
-        event.stopPropagation();
-        vscode.postMessage({ type: 'closeTask', id: task.id, terminalId: task.terminalId, path: task.worktreePath });
-      };
-      actions.append(restart, close);
-      return actions;
-    }
-    function renderWelcome(list, message) {
-      const box = document.createElement('div');
-      box.className = 'welcome';
-      const text = document.createElement('strong');
-      text.textContent = message;
-      const button = document.createElement('button');
-      button.textContent = 'Open Worktree Manager Menu';
-      button.onclick = () => vscode.postMessage({ type: 'openMenu' });
-      box.append(text, button);
-      list.appendChild(box);
-      terminalEl.style.display = 'none';
-      document.body.appendChild(terminalEl);
-    }
-    function taskRowLabel(task) {
-      const label = document.createElement('span');
-      const value = task.status === 'starting' ? 'loading…'
-        : task.status === 'running' ? 'running'
-        : (task.status + ' ' + (task.exitValue != null ? task.exitValue : 'unknown'));
-      label.append(document.createTextNode(task.label + ' ['));
-      const name = document.createElement('span');
-      name.textContent = task.worktreeName;
-      name.style.color = task.worktreeColor;
-      name.style.fontWeight = '600';
-      label.append(name, document.createTextNode('] ' + value + ' — ' + task.command));
-      return label;
-    }
-    function showContextMenu(event, items) {
-      event.preventDefault();
-      event.stopPropagation();
-      contextMenuEl.textContent = '';
-      for (const item of items) {
-        const button = document.createElement('button');
-        button.textContent = item.label;
-        button.onclick = clickEvent => {
-          clickEvent.stopPropagation();
-          hideContextMenu();
-          vscode.postMessage(item.message);
-        };
-        contextMenuEl.appendChild(button);
-      }
-      contextMenuEl.style.display = 'block';
-      contextMenuEl.style.left = event.clientX + 'px';
-      contextMenuEl.style.top = event.clientY + 'px';
-    }
-    function hideContextMenu() {
-      contextMenuEl.style.display = 'none';
-    }
-    function focusActiveTerminalSoon() {
-      if (!activeSessionId) return;
-      setTimeout(() => {
-        if (activeSessionId && terminalEl.parentElement && terminalEl.parentElement.classList.contains('terminalInline')) {
-          if (term) term.focus();
-        }
-      }, 0);
-    }
-    function resize() {
-      if (!activeSessionId || !terminalEl.parentElement || !terminalEl.parentElement.classList.contains('terminalInline')) return;
-      const cols = Math.max(20, Math.floor(terminalEl.clientWidth / 9));
-      const rows = Math.max(5, Math.floor(terminalEl.clientHeight / 18));
-      if (!term) return;
-      term.resize(cols, rows);
-      vscode.postMessage({ type: 'resize', id: activeSessionId, cols, rows });
-    }
-    vscode.postMessage({ type: 'ready' });
-    loadXterm();
-  </script>
+  <script src="${xtermJs}"></script>
+  <script src="${appJs}"></script>
 </body>
 </html>`;
   }
@@ -1380,6 +950,10 @@ function htmlEscape(value: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
+function commandUri(command: string, ...args: unknown[]): string {
+  return `command:${command}?${encodeURIComponent(JSON.stringify(args))}`;
+}
+
 function staticTerminalListHtml(state: any): string {
   if (!state?.hasWorkspace) {
     return `<div class="welcome"><strong>This feature only works with a workspace.</strong></div>`;
@@ -1391,28 +965,44 @@ function staticTerminalListHtml(state: any): string {
   }
   const parts: string[] = [];
   for (const repo of repos) {
-    parts.push(`<div class="repo">▾ ${htmlEscape(repo.label)}</div>`);
+    parts.push(`<details class="staticGroup" open><summary class="repo">${htmlEscape(repo.label)}</summary>`);
     for (const wt of Array.isArray(repo.worktrees) ? repo.worktrees : []) {
       const color = htmlEscape(wt.color);
-      parts.push(`<div class="wt"><span class="expandIcon">▾</span><span class="dot" style="background:${color}"></span><span style="color:${color};font-weight:600">${htmlEscape(wt.name)} (${htmlEscape(wt.branch)})</span></div>`);
-      for (const session of Array.isArray(wt.sessions) ? wt.sessions : []) {
+      const sessions = Array.isArray(wt.sessions) ? wt.sessions : [];
+      const openTerminalHref = htmlEscape(commandUri("worktreeManager.openNativeTerminalForPath", wt.path));
+      parts.push(`<details class="staticGroup" ${sessions.length ? "open" : ""}><summary class="wt"><span class="dot" style="background:${color}"></span><span style="color:${color};font-weight:600">${htmlEscape(wt.name)} (${htmlEscape(wt.branch)})</span><a class="addTerminal" href="${openTerminalHref}" title="Open interactive VS Code terminal here">+</a></summary>`);
+      for (const session of sessions) {
         const stateName = session.state === "running" ? "running" : "idle";
-        parts.push(`<div class="terminalLeaf"><span class="terminalIcon">▸</span><span class="terminalStatus ${stateName}"></span><span class="terminalLabel ${stateName}">${htmlEscape(session.displayName || session.label)}</span><span class="terminalStateText">${stateName === "running" ? "working" : "idle"}</span></div>`);
+        const preview = htmlEscape(session.preview);
+        const nativeHref = htmlEscape(commandUri("worktreeManager.openNativeTerminalForPath", wt.path));
+        parts.push(`<details class="staticGroup" open><summary class="terminalLeaf"><span class="terminalStatus ${stateName}"></span><span class="terminalLabel ${stateName}">${htmlEscape(session.displayName || session.label)}</span><span class="terminalStateText">${stateName === "running" ? "working" : "idle"}</span><a class="addTerminal" href="${nativeHref}" title="Open interactive VS Code terminal here">open</a></summary>${preview ? `<div class="staticPreview">${preview}</div>` : `<div class="staticPreview">No captured output yet.</div>`}</details>`);
       }
+      parts.push(`</details>`);
     }
+    parts.push(`</details>`);
   }
-  parts.push(`<div class="repo">▾ tasks</div>`);
+  parts.push(`<details class="staticGroup" open><summary class="repo">tasks</summary>`);
   for (const repo of tasks) {
     const rows = Array.isArray(repo.rows) ? repo.rows : [];
     if (!rows.length) continue;
-    parts.push(`<div class="repo" style="margin-left:14px">▾ ${htmlEscape(repo.label)}</div>`);
+    parts.push(`<details class="staticGroup" open><summary class="repo" style="margin-left:14px">${htmlEscape(repo.label)}</summary>`);
     for (const task of rows) {
       const color = htmlEscape(task.worktreeColor);
       const status = task.status === "starting" ? "loading…" : task.status === "running" ? "running" : htmlEscape(task.status);
-      parts.push(`<div class="terminalLeaf" style="margin-left:36px"><span class="terminalIcon">▸</span><span class="dot" style="background:${color}"></span><span>${htmlEscape(task.label)} [<span style="color:${color};font-weight:600">${htmlEscape(task.worktreeName)}</span>] ${status} — ${htmlEscape(task.command)}</span></div>`);
+      const preview = htmlEscape(task.preview);
+      const nativeHref = htmlEscape(commandUri("worktreeManager.openNativeTerminalForPath", task.worktreePath));
+      parts.push(`<details class="staticGroup" open><summary class="terminalLeaf" style="margin-left:36px"><span class="dot" style="background:${color}"></span><span>${htmlEscape(task.label)} [<span style="color:${color};font-weight:600">${htmlEscape(task.worktreeName)}</span>] ${status} — ${htmlEscape(task.command)}</span><a class="addTerminal" href="${nativeHref}" title="Open interactive VS Code terminal here">open</a></summary>${preview ? `<div class="staticPreview">${preview}</div>` : `<div class="staticPreview">No captured output yet.</div>`}</details>`);
     }
+    parts.push(`</details>`);
   }
+  parts.push(`</details>`);
   return parts.join("");
+}
+
+function defaultShell(): string {
+  if (process.platform === "win32") return "powershell.exe";
+  if (process.platform === "darwin") return "/bin/zsh";
+  return "/bin/bash";
 }
 
 function ptyEnv(
