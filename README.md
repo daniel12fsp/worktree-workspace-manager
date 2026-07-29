@@ -28,6 +28,8 @@ Worktree Workspace Manager is for teams that use **git worktrees** with a **bare
 
 ## Quick start
 
+![How to use Worktree Workspace Manager](assets/how-to-use.gif)
+
 > Requirements: VS Code 1.90+ and `git` on your `PATH`.
 
 ### Option A — configure with the UI
