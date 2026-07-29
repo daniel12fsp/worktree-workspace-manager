@@ -60,14 +60,12 @@ Minimal workspace settings:
 
 ```jsonc
 {
-  "worktreeManager.repositories": [
-    "~/code/express"
-  ],
+  "worktreeManager.repositories": ["~/code/express"],
   "worktreeManager.tasks": {
     "express": {
-      "cmd": ["npm run dev"]
-    }
-  }
+      "cmd": ["npm run dev"],
+    },
+  },
 }
 ```
 
@@ -101,8 +99,8 @@ If no workspace is open yet, either setup action creates a `.code-workspace` fil
 If the UI clone has authentication issues, create the bare-worktree repo from a normal terminal:
 
 ```sh
-mkdir express
-cd express
+mkdir express.git
+cd express.git
 git clone --bare git@github.com:expressjs/express.git .bare
 git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
 echo 'gitdir: .bare' > .git
@@ -132,9 +130,9 @@ Add bare repos to your workspace settings:
   "settings": {
     "worktreeManager.repositories": [
       "~/code/repos/fe-project",
-      "~/code/repos/be-project.git"
-    ]
-  }
+      "~/code/repos/be-project.git",
+    ],
+  },
 }
 ```
 
@@ -169,29 +167,29 @@ Tasks are keyed by the configured repo basename. `cmd` runs when a worktree is s
 
 ## Main actions
 
-| Action | What it does |
-| --- | --- |
-| **Clone Bare Repository…** | Clone a remote into `<repo>/.bare`; creates/updates workspace config automatically. |
-| **Add Existing Bare Repository…** | Add an existing bare repo; creates/updates workspace config automatically. |
-| **Add Worktree…** | Create a new git worktree. |
-| **Check Worktree** | Focus that worktree, hide the others, and run its task. |
-| **Open Terminal Here** | Open a terminal scoped to the worktree. |
-| **Run Worktree Task** | Restart the configured task for a worktree. |
-| **Change Worktree Color…** | Pick a custom color for a worktree. |
-| **Remove Worktree** | Run `git worktree remove`. |
-| **Fetch** | Run `git fetch` for a repo. |
-| **Prune Stale** | Run `git worktree prune`. |
-| **Configure Repositories…** | Open the workspace configuration. |
+| Action                            | What it does                                                                        |
+| --------------------------------- | ----------------------------------------------------------------------------------- |
+| **Clone Bare Repository…**        | Clone a remote into `<repo>/.bare`; creates/updates workspace config automatically. |
+| **Add Existing Bare Repository…** | Add an existing bare repo; creates/updates workspace config automatically.          |
+| **Add Worktree…**                 | Create a new git worktree.                                                          |
+| **Check Worktree**                | Focus that worktree, hide the others, and run its task.                             |
+| **Open Terminal Here**            | Open a terminal scoped to the worktree.                                             |
+| **Run Worktree Task**             | Restart the configured task for a worktree.                                         |
+| **Change Worktree Color…**        | Pick a custom color for a worktree.                                                 |
+| **Remove Worktree**               | Run `git worktree remove`.                                                          |
+| **Fetch**                         | Run `git fetch` for a repo.                                                         |
+| **Prune Stale**                   | Run `git worktree prune`.                                                           |
+| **Configure Repositories…**       | Open the workspace configuration.                                                   |
 
 ---
 
 ## Settings
 
-| Setting | Type | Description |
-| --- | --- | --- |
-| `worktreeManager.repositories` | `string[]` | Bare repos to manage. |
-| `worktreeManager.tasks` | `object` | Optional per-repo task commands, cleanup commands, and env values. |
-| `worktreeManager.colors` | `object` | Auto-managed worktree colors; editable through **Change Worktree Color…**. |
+| Setting                        | Type       | Description                                                                |
+| ------------------------------ | ---------- | -------------------------------------------------------------------------- |
+| `worktreeManager.repositories` | `string[]` | Bare repos to manage.                                                      |
+| `worktreeManager.tasks`        | `object`   | Optional per-repo task commands, cleanup commands, and env values.         |
+| `worktreeManager.colors`       | `object`   | Auto-managed worktree colors; editable through **Change Worktree Color…**. |
 
 ---
 
