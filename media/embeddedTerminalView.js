@@ -9,7 +9,14 @@ window.onunhandledrejection = event => {
 };
 const terminalEl = document.getElementById('terminal');
 const contextMenuEl = document.getElementById('contextMenu');
+const findBoxEl = document.getElementById('findBox');
+const findInputEl = document.getElementById('findInput');
+const findPreviousEl = document.getElementById('findPrevious');
+const findNextEl = document.getElementById('findNext');
+const findCloseEl = document.getElementById('findClose');
+const findResultEl = document.getElementById('findResult');
 let term;
+let searchAddon;
 let activeSessionId;
 const collapsedRepos = new Set();
 const collapsedWorktrees = new Set();
@@ -26,7 +33,22 @@ function initTerminal() {
   if (term) return;
   try {
     if (typeof Terminal === 'undefined') throw new Error('xterm Terminal global is not available');
-    term = new Terminal({ convertEol: true, cursorBlink: true, fontFamily: 'monospace', theme: { background: '#000000' } });
+    term = new Terminal({ allowProposedApi: true, convertEol: true, cursorBlink: true, fontFamily: 'monospace', theme: { background: '#000000' } });
+    const SearchAddonCtor = window.SearchAddon && window.SearchAddon.SearchAddon;
+    if (SearchAddonCtor) {
+      searchAddon = new SearchAddonCtor();
+      term.loadAddon(searchAddon);
+      searchAddon.onDidChangeResults(updateFindResult);
+    }
+    term.attachCustomKeyEventHandler(event => {
+      if (event.type === 'keydown' && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (activeSessionId) openFindBox();
+        return false;
+      }
+      return true;
+    });
     term.open(terminalEl);
     term.onData(data => {
       if (!activeSessionId) return;
@@ -43,7 +65,23 @@ function loadXterm() {
 window.addEventListener('resize', resize);
 window.addEventListener('click', hideContextMenu);
 window.addEventListener('keydown', event => {
-  if (event.key === 'Escape') hideContextMenu();
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+    if (activeSessionId && term) {
+      event.preventDefault();
+      event.stopPropagation();
+      openFindBox();
+    }
+    return;
+  }
+  if (event.key === 'Escape') {
+    if (isFindBoxOpen()) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeFindBox();
+      return;
+    }
+    hideContextMenu();
+  }
 });
 window.addEventListener('message', event => {
   try {
@@ -97,6 +135,61 @@ function reportWebviewError(message, source, line, column, stack) {
     box.append(text, detail);
     list.appendChild(box);
   }
+}
+if (findInputEl) {
+  findInputEl.addEventListener('input', () => runSearch(false));
+  findInputEl.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      runSearch(Boolean(event.shiftKey));
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      closeFindBox();
+    }
+  });
+}
+if (findPreviousEl) findPreviousEl.onclick = () => runSearch(true);
+if (findNextEl) findNextEl.onclick = () => runSearch(false);
+if (findCloseEl) findCloseEl.onclick = () => closeFindBox();
+function openFindBox() {
+  if (!findBoxEl || !findInputEl) return;
+  findBoxEl.classList.add('visible');
+  findInputEl.select();
+  findInputEl.focus();
+  if (findInputEl.value) runSearch(false);
+}
+function closeFindBox() {
+  if (!findBoxEl) return;
+  findBoxEl.classList.remove('visible');
+  searchAddon?.clearDecorations();
+  updateFindResult({ resultIndex: -1, resultCount: 0 });
+  focusActiveTerminalSoon();
+}
+function isFindBoxOpen() {
+  return Boolean(findBoxEl && findBoxEl.classList.contains('visible'));
+}
+function runSearch(previous) {
+  if (!activeSessionId || !searchAddon || !findInputEl) return;
+  const query = findInputEl.value;
+  if (!query) {
+    searchAddon.clearDecorations();
+    updateFindResult({ resultIndex: -1, resultCount: 0 });
+    return;
+  }
+  const options = {
+    decorations: { activeMatchColorOverviewRuler: '#ffcc00', matchOverviewRuler: '#d18616' },
+    incremental: !previous
+  };
+  previous ? searchAddon.findPrevious(query, options) : searchAddon.findNext(query, options);
+}
+function updateFindResult(event) {
+  if (!findResultEl) return;
+  if (!findInputEl?.value || !event || event.resultCount <= 0) {
+    findResultEl.textContent = findInputEl?.value ? '0/0' : '';
+    return;
+  }
+  const current = event.resultIndex >= 0 ? event.resultIndex + 1 : '?';
+  findResultEl.textContent = current + '/' + event.resultCount;
 }
 function stripTerminalGeneratedInput(data) {
   // xterm replies to cursor-position/device-status queries with ESC[row;colR.

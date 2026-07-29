@@ -124,6 +124,12 @@ export class EmbeddedTerminalViewProvider
           "@xterm",
           "xterm",
         ),
+        vscode.Uri.joinPath(
+          this.extensionUri,
+          "node_modules",
+          "@xterm",
+          "addon-search",
+        ),
         vscode.Uri.joinPath(this.extensionUri, "media"),
       ],
     };
@@ -953,6 +959,16 @@ export class EmbeddedTerminalViewProvider
         "xterm.css",
       ),
     );
+    const xtermSearchJs = webview.asWebviewUri(
+      vscode.Uri.joinPath(
+        this.extensionUri,
+        "node_modules",
+        "@xterm",
+        "addon-search",
+        "lib",
+        "addon-search.js",
+      ),
+    );
     const appJs = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "media", "embeddedTerminalView.js"),
     );
@@ -1011,15 +1027,23 @@ export class EmbeddedTerminalViewProvider
     .welcome strong { color: var(--vscode-foreground); font-weight: 600; }
     .welcome button { border: 0; border-radius: 2px; padding: 6px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); cursor: pointer; }
     .welcome button:hover { background: var(--vscode-button-hoverBackground); }
+    .findBox { display: none; position: sticky; top: 0; z-index: 5; gap: 4px; align-items: center; padding: 4px; margin-bottom: 6px; background: var(--vscode-panel-background); border: 1px solid var(--vscode-panel-border); }
+    .findBox.visible { display: flex; }
+    .findBox input { min-width: 0; flex: 1; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); padding: 3px 5px; }
+    .findBox button { border: none; border-radius: 3px; background: transparent; color: var(--vscode-foreground); cursor: pointer; padding: 2px 6px; }
+    .findBox button:hover { background: var(--vscode-button-secondaryHoverBackground); }
+    .findResult { color: var(--vscode-descriptionForeground); font-size: 11px; min-width: 48px; text-align: right; white-space: nowrap; }
   </style>
 </head>
 <body>
   <div class="root">
+    <div id="findBox" class="findBox" aria-label="Find in active terminal"><input id="findInput" type="text" placeholder="Find in terminal"><span id="findResult" class="findResult"></span><button id="findPrevious" title="Previous match">↑</button><button id="findNext" title="Next match">↓</button><button id="findClose" title="Close find">×</button></div>
     <div class="sidebar" id="list">${initialMarkup}</div>
   </div>
   <div id="terminal" style="display:none"></div>
   <div id="contextMenu" class="contextMenu" style="display:none"></div>
   <script src="${xtermJs}"></script>
+  <script src="${xtermSearchJs}"></script>
   <script src="${appJs}"></script>
 </body>
 </html>`;
