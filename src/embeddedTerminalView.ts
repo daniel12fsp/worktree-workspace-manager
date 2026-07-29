@@ -698,6 +698,14 @@ export class EmbeddedTerminalViewProvider
         const command = session.inputBuffer.trim();
         if (command) {
           session.runningCommand = command;
+          log("embedded terminal command captured", {
+            id: session.id,
+            label: session.label,
+            repo: session.worktree.repo.label,
+            worktree: session.worktree.name,
+            isTask: Boolean(session.isTask),
+            command,
+          });
           void this.renderSessions();
         }
         session.inputBuffer = "";
@@ -734,6 +742,23 @@ export class EmbeddedTerminalViewProvider
         .flat()
         .map((worktree) => [normalizePath(worktree.path), worktree]),
     );
+    const taskSessionIds = new Set(taskRows.map((row) => row.terminalId).filter(Boolean));
+    const duplicateTaskSessions = [...this.sessions.values()].filter(
+      (session) => session.isTask || taskSessionIds.has(session.id),
+    );
+    if (duplicateTaskSessions.length) {
+      log("dedupe task sessions from worktree terminal hierarchy", {
+        count: duplicateTaskSessions.length,
+        sessions: duplicateTaskSessions.map((session) => ({
+          id: session.id,
+          label: session.label,
+          repo: session.worktree.repo.label,
+          worktree: session.worktree.name,
+          isTask: Boolean(session.isTask),
+          hasTaskRow: taskSessionIds.has(session.id),
+        })),
+      });
+    }
     const repos = [...all].map(([repo, worktrees]) => ({
       label: repo.label,
       path: repo.fsPath,
@@ -748,7 +773,7 @@ export class EmbeddedTerminalViewProvider
         taskStatus: taskStatusByPath.get(normalizePath(worktree.path)),
         sessions: this.orderedSessions(
           [...this.sessions.values()].filter(
-            (session) => session.worktree.path === worktree.path,
+            (session) => session.worktree.path === worktree.path && !session.isTask && !taskSessionIds.has(session.id),
           ),
         ).map((session) => {
           const fullCommand = session.runningCommand?.trim();
@@ -769,12 +794,24 @@ export class EmbeddedTerminalViewProvider
               taskCommand,
             });
           }
+          const displayName = session.isTask
+            ? session.label
+            : fullCommand || session.label;
+          if (!session.isTask && fullCommand && displayName !== session.label) {
+            log("regular terminal display name follows running command", {
+              id: session.id,
+              label: session.label,
+              displayName,
+              repo: worktree.repo.label,
+              worktree: worktree.name,
+            });
+          }
           return {
             id: session.id,
             label: session.label,
             state: isRunning ? "running" : "idle",
-            displayName: session.label,
-            statusText: taskCommand || fullCommand || "idle",
+            displayName,
+            statusText: isRunning ? "running" : "idle",
             fullCommand: taskCommand || fullCommand,
             preview: outputPreview(session.output),
             isTask: Boolean(session.isTask),
@@ -832,9 +869,10 @@ export class EmbeddedTerminalViewProvider
       hasWorkspace,
       repoCount: repos.length,
       worktreeCount: repos.reduce((count, repo) => count + repo.worktrees.length, 0),
-      regularAndTaskSessionCount: this.sessions.size,
+      regularSessionCount: [...this.sessions.values()].filter((session) => !session.isTask && !taskSessionIds.has(session.id)).length,
       taskSessionCount: taskSessions.length,
       taskRowCount: taskRows.length,
+      dedupedTaskSessionCount: duplicateTaskSessions.length,
       activeSessionId: this.activeSessionId,
       repos: repos.map(repo => ({
         label: repo.label,
@@ -957,7 +995,7 @@ export class EmbeddedTerminalViewProvider
     .terminalLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .terminalLabel.running { font-weight: 600; }
     .terminalLabel.idle { color: var(--vscode-descriptionForeground); }
-    .terminalStateText { opacity: 0.65; font-size: 11px; }
+    .terminalStateText { opacity: 0.65; font-size: 11px; flex: 0 0 auto; white-space: nowrap; }
     .terminalActions { margin-left: auto; display: inline-flex; gap: 2px; }
     .terminalAction { border: none; border-radius: 3px; background: transparent; color: var(--vscode-foreground); cursor: pointer; opacity: 0.75; padding: 1px 5px; }
     .addTerminal:hover, .terminalAction:hover { opacity: 1; background: var(--vscode-button-secondaryHoverBackground); }
