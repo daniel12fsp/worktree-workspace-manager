@@ -26,6 +26,55 @@ Worktree Workspace Manager is for teams that use **git worktrees** with a **bare
 
 ---
 
+## Why bare repos + worktrees?
+
+A **bare repository** stores only Git metadata and refs, without a checked-out working directory. In this extension, the bare repo is the central project root, and each branch you work on lives in a separate **git worktree** folder.
+
+Example layout:
+
+```text
+express/
+  .bare/        # bare git repository metadata
+  .git          # points git commands to .bare
+  main/         # worktree for main
+  feat-api/     # worktree for feat/api
+  fix-login/    # worktree for fix/login
+```
+
+Advantages:
+
+- Switch branches without stashing or losing editor state.
+- Run multiple branches at the same time, each with its own terminal/task.
+- Keep one VS Code workspace for the whole project while focusing one active worktree.
+- Avoid repeatedly reinstalling/reopening project folders just to compare branches.
+- Let Git remain the source of truth; the extension stores no separate worktree database.
+
+How to configure it:
+
+1. Create or choose a repo root that contains a bare Git directory, usually `.bare` or `project.git`.
+2. Add that repo root/path to `worktreeManager.repositories`.
+3. Optionally add `worktreeManager.tasks` so checking/selecting a worktree starts your dev command.
+4. Use **Add Worktree…** to create branch worktrees under the repo.
+
+Minimal workspace settings:
+
+```jsonc
+{
+  "worktreeManager.repositories": [
+    "~/code/express"
+  ],
+  "worktreeManager.tasks": {
+    "express": {
+      "cmd": ["npm run dev"]
+    }
+  }
+}
+```
+
+`worktreeManager.tasks` is optional. If the key is missing, task UI/activity is hidden; if present, tasks are available for configured repos.
+
+---
+
 ## Quick start
 
 ![How to use Worktree Workspace Manager](assets/how-to-use.gif)
@@ -41,8 +90,36 @@ Worktree Workspace Manager is for teams that use **git worktrees** with a **bare
    - **Add Existing Bare Repository…** — picks an existing bare repo, adds it to `worktreeManager.repositories`, creates a default task, and opens the workspace config.
 
 If no workspace is open yet, either setup action creates a `.code-workspace` file for the repo and reopens VS Code with it.
+
+> **Git authentication note:** **Clone Bare Repository…** may have issues with remotes that require an interactive password/passphrase prompt. Prefer SSH keys loaded in `ssh-agent`, Git Credential Manager, or clone manually in a terminal first, then use **Add Existing Bare Repository…**.
+
 4. Edit the generated task command if needed.
 5. Add worktrees and select/check one to start working.
+
+### Manual bare repo setup
+
+If the UI clone has authentication issues, create the bare-worktree repo from a normal terminal:
+
+```sh
+mkdir express
+cd express
+git clone --bare git@github.com:expressjs/express.git .bare
+git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+echo 'gitdir: .bare' > .git
+```
+
+Then run **Add Existing Bare Repository…** and select the `express` folder.
+
+To transform an already cloned normal git repo into this layout, run from the repo root:
+
+```sh
+mkdir .bare
+mv .git/* .bare/
+rmdir .git
+echo 'gitdir: .bare' > .git
+git --git-dir=.bare config core.bare true
+git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+```
 
 ### Option B — configure manually
 
