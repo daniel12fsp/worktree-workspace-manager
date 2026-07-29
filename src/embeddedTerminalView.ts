@@ -42,6 +42,7 @@ export class EmbeddedTerminalViewProvider
   private activeSessionId: string | undefined;
   private terminalSeq = 0;
   private terminalOrderSeq = 0;
+  private webviewReady = false;
   private readonly terminalOrder = new Map<string, number>();
 
   constructor(
@@ -86,6 +87,7 @@ export class EmbeddedTerminalViewProvider
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
+    log("Terminals by Worktree resolve webview view", { visible: webviewView.visible });
     this.view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
@@ -110,6 +112,7 @@ export class EmbeddedTerminalViewProvider
               ? { name: error.name, message: error.message, stack: error.stack }
               : String(error),
         });
+        void vscode.window.showErrorMessage(`Terminals by Worktree command failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     });
     void this.renderSessions();
@@ -117,7 +120,29 @@ export class EmbeddedTerminalViewProvider
 
   private async handleWebviewMessage(message: any): Promise<void> {
     if (message?.type === "ready") {
+      this.webviewReady = true;
+      log("Terminals by Worktree webview ready", { sessionCount: this.sessions.size });
       await this.renderSessions();
+    } else if (message?.type === "webviewBootstrap") {
+      this.webviewReady = true;
+      log("Terminals by Worktree webview bootstrap script running", { sessionCount: this.sessions.size });
+    } else if (message?.type === "webviewError") {
+      logError("Terminals by Worktree webview error", {
+        message: String(message.message ?? "unknown webview error"),
+        source: message.source ? String(message.source) : undefined,
+        line: message.line ? Number(message.line) : undefined,
+        column: message.column ? Number(message.column) : undefined,
+        stack: message.stack ? String(message.stack) : undefined,
+      });
+      void vscode.window.showErrorMessage(`Terminals by Worktree UI error: ${String(message.message ?? "unknown error")}`);
+    } else if (message?.type === "webviewRender") {
+      log("Terminals by Worktree webview rendered", {
+        repoCount: Number(message.repoCount) || 0,
+        worktreeCount: Number(message.worktreeCount) || 0,
+        sessionCount: Number(message.sessionCount) || 0,
+        taskRowCount: Number(message.taskRowCount) || 0,
+        childNodeCount: Number(message.childNodeCount) || 0,
+      });
     } else if (message?.type === "openMenu") {
       await vscode.commands.executeCommand("worktreeManager.showMenu");
     } else if (message?.type === "select") {
@@ -619,7 +644,7 @@ export class EmbeddedTerminalViewProvider
     if (!session) return;
 
     session.process.write(data);
-    for (const char of data) {
+    for (const char of stripTerminalControlInput(data)) {
       if (char === "\r" || char === "\n") {
         const command = session.inputBuffer.trim();
         if (command) {
@@ -640,7 +665,11 @@ export class EmbeddedTerminalViewProvider
   }
 
   private async renderSessions(): Promise<void> {
-    if (!this.view) return;
+    if (!this.view) {
+      log("render skipped: Terminals by Worktree webview is not ready", { sessionCount: this.sessions.size });
+      return;
+    }
+    try {
     const hasWorkspace = Boolean(vscode.workspace.workspaceFile);
     const all = await listAllWorktrees();
     const activeWorkspaceFolders = await getCheckedWorktreePaths();
@@ -670,15 +699,20 @@ export class EmbeddedTerminalViewProvider
         taskStatus: taskStatusByPath.get(normalizePath(worktree.path)),
         sessions: this.orderedSessions(
           [...this.sessions.values()].filter(
-            (session) =>
-              !session.isTask && session.worktree.path === worktree.path,
+            (session) => session.worktree.path === worktree.path,
           ),
-        ).map((session) => ({
-          id: session.id,
-          label: session.label,
-          runningCommand: commandLabel(session.runningCommand),
-          fullCommand: session.runningCommand,
-        })),
+        ).map((session) => {
+          const fullCommand = session.runningCommand?.trim();
+          return {
+            id: session.id,
+            label: session.label,
+            state: fullCommand ? "running" : "idle",
+            displayName: fullCommand || session.label,
+            statusText: fullCommand ? "working" : "idle",
+            fullCommand,
+            isTask: Boolean(session.isTask),
+          };
+        }),
       })),
     }));
     log("render generic tasks group hierarchy for Terminals by Worktree", {
@@ -718,7 +752,7 @@ export class EmbeddedTerminalViewProvider
     const active = this.activeSessionId
       ? this.sessions.get(this.activeSessionId)
       : undefined;
-    await this.view.webview.postMessage({
+    const state = {
       type: "state",
       repos,
       tasks,
@@ -726,7 +760,50 @@ export class EmbeddedTerminalViewProvider
       activeOutput: active?.output.join("") ?? "",
       hasWorkspace,
       home: os.homedir(),
+    };
+    log("render Terminals by Worktree state", {
+      hasWorkspace,
+      repoCount: repos.length,
+      worktreeCount: repos.reduce((count, repo) => count + repo.worktrees.length, 0),
+      regularAndTaskSessionCount: this.sessions.size,
+      taskSessionCount: taskSessions.length,
+      taskRowCount: taskRows.length,
+      activeSessionId: this.activeSessionId,
+      repos: repos.map(repo => ({
+        label: repo.label,
+        worktrees: repo.worktrees.map(worktree => ({
+          name: worktree.name,
+          sessionCount: worktree.sessions.length,
+          sessions: worktree.sessions.map(session => ({ id: session.id, label: session.label, state: session.state, isTask: session.isTask }))
+        }))
+      })),
+      tasks: tasks.map(repo => ({ label: repo.label, rowCount: repo.rows.length }))
     });
+    if (!this.webviewReady) {
+      this.view.webview.html = this.html(this.view.webview, state);
+      log("rendered static fallback HTML for Terminals by Worktree", {
+        repoCount: repos.length,
+        sessionCount: this.sessions.size,
+        taskRowCount: taskRows.length,
+      });
+    }
+    const delivered = await this.view.webview.postMessage(state);
+    if (!delivered) {
+      logError("failed to post Terminals by Worktree state; webview did not accept message", {
+        repoCount: repos.length,
+        sessionCount: this.sessions.size,
+        taskRowCount: taskRows.length,
+      });
+      void vscode.window.showErrorMessage("Terminals by Worktree failed to update: webview did not accept state message.");
+    }
+    } catch (error) {
+      logError("failed to render Terminals by Worktree", {
+        error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+        sessionCount: this.sessions.size,
+        activeSessionId: this.activeSessionId,
+      });
+      void vscode.window.showErrorMessage(`Terminals by Worktree failed to render: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async findWorktree(fsPath: string): Promise<Worktree | undefined> {
@@ -736,7 +813,7 @@ export class EmbeddedTerminalViewProvider
       .find((worktree) => path.resolve(worktree.path) === path.resolve(fsPath));
   }
 
-  private html(webview: vscode.Webview): string {
+  private html(webview: vscode.Webview, initialState?: any): string {
     const nonce = Math.random().toString(36).slice(2);
     const xtermJs = webview.asWebviewUri(
       vscode.Uri.joinPath(
@@ -758,11 +835,12 @@ export class EmbeddedTerminalViewProvider
         "xterm.css",
       ),
     );
+    const initialMarkup = initialState ? staticTerminalListHtml(initialState) : "";
     return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline' 'nonce-${nonce}';">
   <link rel="stylesheet" href="${xtermCss}">
   <style>
     html, body { height: 100%; margin: 0; color: var(--vscode-foreground); background: var(--vscode-panel-background); font-family: var(--vscode-font-family); }
@@ -775,6 +853,10 @@ export class EmbeddedTerminalViewProvider
     .terminalLeaf.dragOver { outline: 1px dashed var(--vscode-focusBorder, #007fd4); }
     .wt:hover, .terminalLeaf:hover, .wt.active, .terminalLeaf.active { background: var(--vscode-list-hoverBackground); }
     .terminalIcon { color: var(--vscode-terminal-ansiGreen); }
+    .terminalStatus { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; box-sizing: border-box; }
+    .terminalStatus.running { background: var(--vscode-terminal-ansiGreen); box-shadow: 0 0 0 0 rgba(46, 160, 67, 0.75); animation: pulse 1.4s ease-out infinite; }
+    .terminalStatus.idle { border: 1px solid var(--vscode-descriptionForeground); opacity: 0.7; }
+    @keyframes pulse { 70% { box-shadow: 0 0 0 5px rgba(46, 160, 67, 0); } 100% { box-shadow: 0 0 0 0 rgba(46, 160, 67, 0); } }
     .expandIcon { width: 12px; flex: 0 0 12px; text-align: center; color: var(--vscode-foreground); opacity: 0.85; }
     .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
     .workspaceState { flex: 0 0 auto; accent-color: #2ea043; cursor: pointer; }
@@ -786,6 +868,9 @@ export class EmbeddedTerminalViewProvider
     .badge { margin-left: auto; opacity: 0.7; font-size: 11px; }
     .addTerminal { margin-left: auto; border: none; background: transparent; color: var(--vscode-foreground); cursor: pointer; opacity: 0.8; }
     .terminalLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .terminalLabel.running { font-weight: 600; }
+    .terminalLabel.idle { color: var(--vscode-descriptionForeground); }
+    .terminalStateText { opacity: 0.65; font-size: 11px; }
     .terminalActions { margin-left: auto; display: inline-flex; gap: 2px; }
     .terminalAction { border: none; border-radius: 3px; background: transparent; color: var(--vscode-foreground); cursor: pointer; opacity: 0.75; padding: 1px 5px; }
     .addTerminal:hover, .terminalAction:hover { opacity: 1; background: var(--vscode-button-secondaryHoverBackground); }
@@ -803,16 +888,23 @@ export class EmbeddedTerminalViewProvider
 </head>
 <body>
   <div class="root">
-    <div class="sidebar" id="list"></div>
+    <div class="sidebar" id="list">${initialMarkup}</div>
   </div>
   <div id="terminal" style="display:none"></div>
   <div id="contextMenu" class="contextMenu" style="display:none"></div>
-  <script nonce="${nonce}" src="${xtermJs}"></script>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    const term = new Terminal({ convertEol: true, cursorBlink: true, fontFamily: 'monospace', theme: { background: '#000000' } });
+    vscode.postMessage({ type: 'webviewBootstrap' });
+    window.onerror = (message, source, line, column, error) => {
+      reportWebviewError(message, source, line, column, error && error.stack);
+    };
+    window.onunhandledrejection = event => {
+      const reason = event.reason;
+      reportWebviewError(reason && reason.message ? reason.message : String(reason), undefined, undefined, undefined, reason && reason.stack);
+    };
     const terminalEl = document.getElementById('terminal');
     const contextMenuEl = document.getElementById('contextMenu');
+    let term;
     let activeSessionId;
     const collapsedRepos = new Set();
     const collapsedWorktrees = new Set();
@@ -824,14 +916,36 @@ export class EmbeddedTerminalViewProvider
     let currentRepos = [];
     let currentTasks = [];
     let currentHasWorkspace = true;
-    term.open(terminalEl);
-    term.onData(data => activeSessionId && vscode.postMessage({ type: 'input', id: activeSessionId, data }));
+    function initTerminal() {
+      if (term) return;
+      try {
+        if (typeof Terminal === 'undefined') throw new Error('xterm Terminal global is not available');
+        term = new Terminal({ convertEol: true, cursorBlink: true, fontFamily: 'monospace', theme: { background: '#000000' } });
+        term.open(terminalEl);
+        term.onData(data => {
+          if (!activeSessionId) return;
+          const sanitized = stripTerminalGeneratedInput(data);
+          if (sanitized) vscode.postMessage({ type: 'input', id: activeSessionId, data: sanitized });
+        });
+      } catch (error) {
+        reportWebviewError(error && error.message ? error.message : String(error), undefined, undefined, undefined, error && error.stack);
+      }
+    }
+    function loadXterm() {
+      const script = document.createElement('script');
+      script.setAttribute('nonce', '${nonce}');
+      script.src = '${xtermJs}';
+      script.onload = initTerminal;
+      script.onerror = () => reportWebviewError('Failed to load xterm.js', '${xtermJs}', undefined, undefined, undefined);
+      document.body.appendChild(script);
+    }
     window.addEventListener('resize', resize);
     window.addEventListener('click', hideContextMenu);
     window.addEventListener('keydown', event => {
       if (event.key === 'Escape') hideContextMenu();
     });
     window.addEventListener('message', event => {
+      try {
       const message = event.data;
       if (message.type === 'state') {
         activeSessionId = message.activeSessionId;
@@ -841,23 +955,57 @@ export class EmbeddedTerminalViewProvider
         for (const repo of currentRepos) {
           for (const wt of repo.worktrees || []) {
             if (wt.taskStatus && wt.taskStatus !== 'starting') loadingWorktreePaths.delete(wt.path);
+            if ((wt.sessions || []).length) {
+              collapsedRepos.delete(repo.label);
+              collapsedWorktrees.delete(repo.label + ':' + wt.path);
+            }
           }
         }
         renderList(currentRepos, currentTasks);
-        term.clear();
-        if (message.activeOutput) term.write(message.activeOutput);
-        resize();
-        focusActiveTerminalSoon();
+        if (term) {
+          term.clear();
+          if (message.activeOutput) term.write(message.activeOutput);
+          resize();
+          focusActiveTerminalSoon();
+        }
       } else if (message.type === 'loadingDone') {
         loadingWorktreePaths.delete(message.path);
         renderList(currentRepos, currentTasks);
       } else if (message.type === 'output' && message.id === activeSessionId) {
-        term.write(message.data);
-        focusActiveTerminalSoon();
+        if (term) {
+          term.write(message.data);
+          focusActiveTerminalSoon();
+        }
       } else if (message.type === 'clear' && message.id === activeSessionId) {
-        term.clear();
+        if (term) term.clear();
+      }
+      } catch (error) {
+        reportWebviewError(error && error.message ? error.message : String(error), undefined, undefined, undefined, error && error.stack);
       }
     });
+    function reportWebviewError(message, source, line, column, stack) {
+      vscode.postMessage({ type: 'webviewError', message: String(message), source, line, column, stack });
+      const list = document.getElementById('list');
+      if (list) {
+        list.textContent = '';
+        const box = document.createElement('div');
+        box.className = 'welcome';
+        const text = document.createElement('strong');
+        text.textContent = 'Terminals by Worktree failed to render.';
+        const detail = document.createElement('div');
+        detail.textContent = String(message);
+        detail.style.maxWidth = '100%';
+        detail.style.wordBreak = 'break-word';
+        box.append(text, detail);
+        list.appendChild(box);
+      }
+    }
+    function stripTerminalGeneratedInput(data) {
+      // xterm replies to cursor-position/device-status queries with ESC[row;colR.
+      // Some macOS shells echo those replies as visible ^[[3;1R noise, so do not
+      // forward terminal-generated reports to the pty as user input.
+      return data.replace(/\x1b\[\d+;\d+R/g, '');
+    }
     function renderList(repos, tasks) {
       const list = document.getElementById('list');
       list.textContent = '';
@@ -941,7 +1089,10 @@ export class EmbeddedTerminalViewProvider
             const terminal = document.createElement('div');
             terminal.className = 'terminalLeaf' + (session.id === activeSessionId ? ' active' : '');
             terminal.draggable = true;
-            terminal.title = session.fullCommand || session.label;
+            terminal.title = session.state === 'running'
+              ? 'Working: ' + (session.fullCommand || session.displayName)
+              : 'Idle: ' + session.label;
+            if (session.isTask) terminal.title = 'Task terminal — ' + terminal.title;
             terminal.onclick = event => {
               event.stopPropagation();
               vscode.postMessage({ type: session.id === activeSessionId ? 'collapse' : 'select', id: session.id });
@@ -974,9 +1125,15 @@ export class EmbeddedTerminalViewProvider
             const icon = document.createElement('span');
             icon.className = 'terminalIcon';
             icon.textContent = session.id === activeSessionId ? '▾' : '▸';
+            const status = document.createElement('span');
+            status.className = 'terminalStatus ' + session.state;
+            status.title = session.state === 'running' ? 'Working' : 'Idle';
             const terminalLabel = document.createElement('span');
-            terminalLabel.className = 'terminalLabel';
-            terminalLabel.textContent = session.runningCommand || session.label;
+            terminalLabel.className = 'terminalLabel ' + session.state;
+            terminalLabel.textContent = session.displayName;
+            const stateText = document.createElement('span');
+            stateText.className = 'terminalStateText';
+            stateText.textContent = session.state === 'running' ? 'working' : 'idle';
             const actions = document.createElement('span');
             actions.className = 'terminalActions';
             const close = document.createElement('button');
@@ -985,10 +1142,21 @@ export class EmbeddedTerminalViewProvider
             close.textContent = '×';
             close.onclick = event => {
               event.stopPropagation();
-              vscode.postMessage({ type: 'closeSession', id: session.id });
+              if (session.isTask) {
+                let task;
+                for (const taskRepo of currentTasks || []) {
+                  task = (taskRepo.rows || []).find(row => row.terminalId === session.id);
+                  if (task) break;
+                }
+                vscode.postMessage(task
+                  ? { type: 'closeTask', id: task.id, terminalId: session.id, path: task.worktreePath }
+                  : { type: 'closeSession', id: session.id });
+              } else {
+                vscode.postMessage({ type: 'closeSession', id: session.id });
+              }
             };
             actions.append(close);
-            terminal.append(icon, terminalLabel, actions);
+            terminal.append(icon, status, terminalLabel, stateText, actions);
             list.appendChild(terminal);
             if (session.id === activeSessionId) {
               const inline = document.createElement('div');
@@ -999,6 +1167,24 @@ export class EmbeddedTerminalViewProvider
             }
           }
         }
+      }
+      const renderSummary = {
+        repoCount: repos.length,
+        worktreeCount: repos.reduce((count, repo) => count + (repo.worktrees || []).length, 0),
+        sessionCount: repos.reduce((count, repo) => count + (repo.worktrees || []).reduce((inner, wt) => inner + (wt.sessions || []).length, 0), 0),
+        taskRowCount: tasks.reduce((count, repo) => count + (repo.rows || []).length, 0),
+        childNodeCount: list.childElementCount
+      };
+      vscode.postMessage({
+        type: 'webviewRender',
+        repoCount: renderSummary.repoCount,
+        worktreeCount: renderSummary.worktreeCount,
+        sessionCount: renderSummary.sessionCount,
+        taskRowCount: renderSummary.taskRowCount,
+        childNodeCount: renderSummary.childNodeCount
+      });
+      if (renderSummary.sessionCount > 0 && !list.textContent.trim()) {
+        throw new Error('Rendered terminal state contains sessions, but no visible UI text was produced.');
       }
       const hasTaskRows = tasks.some(repo => (repo.rows || []).length);
       const tasksHeader = document.createElement('div');
@@ -1088,7 +1274,7 @@ export class EmbeddedTerminalViewProvider
           }
         }
       }
-      if (!activeSessionId || !terminalEl.parentElement?.classList.contains('terminalInline')) {
+      if (!activeSessionId || !terminalEl.parentElement || !terminalEl.parentElement.classList.contains('terminalInline')) {
         terminalEl.style.display = 'none';
         document.body.appendChild(terminalEl);
       }
@@ -1132,7 +1318,7 @@ export class EmbeddedTerminalViewProvider
       const label = document.createElement('span');
       const value = task.status === 'starting' ? 'loading…'
         : task.status === 'running' ? 'running'
-        : (task.status + ' ' + (task.exitValue ?? 'unknown'));
+        : (task.status + ' ' + (task.exitValue != null ? task.exitValue : 'unknown'));
       label.append(document.createTextNode(task.label + ' ['));
       const name = document.createElement('span');
       name.textContent = task.worktreeName;
@@ -1165,23 +1351,68 @@ export class EmbeddedTerminalViewProvider
     function focusActiveTerminalSoon() {
       if (!activeSessionId) return;
       setTimeout(() => {
-        if (activeSessionId && terminalEl.parentElement?.classList.contains('terminalInline')) {
-          term.focus();
+        if (activeSessionId && terminalEl.parentElement && terminalEl.parentElement.classList.contains('terminalInline')) {
+          if (term) term.focus();
         }
       }, 0);
     }
     function resize() {
-      if (!activeSessionId || !terminalEl.parentElement?.classList.contains('terminalInline')) return;
+      if (!activeSessionId || !terminalEl.parentElement || !terminalEl.parentElement.classList.contains('terminalInline')) return;
       const cols = Math.max(20, Math.floor(terminalEl.clientWidth / 9));
       const rows = Math.max(5, Math.floor(terminalEl.clientHeight / 18));
+      if (!term) return;
       term.resize(cols, rows);
       vscode.postMessage({ type: 'resize', id: activeSessionId, cols, rows });
     }
     vscode.postMessage({ type: 'ready' });
+    loadXterm();
   </script>
 </body>
 </html>`;
   }
+}
+
+function htmlEscape(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function staticTerminalListHtml(state: any): string {
+  if (!state?.hasWorkspace) {
+    return `<div class="welcome"><strong>This feature only works with a workspace.</strong></div>`;
+  }
+  const repos = Array.isArray(state?.repos) ? state.repos : [];
+  const tasks = Array.isArray(state?.tasks) ? state.tasks : [];
+  if (!repos.length) {
+    return `<div class="welcome"><strong>No repositories configured yet.</strong></div>`;
+  }
+  const parts: string[] = [];
+  for (const repo of repos) {
+    parts.push(`<div class="repo">▾ ${htmlEscape(repo.label)}</div>`);
+    for (const wt of Array.isArray(repo.worktrees) ? repo.worktrees : []) {
+      const color = htmlEscape(wt.color);
+      parts.push(`<div class="wt"><span class="expandIcon">▾</span><span class="dot" style="background:${color}"></span><span style="color:${color};font-weight:600">${htmlEscape(wt.name)} (${htmlEscape(wt.branch)})</span></div>`);
+      for (const session of Array.isArray(wt.sessions) ? wt.sessions : []) {
+        const stateName = session.state === "running" ? "running" : "idle";
+        parts.push(`<div class="terminalLeaf"><span class="terminalIcon">▸</span><span class="terminalStatus ${stateName}"></span><span class="terminalLabel ${stateName}">${htmlEscape(session.displayName || session.label)}</span><span class="terminalStateText">${stateName === "running" ? "working" : "idle"}</span></div>`);
+      }
+    }
+  }
+  parts.push(`<div class="repo">▾ tasks</div>`);
+  for (const repo of tasks) {
+    const rows = Array.isArray(repo.rows) ? repo.rows : [];
+    if (!rows.length) continue;
+    parts.push(`<div class="repo" style="margin-left:14px">▾ ${htmlEscape(repo.label)}</div>`);
+    for (const task of rows) {
+      const color = htmlEscape(task.worktreeColor);
+      const status = task.status === "starting" ? "loading…" : task.status === "running" ? "running" : htmlEscape(task.status);
+      parts.push(`<div class="terminalLeaf" style="margin-left:36px"><span class="terminalIcon">▸</span><span class="dot" style="background:${color}"></span><span>${htmlEscape(task.label)} [<span style="color:${color};font-weight:600">${htmlEscape(task.worktreeName)}</span>] ${status} — ${htmlEscape(task.command)}</span></div>`);
+    }
+  }
+  return parts.join("");
 }
 
 function ptyEnv(
@@ -1227,13 +1458,6 @@ function safeEnv(key: string): string | undefined {
   }
 }
 
-function taskStatus(session: EmbeddedSession): string {
-  if (session.status === "exited")
-    return `exited ${session.exitCode ?? ""}`.trim();
-  if (session.runningCommand) return "running";
-  return session.status ?? "starting";
-}
-
 function outputPreview(output: string[]): string {
   const text = output
     .join("")
@@ -1246,20 +1470,11 @@ function outputPreview(output: string[]): string {
   return text?.slice(0, 140) ?? "";
 }
 
-function commandLabel(command: string | undefined): string | undefined {
-  const trimmed = command?.trim();
-  if (!trimmed) return undefined;
-  const withoutEnv = trimmed
-    .replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S+)\s+)*/, "")
-    .trim();
-  const shellWrapped = withoutEnv.match(
-    /^(?:env\s+)?(?:bash|zsh|sh)\s+-[lc]{1,2}\s+(['"])(.*?)\1$/,
-  );
-  const normalized = (shellWrapped?.[2] ?? withoutEnv)
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!normalized) return undefined;
-  return normalized.length > 80 ? `${normalized.slice(0, 77)}…` : normalized;
+function stripTerminalControlInput(data: string): string {
+  return data
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+    .replace(/\x1b./g, "");
 }
 
 function looksLikePrompt(data: string): boolean {
