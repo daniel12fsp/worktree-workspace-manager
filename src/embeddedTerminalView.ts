@@ -291,6 +291,28 @@ export class EmbeddedTerminalViewProvider
         await vscode.commands.executeCommand("worktreeManager.terminals.focus");
         await this.renderSessions();
       }
+    } else if (message?.type === "addWorktree") {
+      const repo = await this.findRepo(String(message.path));
+      if (repo) {
+        await vscode.commands.executeCommand("worktreeManager.addWorktree", { repo });
+        await this.renderSessions();
+      }
+    } else if (message?.type === "copyRepoPath") {
+      const repo = await this.findRepo(String(message.path));
+      if (repo) {
+        await vscode.commands.executeCommand("worktreeManager.copyRepositoryPath", { repo });
+      }
+    } else if (message?.type === "removeWorktree") {
+      const worktree = await this.findWorktree(String(message.path));
+      if (worktree) {
+        await vscode.commands.executeCommand("worktreeManager.removeWorktree", { worktree });
+        await this.renderSessions();
+      }
+    } else if (message?.type === "copyWorktreePath") {
+      const worktree = await this.findWorktree(String(message.path));
+      if (worktree) {
+        await vscode.commands.executeCommand("worktreeManager.copyWorktreePath", { worktree });
+      }
     } else if (message?.type === "killRepo") {
       const repoPath = String(message.path);
       const confirmed = await vscode.window.showWarningMessage(
@@ -730,13 +752,30 @@ export class EmbeddedTerminalViewProvider
           ),
         ).map((session) => {
           const fullCommand = session.runningCommand?.trim();
+          const taskRow = session.isTask
+            ? taskRows.find((row) => row.terminalId === session.id)
+            : undefined;
+          const taskCommand = taskRow?.command?.trim();
+          const isRunning = taskRow
+            ? taskRow.status === "starting" || taskRow.status === "running"
+            : Boolean(fullCommand);
+          if (session.isTask && taskRow?.status === "running" && !fullCommand) {
+            log("TASK session command state recovered from task row", {
+              id: session.id,
+              label: session.label,
+              repo: worktree.repo.label,
+              worktree: worktree.name,
+              taskStatus: taskRow.status,
+              taskCommand,
+            });
+          }
           return {
             id: session.id,
             label: session.label,
-            state: fullCommand ? "running" : "idle",
-            displayName: fullCommand || session.label,
-            statusText: fullCommand ? "working" : "idle",
-            fullCommand,
+            state: isRunning ? "running" : "idle",
+            displayName: session.label,
+            statusText: taskCommand || fullCommand || "idle",
+            fullCommand: taskCommand || fullCommand,
             preview: outputPreview(session.output),
             isTask: Boolean(session.isTask),
           };
@@ -845,6 +884,11 @@ export class EmbeddedTerminalViewProvider
     return [...all.values()]
       .flat()
       .find((worktree) => path.resolve(worktree.path) === path.resolve(fsPath));
+  }
+
+  private async findRepo(fsPath: string): Promise<BareRepository | undefined> {
+    const all = await listAllWorktrees();
+    return [...all.keys()].find((repo) => path.resolve(repo.fsPath) === path.resolve(fsPath));
   }
 
   private html(webview: vscode.Webview, initialState?: any): string {
@@ -975,7 +1019,7 @@ function staticTerminalListHtml(state: any): string {
         const stateName = session.state === "running" ? "running" : "idle";
         const preview = htmlEscape(session.preview);
         const nativeHref = htmlEscape(commandUri("worktreeManager.openNativeTerminalForPath", wt.path));
-        parts.push(`<details class="staticGroup" open><summary class="terminalLeaf"><span class="terminalStatus ${stateName}"></span><span class="terminalLabel ${stateName}">${htmlEscape(session.displayName || session.label)}</span><span class="terminalStateText">${stateName === "running" ? "working" : "idle"}</span><a class="addTerminal" href="${nativeHref}" title="Open interactive VS Code terminal here">open</a></summary>${preview ? `<div class="staticPreview">${preview}</div>` : `<div class="staticPreview">No captured output yet.</div>`}</details>`);
+        parts.push(`<details class="staticGroup" open><summary class="terminalLeaf"><span class="terminalStatus ${stateName}"></span><span class="terminalLabel ${stateName}">${htmlEscape(session.displayName || session.label)}</span><span class="terminalStateText">${htmlEscape(session.statusText || (stateName === "running" ? session.fullCommand || "working" : "idle"))}</span><a class="addTerminal" href="${nativeHref}" title="Open interactive VS Code terminal here">open</a></summary>${preview ? `<div class="staticPreview">${preview}</div>` : `<div class="staticPreview">No captured output yet.</div>`}</details>`);
       }
       parts.push(`</details>`);
     }

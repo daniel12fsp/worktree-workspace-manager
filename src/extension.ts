@@ -110,6 +110,12 @@ export function activate(context: vscode.ExtensionContext): void {
       await addWorktree(node?.repo ?? selectedRepo);
       refreshAll();
     }),
+    vscode.commands.registerCommand('worktreeManager.copyRepositoryPath', async (node?: RepoNode) => {
+      await copyRepositoryPath(node?.repo ?? selectedRepo);
+    }),
+    vscode.commands.registerCommand('worktreeManager.copyWorktreePath', async (node?: WorktreeNode) => {
+      await copyWorktreePath(node?.worktree ?? selectedWorktree);
+    }),
     vscode.commands.registerCommand('worktreeManager.cloneBareRepository', async () => {
       await cloneBareRepository();
       refreshAll();
@@ -567,6 +573,20 @@ function configurationTarget(): vscode.ConfigurationTarget {
   return vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length
     ? vscode.ConfigurationTarget.Workspace
     : vscode.ConfigurationTarget.Global;
+}
+
+async function copyRepositoryPath(repo?: BareRepository): Promise<void> {
+  repo = repo ?? await pickRepo();
+  if (!repo) return;
+  await vscode.env.clipboard.writeText(repo.fsPath);
+  void vscode.window.showInformationMessage(`Copied ${repo.label} path`);
+}
+
+async function copyWorktreePath(worktree?: Worktree): Promise<void> {
+  worktree = worktree ?? await pickWorktree();
+  if (!worktree) return;
+  await vscode.env.clipboard.writeText(worktree.path);
+  void vscode.window.showInformationMessage(`Copied ${worktree.name} path`);
 }
 
 async function removeWorktree(worktree?: Worktree): Promise<void> {

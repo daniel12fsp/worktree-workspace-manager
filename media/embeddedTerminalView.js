@@ -55,10 +55,6 @@ window.addEventListener('message', event => {
     for (const repo of currentRepos) {
       for (const wt of repo.worktrees || []) {
         if (wt.taskStatus && wt.taskStatus !== 'starting') loadingWorktreePaths.delete(wt.path);
-        if ((wt.sessions || []).length) {
-          collapsedRepos.delete(repo.label);
-          collapsedWorktrees.delete(repo.label + ':' + wt.path);
-        }
       }
     }
     renderList(currentRepos, currentTasks);
@@ -123,11 +119,15 @@ function renderList(repos, tasks) {
     const isRepoCollapsed = collapsedRepos.has(repo.label);
     header.textContent = (isRepoCollapsed ? '▸ ' : '▾ ') + repo.label;
     header.onclick = () => {
-      isRepoCollapsed ? collapsedRepos.delete(repo.label) : collapsedRepos.add(repo.label);
+      isRepoFullyCollapsed(repo) ? expandRepoRecursive(repo) : collapseRepoRecursive(repo);
       vscode.postMessage({ type: 'collapseAll' });
       renderList(repos, tasks);
     };
-    header.oncontextmenu = event => showContextMenu(event, [{ label: 'Close All Terminals', message: { type: 'killRepo', path: repo.path } }]);
+    header.oncontextmenu = event => showContextMenu(event, [
+      { label: 'Add Worktree…', message: { type: 'addWorktree', path: repo.path } },
+      { label: 'Copy Bare Repository Path', message: { type: 'copyRepoPath', path: repo.path } },
+      { label: 'Close All Terminals', message: { type: 'killRepo', path: repo.path } }
+    ]);
     list.appendChild(header);
     if (isRepoCollapsed) continue;
     for (const wt of repo.worktrees) {
@@ -142,6 +142,8 @@ function renderList(repos, tasks) {
         renderList(repos, tasks);
       };
       row.oncontextmenu = event => showContextMenu(event, [
+        { label: 'Remove Worktree', message: { type: 'removeWorktree', path: wt.path } },
+        { label: 'Copy Worktree Path', message: { type: 'copyWorktreePath', path: wt.path } },
         { label: 'Change Color…', message: { type: 'changeColor', path: wt.path } },
         { label: 'Kill Related Terminals', message: { type: 'killWorktree', path: wt.path } }
       ]);
@@ -233,7 +235,7 @@ function renderList(repos, tasks) {
         terminalLabel.textContent = session.displayName;
         const stateText = document.createElement('span');
         stateText.className = 'terminalStateText';
-        stateText.textContent = session.state === 'running' ? 'working' : 'idle';
+        stateText.textContent = session.statusText || (session.state === 'running' ? session.fullCommand || 'working' : 'idle');
         const actions = document.createElement('span');
         actions.className = 'terminalActions';
         const close = document.createElement('button');
@@ -314,7 +316,13 @@ function renderList(repos, tasks) {
       repoHeader.textContent = (repoCollapsed ? '▸ ' : '▾ ') + repo.label;
       repoHeader.onclick = event => {
         event.stopPropagation();
-        repoCollapsed ? collapsedTaskRepos.delete(repo.label) : collapsedTaskRepos.add(repo.label);
+        if (isTaskRepoFullyCollapsed(repo.label, repoRows)) {
+          collapsedTaskRepos.delete(repo.label);
+          for (const task of repoRows) collapsedTaskRows.delete(task.id);
+        } else {
+          collapsedTaskRepos.add(repo.label);
+          for (const task of repoRows) collapsedTaskRows.add(task.id);
+        }
         renderList(repos, tasks);
       };
       list.appendChild(repoHeader);
@@ -378,6 +386,25 @@ function renderList(repos, tasks) {
     terminalEl.style.display = 'none';
     document.body.appendChild(terminalEl);
   }
+}
+function isRepoFullyCollapsed(repo) {
+  const worktrees = repo.worktrees || [];
+  return collapsedRepos.has(repo.label) || (worktrees.length > 0 && worktrees.every(wt => collapsedWorktrees.has(repo.label + ':' + wt.path)));
+}
+function collapseRepoRecursive(repo) {
+  collapsedRepos.add(repo.label);
+  for (const wt of repo.worktrees || []) {
+    collapsedWorktrees.add(repo.label + ':' + wt.path);
+  }
+}
+function expandRepoRecursive(repo) {
+  collapsedRepos.delete(repo.label);
+  for (const wt of repo.worktrees || []) {
+    collapsedWorktrees.delete(repo.label + ':' + wt.path);
+  }
+}
+function isTaskRepoFullyCollapsed(repoLabel, rows) {
+  return collapsedTaskRepos.has(repoLabel) || (rows.length > 0 && rows.every(row => collapsedTaskRows.has(row.id)));
 }
 function taskRowActions(task) {
   const actions = document.createElement('span');

@@ -44,6 +44,8 @@
     "onCommand:worktreeManager.cloneBareRepository",
     "onCommand:worktreeManager.addExistingBareRepository",
     "onCommand:worktreeManager.addWorktree",
+    "onCommand:worktreeManager.copyRepositoryPath",
+    "onCommand:worktreeManager.copyWorktreePath",
     "onCommand:worktreeManager.checkWorktree",
     "onCommand:worktreeManager.runWorktreeTask",
     "onCommand:worktreeManager.changeColor",
@@ -195,6 +197,14 @@
         "title": "Add Worktree…"
       },
       {
+        "command": "worktreeManager.copyRepositoryPath",
+        "title": "Copy Bare Repository Path"
+      },
+      {
+        "command": "worktreeManager.copyWorktreePath",
+        "title": "Copy Worktree Path"
+      },
+      {
         "command": "worktreeManager.checkWorktree",
         "title": "Check Worktree"
       },
@@ -255,6 +265,11 @@
           "group": "navigation"
         },
         {
+          "command": "worktreeManager.copyRepositoryPath",
+          "when": "viewItem == repo",
+          "group": "navigation"
+        },
+        {
           "command": "worktreeManager.fetch",
           "when": "viewItem == repo",
           "group": "navigation"
@@ -291,6 +306,11 @@
         },
         {
           "command": "worktreeManager.removeWorktree",
+          "when": "viewItem == worktree",
+          "group": "navigation"
+        },
+        {
+          "command": "worktreeManager.copyWorktreePath",
           "when": "viewItem == worktree",
           "group": "navigation"
         },
