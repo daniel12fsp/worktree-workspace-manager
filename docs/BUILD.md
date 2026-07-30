@@ -54,8 +54,7 @@ For this project, likely remove:
 
 ```json
   "worktreeManager.repositories": [],
-  "worktreeManager.colors": {},
-  "worktreeManager.tasks": {}
+  "worktreeManager.colors": {}
 ```
 
 ### 5. Reload VSCode

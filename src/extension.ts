@@ -9,7 +9,6 @@ import { disposeLogger, log, logError } from './logger';
 import { BareRepository, Worktree, getConfiguredRepositories, listAllWorktrees, resolveGitDir, updateWorktreeColor } from './model';
 import { closeEditorsOutsideWorktree } from './editorTabs';
 import { checkWorktreeInLiveWorkspace, getCheckedWorktreePaths, hideBareRepositoryFolders, normalizePath } from './workspaceFile';
-import { hasConfiguredTaskDefinitions, pickTaskWorktree, taskConfigFor, WorktreeTaskManager } from './taskManager';
 import { RepoNode, WorktreeNode, WorktreeProvider } from './worktreeView';
 
 const execFileAsync = promisify(execFile);
@@ -17,8 +16,7 @@ const execFileAsync = promisify(execFile);
 export function activate(context: vscode.ExtensionContext): void {
   log('activate');
   const worktreeProvider = new WorktreeProvider();
-  const taskManager = new WorktreeTaskManager();
-  const terminalProvider = new EmbeddedTerminalViewProvider(context.extensionUri, taskManager);
+  const terminalProvider = new EmbeddedTerminalViewProvider(context.extensionUri);
 
   const worktreeView = vscode.window.createTreeView('worktreeManager.worktrees', {
     treeDataProvider: worktreeProvider,
@@ -58,17 +56,12 @@ export function activate(context: vscode.ExtensionContext): void {
     terminalView,
     status,
     terminalProvider,
-    taskManager,
     { dispose: disposeLogger },
     worktreeView.onDidChangeSelection(event => {
       const node = event.selection[0];
       selectedWorktree = node instanceof WorktreeNode ? node.worktree : undefined;
       selectedRepo = node instanceof RepoNode ? node.repo : selectedWorktree?.repo;
-      if (selectedWorktree && hasConfiguredTaskDefinitions() && taskConfigFor(selectedWorktree, { silent: true, source: 'tree selection' })) {
-        void taskManager.runForSelection(selectedWorktree).finally(() => terminalProvider.refresh());
-      }
     }),
-    taskManager.onDidChangeTasks(() => terminalProvider.refresh()),
     worktreeView.onDidChangeCheckboxState(async event => {
       const node = event.items[0]?.[0];
       log('worktree checkbox changed', {
@@ -81,11 +74,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (node instanceof WorktreeNode) {
         suppressTerminalRefreshUntil = Date.now() + 3000;
         await checkWorktree(node.worktree);
-        log('worktree checkbox flow: starting task after check', { repo: node.worktree.repo.label, worktree: node.worktree.name });
-        if (hasConfiguredTaskDefinitions() && taskConfigFor(node.worktree, { silent: true, source: 'worktree checkbox' })) {
-          await taskManager.runForSelection(node.worktree);
-        }
-        log('worktree checkbox flow: refreshing views after check/task');
+        log('worktree checkbox flow: refreshing views after check');
         refreshAll();
         terminalProvider.refresh();
       }
@@ -95,7 +84,7 @@ export function activate(context: vscode.ExtensionContext): void {
       terminalProvider.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
-      if (event.affectsConfiguration('worktreeManager.repositories') || event.affectsConfiguration('worktreeManager.tasks') || event.affectsConfiguration('worktreeManager.colors')) {
+      if (event.affectsConfiguration('worktreeManager.repositories') || event.affectsConfiguration('worktreeManager.colors')) {
         refreshAll();
         refreshTerminalsUnlessSuppressed();
       } else if (event.affectsConfiguration('files.exclude') || event.affectsConfiguration('search.exclude')) {
@@ -157,24 +146,13 @@ export function activate(context: vscode.ExtensionContext): void {
       });
       suppressTerminalRefreshUntil = Date.now() + 3000;
       await checkWorktree(target);
-      if (target) {
-        log('check worktree command flow: starting task after check', { repo: target.repo.label, worktree: target.name });
-        if (hasConfiguredTaskDefinitions() && taskConfigFor(target, { silent: true, source: 'check worktree command' })) {
-          await taskManager.runForSelection(target);
-        }
-      }
-      log('check worktree command flow: refreshing views after check/task');
+      log('check worktree command flow: refreshing views after check');
       refreshAll();
       terminalProvider.refresh();
     }),
     vscode.commands.registerCommand('worktreeManager.openTerminalHere', async (node?: WorktreeNode) => openTerminalHere(node?.worktree ?? selectedWorktree, terminalProvider)),
     vscode.commands.registerCommand('worktreeManager.openTerminalForPath', async (fsPath: string) => terminalProvider.openTerminalForPath(String(fsPath))),
     vscode.commands.registerCommand('worktreeManager.openNativeTerminalForPath', async (fsPath: string) => terminalProvider.openNativeTerminalForPath(String(fsPath))),
-    vscode.commands.registerCommand('worktreeManager.runWorktreeTask', async (node?: WorktreeNode) => {
-      const target = node?.worktree ?? selectedWorktree ?? await pickTaskWorktree();
-      if (target) await taskManager.rerun(target);
-      terminalProvider.refresh();
-    }),
     vscode.commands.registerCommand('worktreeManager.closeRepoTerminals', async (node?: RepoNode) => closeRepoTerminals(node?.repo ?? selectedRepo, terminalProvider)),
     vscode.commands.registerCommand('worktreeManager.killWorktreeTerminals', async (node?: WorktreeNode) => killWorktreeTerminals(node?.worktree ?? selectedWorktree, terminalProvider)),
     vscode.commands.registerCommand('worktreeManager.showMenu', async () => {
@@ -193,58 +171,12 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  void runInitialConfiguredTasks(taskManager, terminalProvider);
-}
-
-async function runInitialConfiguredTasks(taskManager: WorktreeTaskManager, terminalProvider: EmbeddedTerminalViewProvider): Promise<void> {
-  if (!vscode.workspace.workspaceFile || !hasConfiguredTaskDefinitions()) return;
-
-  try {
-    const [all, checkedPaths] = await Promise.all([listAllWorktrees(), getCheckedWorktreePaths()]);
-    const initialWorktrees: Worktree[] = [];
-    for (const [, worktrees] of all) {
-      const selected = worktrees.find(worktree => checkedPaths.has(normalizePath(worktree.path)));
-      if (selected) initialWorktrees.push(selected);
-    }
-
-    log('initial configured tasks resolved from workspace state', {
-      count: initialWorktrees.length,
-      worktrees: initialWorktrees.map(worktree => ({ repo: worktree.repo.label, name: worktree.name, path: worktree.path }))
-    });
-
-    for (const worktree of initialWorktrees) {
-      if (taskConfigFor(worktree, { silent: true, source: 'initial configured tasks' })) {
-        await taskManager.runForSelection(worktree);
-      }
-    }
-    terminalProvider.refresh();
-  } catch (error) {
-    logError('failed to run initial configured tasks', { error });
-  }
 }
 
 async function updateWorktreeViewContexts(): Promise<void> {
   const hasWorkspace = Boolean(vscode.workspace.workspaceFile);
   await vscode.commands.executeCommand('setContext', 'worktreeManager.hasWorkspace', hasWorkspace);
   await vscode.commands.executeCommand('setContext', 'worktreeManager.hasRepositories', hasWorkspace && getConfiguredRepositories().length > 0);
-  await vscode.commands.executeCommand('setContext', 'worktreeManager.hasTasksConfig', hasConfiguredTasksKey());
-}
-
-function hasConfiguredTasksKey(): boolean {
-  const inspection = vscode.workspace.getConfiguration('worktreeManager').inspect('tasks');
-  const hasTasksKey = Boolean(
-    inspection?.globalValue !== undefined ||
-    inspection?.workspaceValue !== undefined ||
-    inspection?.workspaceFolderValue !== undefined
-  );
-  log('tasks visibility context resolved', {
-    hasTasksKey,
-    hasGlobalTasksKey: inspection?.globalValue !== undefined,
-    hasWorkspaceTasksKey: inspection?.workspaceValue !== undefined,
-    hasWorkspaceFolderTasksKey: inspection?.workspaceFolderValue !== undefined,
-    hasTaskDefinitions: hasConfiguredTaskDefinitions()
-  });
-  return hasTasksKey;
 }
 
 async function checkWorktree(worktree?: Worktree): Promise<void> {
@@ -358,14 +290,13 @@ async function addExistingBareRepository(): Promise<void> {
     return;
   }
 
-  const taskCommand = defaultTaskCommand(repoPath);
-  if (await createAndOpenWorkspaceIfNeeded(repoPath, taskCommand)) return;
+  if (await createAndOpenWorkspaceIfNeeded(repoPath)) return;
 
-  await addRepositoryAndTask(repoPath, taskCommand);
+  await addRepositoryToConfig(repoPath);
   await addFolderToWorkspace(repoPath);
   await openWorkspaceConfigurationFile();
 
-  log('added existing bare repository to config', { repoPath, taskCommand });
+  log('added existing bare repository to config', { repoPath });
   void vscode.window.showInformationMessage(`Added ${path.basename(repoPath)} to Worktree Manager settings.`);
 }
 
@@ -415,18 +346,6 @@ async function cloneBareRepository(): Promise<void> {
     return;
   }
 
-  const taskCommandInput = await vscode.window.showInputBox({
-    prompt: `Task command for ${path.basename(repoPath)} (optional; blank uses default echo task)`,
-    value: defaultTaskCommand(repoPath),
-    placeHolder: 'npm run dev'
-  });
-  if (taskCommandInput === undefined) {
-    log('clone bare repository cancelled: task command prompt dismissed', { repoPath });
-    return;
-  }
-  const taskCommand = taskCommandInput.trim() || defaultTaskCommand(repoPath);
-  log('clone bare repository task accepted', { repoPath, taskCommand });
-
   await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Worktree Manager' }, async () => {
     try {
       await fs.promises.mkdir(repoPath, { recursive: true });
@@ -439,12 +358,12 @@ async function cloneBareRepository(): Promise<void> {
         throw new Error(`Cloned path is not a bare git repository: ${repoPath}`);
       }
 
-      if (await createAndOpenWorkspaceIfNeeded(repoPath, taskCommand)) return;
+      if (await createAndOpenWorkspaceIfNeeded(repoPath)) return;
 
-      await addRepositoryAndTask(repoPath, taskCommand);
+      await addRepositoryToConfig(repoPath);
       await addFolderToWorkspace(repoPath);
       await openWorkspaceConfigurationFile();
-      log('cloned bare repository and updated workspace/config', { remoteUrl, repoPath, taskCommand });
+      log('cloned bare repository and updated workspace/config', { remoteUrl, repoPath });
       void vscode.window.showInformationMessage(`Cloned ${path.basename(repoPath)} and updated Worktree Manager settings.`);
     } catch (error) {
       logError('clone bare repository failed', { remoteUrl, repoPath, error });
@@ -485,11 +404,7 @@ function defaultWorktreeParent(repo: BareRepository): string {
     : path.dirname(repo.fsPath);
 }
 
-function defaultTaskCommand(repoPath: string): string {
-  return `echo Worktree task for ${path.basename(repoPath)}`;
-}
-
-async function createAndOpenWorkspaceIfNeeded(repoPath: string, taskCommand: string): Promise<boolean> {
+async function createAndOpenWorkspaceIfNeeded(repoPath: string): Promise<boolean> {
   if (vscode.workspace.workspaceFile) return false;
 
   const repoLabel = path.basename(repoPath);
@@ -497,15 +412,12 @@ async function createAndOpenWorkspaceIfNeeded(repoPath: string, taskCommand: str
   const workspace = {
     folders: [{ name: repoLabel, path: repoPath }],
     settings: {
-      'worktreeManager.repositories': [repoPath],
-      'worktreeManager.tasks': {
-        [repoLabel]: { cmd: [taskCommand] }
-      }
+      'worktreeManager.repositories': [repoPath]
     }
   };
 
   await fs.promises.writeFile(workspacePath, `${JSON.stringify(workspace, null, 2)}\n`, 'utf8');
-  log('created first workspace for bare repository', { workspacePath, repoPath, taskCommand });
+  log('created first workspace for bare repository', { workspacePath, repoPath });
   void vscode.window.showInformationMessage(`Created workspace ${path.basename(workspacePath)} for ${repoLabel}.`);
   await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(workspacePath), { forceReuseWindow: true });
   return true;
@@ -542,11 +454,6 @@ async function addFolderToWorkspace(folderPath: string): Promise<void> {
   }
 }
 
-async function addRepositoryAndTask(repoPath: string, taskCommand: string): Promise<void> {
-  await addRepositoryToConfig(repoPath);
-  await addTaskToConfig(repoPath, taskCommand);
-}
-
 async function addRepositoryToConfig(repoPath: string): Promise<void> {
   const config = vscode.workspace.getConfiguration('worktreeManager');
   const target = configurationTarget();
@@ -560,31 +467,6 @@ async function addRepositoryToConfig(repoPath: string): Promise<void> {
   if (next.length !== repositories.length || next.some((value, index) => value !== repositories[index])) {
     await config.update('repositories', next, target);
   }
-}
-
-async function addTaskToConfig(repoPath: string, taskCommand: string): Promise<void> {
-  const config = vscode.workspace.getConfiguration('worktreeManager');
-  const target = configurationTarget();
-  const repoLabel = path.basename(repoPath);
-  const tasks = config.get<Record<string, unknown>>('tasks', {});
-  const existingTask = tasks[repoLabel];
-  if (existingTask !== undefined) {
-    const update = await vscode.window.showWarningMessage(
-      `worktreeManager.tasks.${repoLabel} already exists. Update its command and keep existing env/cleanup settings?`,
-      { modal: true },
-      'Update Task Command'
-    );
-    if (update !== 'Update Task Command') return;
-  }
-
-  const nextTask = isPlainObject(existingTask)
-    ? { ...existingTask, cmd: [taskCommand] }
-    : { cmd: [taskCommand] };
-  await config.update('tasks', { ...tasks, [repoLabel]: nextTask }, target);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function expandMaybeHome(input: string): string {
@@ -693,7 +575,6 @@ function menuItems(hasSelectedWorktree: boolean): Array<{ label: string; command
   const worktreeActions = [
     { label: 'Check Worktree', command: 'worktreeManager.checkWorktree' },
     { label: 'Open Terminal Here', command: 'worktreeManager.openTerminalHere' },
-    { label: 'Run Worktree Task', command: 'worktreeManager.runWorktreeTask' },
     { label: 'Change Color…', command: 'worktreeManager.changeColor' },
     { label: 'Remove Worktree', command: 'worktreeManager.removeWorktree' }
   ];

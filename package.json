@@ -1,7 +1,7 @@
 {
   "name": "worktree-workspace-manager",
   "displayName": "Worktree Workspace Manager",
-  "description": "Group terminals by git worktree, switch branches in one click, and auto-tidy editors from a single tree — built for bare-repo + worktree workflows.",
+  "description": "Group terminals by git worktree, switch branches in one click, and auto-tidy editors from a single tree \u2014 built for bare-repo + worktree workflows.",
   "version": "0.0.3",
   "publisher": "daniel12fsp",
   "author": "Daniel Pereira <daniel12fsp@yahoo.com.br>",
@@ -48,7 +48,6 @@
     "onCommand:worktreeManager.copyRepositoryPath",
     "onCommand:worktreeManager.copyWorktreePath",
     "onCommand:worktreeManager.checkWorktree",
-    "onCommand:worktreeManager.runWorktreeTask",
     "onCommand:worktreeManager.changeColor",
     "onCommand:worktreeManager.removeWorktree",
     "onCommand:worktreeManager.fetch",
@@ -95,44 +94,6 @@
                 "type": "string",
                 "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
                 "description": "Hex color used for this worktree in Worktree and Terminals by Worktree."
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "worktreeManager.tasks": {
-          "type": "object",
-          "default": {},
-          "description": "Repo-scoped task definitions keyed by configured repository root basename. Legacy direct bare repos may include .git.",
-          "additionalProperties": {
-            "type": "object",
-            "required": [
-              "cmd"
-            ],
-            "properties": {
-              "env": {
-                "type": "object",
-                "default": {},
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "description": "Environment variables applied to task and cleanup commands. Values may be strings or auto_int({length:4, start:4000}) to allocate a unique session number across all active worktree tasks."
-              },
-              "cleanup": {
-                "type": "array",
-                "default": [],
-                "items": {
-                  "type": "string"
-                },
-                "description": "Ordered shell commands run for the old selected worktree before switching tasks."
-              },
-              "cmd": {
-                "type": "array",
-                "minItems": 1,
-                "items": {
-                  "type": "string"
-                },
-                "description": "Ordered shell commands run in a new VS Code terminal when a worktree is selected."
               }
             },
             "additionalProperties": false
@@ -187,15 +148,15 @@
       },
       {
         "command": "worktreeManager.cloneBareRepository",
-        "title": "Clone Bare Repository…"
+        "title": "Clone Bare Repository\u2026"
       },
       {
         "command": "worktreeManager.addExistingBareRepository",
-        "title": "Add Existing Bare Repository…"
+        "title": "Add Existing Bare Repository\u2026"
       },
       {
         "command": "worktreeManager.addWorktree",
-        "title": "Add Worktree…"
+        "title": "Add Worktree\u2026"
       },
       {
         "command": "worktreeManager.copyRepositoryPath",
@@ -214,12 +175,8 @@
         "title": "Open Terminal Here"
       },
       {
-        "command": "worktreeManager.runWorktreeTask",
-        "title": "Run Worktree Task"
-      },
-      {
         "command": "worktreeManager.changeColor",
-        "title": "Change Worktree Color…"
+        "title": "Change Worktree Color\u2026"
       },
       {
         "command": "worktreeManager.removeWorktree",
@@ -235,7 +192,7 @@
       },
       {
         "command": "worktreeManager.configureRepositories",
-        "title": "Configure Repositories…"
+        "title": "Configure Repositories\u2026"
       },
       {
         "command": "worktreeManager.closeRepoTerminals",
@@ -293,11 +250,6 @@
         {
           "command": "worktreeManager.openTerminalHere",
           "when": "viewItem == worktree",
-          "group": "inline"
-        },
-        {
-          "command": "worktreeManager.runWorktreeTask",
-          "when": "view == worktreeManager.worktrees && viewItem == worktree",
           "group": "inline"
         },
         {

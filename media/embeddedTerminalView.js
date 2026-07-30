@@ -20,15 +20,10 @@ let searchAddon;
 let activeSessionId;
 const collapsedRepos = new Set();
 const collapsedWorktrees = new Set();
-let tasksCollapsed = true;
-const collapsedTaskRepos = new Set();
-const collapsedTaskRows = new Set();
 const loadingWorktreePaths = new Set();
 let draggedSessionId;
 let currentRepos = [];
-let currentTasks = [];
 let currentHasWorkspace = true;
-let currentHasTasksConfig = false;
 function initTerminal() {
   if (term) return;
   try {
@@ -89,15 +84,8 @@ window.addEventListener('message', event => {
   if (message.type === 'state') {
     activeSessionId = message.activeSessionId;
     currentRepos = message.repos || [];
-    currentTasks = message.tasks || [];
     currentHasWorkspace = Boolean(message.hasWorkspace);
-    currentHasTasksConfig = Boolean(message.hasTasksConfig);
-    for (const repo of currentRepos) {
-      for (const wt of repo.worktrees || []) {
-        if (wt.taskStatus && wt.taskStatus !== 'starting') loadingWorktreePaths.delete(wt.path);
-      }
-    }
-    renderList(currentRepos, currentTasks);
+    renderList(currentRepos);
     if (term) {
       term.clear();
       if (message.activeOutput) term.write(message.activeOutput);
@@ -106,7 +94,7 @@ window.addEventListener('message', event => {
     }
   } else if (message.type === 'loadingDone') {
     loadingWorktreePaths.delete(message.path);
-    renderList(currentRepos, currentTasks);
+    renderList(currentRepos);
   } else if (message.type === 'output' && message.id === activeSessionId) {
     if (term) {
       term.write(message.data);
@@ -197,7 +185,7 @@ function stripTerminalGeneratedInput(data) {
   // forward terminal-generated reports to the pty as user input.
   return data.replace(/\x1b\[\d+;\d+R/g, '');
 }
-function renderList(repos, tasks) {
+function renderList(repos) {
   const list = document.getElementById('list');
   list.textContent = '';
   if (!currentHasWorkspace) {
@@ -216,7 +204,7 @@ function renderList(repos, tasks) {
     header.onclick = () => {
       isRepoFullyCollapsed(repo) ? expandRepoRecursive(repo) : collapseRepoRecursive(repo);
       vscode.postMessage({ type: 'collapseAll' });
-      renderList(repos, tasks);
+      renderList(repos);
     };
     header.oncontextmenu = event => showContextMenu(event, [
       { label: 'Add Worktree…', message: { type: 'addWorktree', path: repo.path } },
@@ -234,7 +222,7 @@ function renderList(repos, tasks) {
         event.stopPropagation();
         isWorktreeCollapsed ? collapsedWorktrees.delete(worktreeKey) : collapsedWorktrees.add(worktreeKey);
         vscode.postMessage({ type: 'collapseAll' });
-        renderList(repos, tasks);
+        renderList(repos);
       };
       row.oncontextmenu = event => showContextMenu(event, [
         { label: 'Remove Worktree', message: { type: 'removeWorktree', path: wt.path } },
@@ -249,11 +237,11 @@ function renderList(repos, tasks) {
       const dot = document.createElement('span');
       dot.className = 'dot';
       dot.style.background = wt.color;
-      const isLoadingWorktree = loadingWorktreePaths.has(wt.path) || wt.taskStatus === 'starting';
+      const isLoadingWorktree = loadingWorktreePaths.has(wt.path);
       const state = isLoadingWorktree ? document.createElement('span') : document.createElement('input');
       if (isLoadingWorktree) {
         state.className = 'loadingCheckbox';
-        state.title = 'Loading worktree task…';
+        state.title = 'Loading worktree…';
       } else {
         state.type = 'checkbox';
         state.className = 'workspaceState';
@@ -262,7 +250,7 @@ function renderList(repos, tasks) {
         state.onchange = event => {
           event.stopPropagation();
           loadingWorktreePaths.add(wt.path);
-          renderList(currentRepos, currentTasks);
+          renderList(currentRepos);
           vscode.postMessage({ type: 'setExplorerWorktree', path: wt.path, enabled: state.checked });
         };
         state.onclick = event => event.stopPropagation();
@@ -289,7 +277,6 @@ function renderList(repos, tasks) {
         terminal.title = session.state === 'running'
           ? 'Working: ' + (session.fullCommand || session.displayName)
           : 'Idle: ' + session.label;
-        if (session.isTask) terminal.title = 'Task terminal — ' + terminal.title;
         terminal.onclick = event => {
           event.stopPropagation();
           vscode.postMessage({ type: session.id === activeSessionId ? 'collapse' : 'select', id: session.id });
@@ -339,18 +326,7 @@ function renderList(repos, tasks) {
         close.textContent = '×';
         close.onclick = event => {
           event.stopPropagation();
-          if (session.isTask) {
-            let task;
-            for (const taskRepo of currentTasks || []) {
-              task = (taskRepo.rows || []).find(row => row.terminalId === session.id);
-              if (task) break;
-            }
-            vscode.postMessage(task
-              ? { type: 'closeTask', id: task.id, terminalId: session.id, path: task.worktreePath }
-              : { type: 'closeSession', id: session.id });
-          } else {
-            vscode.postMessage({ type: 'closeSession', id: session.id });
-          }
+          vscode.postMessage({ type: 'closeSession', id: session.id });
         };
         actions.append(close);
         terminal.append(icon, status, terminalLabel, stateText, actions);
@@ -369,7 +345,6 @@ function renderList(repos, tasks) {
     repoCount: repos.length,
     worktreeCount: repos.reduce((count, repo) => count + (repo.worktrees || []).length, 0),
     sessionCount: repos.reduce((count, repo) => count + (repo.worktrees || []).reduce((inner, wt) => inner + (wt.sessions || []).length, 0), 0),
-    taskRowCount: tasks.reduce((count, repo) => count + (repo.rows || []).length, 0),
     childNodeCount: list.childElementCount
   };
   vscode.postMessage({
@@ -377,112 +352,10 @@ function renderList(repos, tasks) {
     repoCount: renderSummary.repoCount,
     worktreeCount: renderSummary.worktreeCount,
     sessionCount: renderSummary.sessionCount,
-    taskRowCount: renderSummary.taskRowCount,
     childNodeCount: renderSummary.childNodeCount
   });
   if (renderSummary.sessionCount > 0 && !list.textContent.trim()) {
     throw new Error('Rendered terminal state contains sessions, but no visible UI text was produced.');
-  }
-  if (!currentHasTasksConfig) {
-    if (!activeSessionId || !terminalEl.parentElement || !terminalEl.parentElement.classList.contains('terminalInline')) {
-      terminalEl.style.display = 'none';
-      document.body.appendChild(terminalEl);
-    }
-    return;
-  }
-  const hasTaskRows = tasks.some(repo => (repo.rows || []).length);
-  const tasksHeader = document.createElement('div');
-  tasksHeader.className = 'repo';
-  tasksHeader.textContent = (tasksCollapsed ? '▸ ' : '▾ ') + 'tasks' + (hasTaskRows ? '' : ' (no task activity yet)');
-  tasksHeader.onclick = () => {
-    tasksCollapsed = !tasksCollapsed;
-    if (tasksCollapsed) {
-      for (const repo of tasks) {
-        collapsedTaskRepos.add(repo.label);
-        for (const task of repo.rows || []) collapsedTaskRows.add(task.id);
-      }
-    } else {
-      collapsedTaskRepos.clear();
-      collapsedTaskRows.clear();
-    }
-    renderList(repos, tasks);
-  };
-  list.appendChild(tasksHeader);
-  if (!tasksCollapsed) {
-    for (const repo of tasks) {
-      const repoRows = repo.rows || [];
-      const repoCollapsed = collapsedTaskRepos.has(repo.label);
-      const repoHeader = document.createElement('div');
-      repoHeader.className = 'repo';
-      repoHeader.style.marginLeft = '14px';
-      repoHeader.textContent = (repoCollapsed ? '▸ ' : '▾ ') + repo.label;
-      repoHeader.onclick = event => {
-        event.stopPropagation();
-        if (isTaskRepoFullyCollapsed(repo.label, repoRows)) {
-          collapsedTaskRepos.delete(repo.label);
-          for (const task of repoRows) collapsedTaskRows.delete(task.id);
-        } else {
-          collapsedTaskRepos.add(repo.label);
-          for (const task of repoRows) collapsedTaskRows.add(task.id);
-        }
-        renderList(repos, tasks);
-      };
-      list.appendChild(repoHeader);
-      if (repoCollapsed) continue;
-      for (const task of repoRows) {
-        const rowCollapsed = collapsedTaskRows.has(task.id);
-        const hasChildren = Boolean(task.preview || task.terminalId);
-        const taskRow = document.createElement('div');
-        taskRow.className = 'terminalLeaf' + (task.terminalId === activeSessionId ? ' active' : '');
-        taskRow.style.marginLeft = '36px';
-        taskRow.onclick = event => {
-          event.stopPropagation();
-          if (!hasChildren) return;
-          if (task.terminalId) {
-            if (rowCollapsed) {
-              collapsedTaskRows.delete(task.id);
-              if (task.terminalId !== activeSessionId) vscode.postMessage({ type: 'focusTask', id: task.terminalId });
-            } else if (task.terminalId === activeSessionId) {
-              collapsedTaskRows.add(task.id);
-              vscode.postMessage({ type: 'focusTask', id: task.terminalId });
-            } else {
-              collapsedTaskRows.delete(task.id);
-              vscode.postMessage({ type: 'focusTask', id: task.terminalId });
-            }
-          } else {
-            rowCollapsed ? collapsedTaskRows.delete(task.id) : collapsedTaskRows.add(task.id);
-          }
-          renderList(repos, tasks);
-        };
-        if (!hasChildren) taskRow.style.cursor = 'default';
-        const icon = document.createElement('span');
-        icon.className = 'terminalIcon';
-        icon.textContent = hasChildren ? (rowCollapsed ? '▸' : '▾') : '•';
-        const dot = document.createElement('span');
-        dot.className = 'dot';
-        dot.style.background = task.worktreeColor;
-        const label = taskRowLabel(task);
-        const actions = taskRowActions(task);
-        taskRow.append(icon, dot, label, actions);
-        list.appendChild(taskRow);
-        if (!rowCollapsed && task.preview) {
-          const preview = document.createElement('div');
-          preview.className = 'terminalLeaf';
-          preview.style.marginLeft = '58px';
-          preview.style.opacity = '0.75';
-          preview.style.fontFamily = 'monospace';
-          preview.textContent = task.preview;
-          list.appendChild(preview);
-        }
-        if (!rowCollapsed && task.terminalId && task.terminalId === activeSessionId) {
-          const inline = document.createElement('div');
-          inline.className = 'terminalInline active';
-          inline.appendChild(terminalEl);
-          terminalEl.style.display = 'block';
-          list.appendChild(inline);
-        }
-      }
-    }
   }
   if (!activeSessionId || !terminalEl.parentElement || !terminalEl.parentElement.classList.contains('terminalInline')) {
     terminalEl.style.display = 'none';
@@ -505,31 +378,6 @@ function expandRepoRecursive(repo) {
     collapsedWorktrees.delete(repo.label + ':' + wt.path);
   }
 }
-function isTaskRepoFullyCollapsed(repoLabel, rows) {
-  return collapsedTaskRepos.has(repoLabel) || (rows.length > 0 && rows.every(row => collapsedTaskRows.has(row.id)));
-}
-function taskRowActions(task) {
-  const actions = document.createElement('span');
-  actions.className = 'taskActions';
-  const restart = document.createElement('button');
-  restart.className = 'taskAction';
-  restart.title = 'Restart task';
-  restart.textContent = '↻';
-  restart.onclick = event => {
-    event.stopPropagation();
-    vscode.postMessage({ type: 'restartTask', path: task.worktreePath });
-  };
-  const close = document.createElement('button');
-  close.className = 'taskAction';
-  close.title = task.terminalId ? 'Close task terminal' : 'Clear task item';
-  close.textContent = '×';
-  close.onclick = event => {
-    event.stopPropagation();
-    vscode.postMessage({ type: 'closeTask', id: task.id, terminalId: task.terminalId, path: task.worktreePath });
-  };
-  actions.append(restart, close);
-  return actions;
-}
 function renderWelcome(list, message) {
   const box = document.createElement('div');
   box.className = 'welcome';
@@ -542,19 +390,6 @@ function renderWelcome(list, message) {
   list.appendChild(box);
   terminalEl.style.display = 'none';
   document.body.appendChild(terminalEl);
-}
-function taskRowLabel(task) {
-  const label = document.createElement('span');
-  const value = task.status === 'starting' ? 'loading…'
-    : task.status === 'running' ? 'running'
-    : (task.status + ' ' + (task.exitValue != null ? task.exitValue : 'unknown'));
-  label.append(document.createTextNode(task.label + ' ['));
-  const name = document.createElement('span');
-  name.textContent = task.worktreeName;
-  name.style.color = task.worktreeColor;
-  name.style.fontWeight = '600';
-  label.append(name, document.createTextNode('] ' + value + ' — ' + task.command));
-  return label;
 }
 function showContextMenu(event, items) {
   event.preventDefault();
