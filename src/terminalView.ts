@@ -12,7 +12,6 @@ export type TerminalNode =
 
 interface TerminalState {
   cwd?: string;
-  runningCommand?: string;
   lastFocusSeq: number;
 }
 
@@ -63,26 +62,6 @@ export class TerminalTracker {
           this.requestRefresh();
         },
       ),
-      vscode.window.onDidStartTerminalShellExecution((event) => {
-        const state = this.ensure(event.terminal);
-        state.cwd =
-          uriToFsPath(event.execution.cwd) ??
-          uriToFsPath(event.terminal.shellIntegration?.cwd) ??
-          state.cwd;
-        state.runningCommand = event.execution.commandLine.value;
-        log('command started', { name: event.terminal.name, command: state.runningCommand });
-        this.requestRefresh();
-      }),
-      vscode.window.onDidEndTerminalShellExecution((event) => {
-        const state = this.ensure(event.terminal);
-        state.cwd =
-          uriToFsPath(event.execution.cwd) ??
-          uriToFsPath(event.terminal.shellIntegration?.cwd) ??
-          state.cwd;
-        state.runningCommand = undefined;
-        log('command ended', { name: event.terminal.name });
-        this.requestRefresh();
-      }),
     );
   }
 
@@ -145,12 +124,11 @@ export class TerminalLeafNode extends vscode.TreeItem {
   constructor(
     readonly terminal: vscode.Terminal,
     color?: string,
-    command?: string,
   ) {
     super(terminal.name, vscode.TreeItemCollapsibleState.None);
     this.contextValue = "terminal";
     this.iconPath = color ? dotIcon(color) : new vscode.ThemeIcon("terminal");
-    this.description = command || "idle";
+    this.description = "idle";
     this.command = {
       command: "worktreeManager.focusTerminal",
       title: "Focus Terminal",
@@ -198,22 +176,12 @@ export class TerminalProvider implements vscode.TreeDataProvider<TerminalNode> {
     }
     if (element instanceof TerminalWorktreeNode) {
       return ordered(element.terminals).map(
-        (terminal) =>
-          new TerminalLeafNode(
-            terminal,
-            element.worktree.color,
-            this.tracker.get(terminal)?.runningCommand,
-          ),
+        (terminal) => new TerminalLeafNode(terminal, element.worktree.color),
       );
     }
     if (element instanceof UngroupedNode) {
       return ordered(element.terminals).map(
-        (terminal) =>
-          new TerminalLeafNode(
-            terminal,
-            undefined,
-            this.tracker.get(terminal)?.runningCommand,
-          ),
+        (terminal) => new TerminalLeafNode(terminal, undefined),
       );
     }
     if (element) {
@@ -251,11 +219,7 @@ export class TerminalProvider implements vscode.TreeDataProvider<TerminalNode> {
         .map((worktree) => {
           const group = grouped.get(normalize(worktree.path)) ?? [];
           if (!group.length) return undefined;
-          return new TerminalWorktreeNode(
-            worktree,
-            group,
-            representativeCommand(group, this.tracker),
-          );
+          return new TerminalWorktreeNode(worktree, group);
         })
         .filter((node): node is TerminalWorktreeNode => Boolean(node));
       if (worktreeNodes.length) {
@@ -271,18 +235,6 @@ export class TerminalProvider implements vscode.TreeDataProvider<TerminalNode> {
       ? nodes
       : [new PlaceholderNode("No terminals — launch one from a worktree")];
   }
-}
-
-function representativeCommand(
-  terminals: vscode.Terminal[],
-  tracker: TerminalTracker,
-): string | undefined {
-  return terminals
-    .map((terminal) => ({ terminal, state: tracker.get(terminal) }))
-    .filter((entry) => Boolean(entry.state?.runningCommand))
-    .sort(
-      (a, b) => (b.state?.lastFocusSeq ?? 0) - (a.state?.lastFocusSeq ?? 0),
-    )[0]?.state?.runningCommand;
 }
 
 function ordered(terminals: vscode.Terminal[]): vscode.Terminal[] {

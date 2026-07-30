@@ -274,9 +274,11 @@ function renderList(repos) {
         const terminal = document.createElement('div');
         terminal.className = 'terminalLeaf' + (session.id === activeSessionId ? ' active' : '');
         terminal.draggable = true;
-        terminal.title = session.state === 'running'
-          ? 'Working: ' + (session.fullCommand || session.displayName)
-          : 'Idle: ' + session.label;
+        terminal.title = 'Idle: ' + session.label;
+        terminal.oncontextmenu = event => showContextMenu(event, [
+          { label: 'Set Alias…', message: { type: 'setTerminalAlias', id: session.id } },
+          { label: 'Close Terminal', message: { type: 'closeSession', id: session.id } }
+        ]);
         terminal.onclick = event => {
           event.stopPropagation();
           vscode.postMessage({ type: session.id === activeSessionId ? 'collapse' : 'select', id: session.id });
@@ -314,10 +316,10 @@ function renderList(repos) {
         status.title = session.state === 'running' ? 'Working' : 'Idle';
         const terminalLabel = document.createElement('span');
         terminalLabel.className = 'terminalLabel ' + session.state;
-        terminalLabel.textContent = session.displayName;
+        terminalLabel.textContent = session.label;
         const stateText = document.createElement('span');
         stateText.className = 'terminalStateText';
-        stateText.textContent = session.statusText || (session.state === 'running' ? session.fullCommand || 'working' : 'idle');
+        stateText.textContent = session.statusText || 'idle';
         const actions = document.createElement('span');
         actions.className = 'terminalActions';
         const close = document.createElement('button');

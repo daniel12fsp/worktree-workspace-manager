@@ -19,12 +19,11 @@ import { log, logError } from "./logger";
 
 interface EmbeddedSession {
   readonly id: string;
-  readonly label: string;
+  label: string;
+  readonly terminalNumber: number;
   readonly worktree: Worktree;
   readonly process: pty.IPty;
   readonly output: string[];
-  inputBuffer: string;
-  runningCommand?: string;
 }
 
 export class EmbeddedTerminalViewProvider
@@ -35,8 +34,8 @@ export class EmbeddedTerminalViewProvider
   private readonly explorerWorktreeChanged = new vscode.EventEmitter<void>();
   readonly onDidChangeExplorerWorktree = this.explorerWorktreeChanged.event;
   private activeSessionId: string | undefined;
-  private terminalSeq = 0;
   private terminalOrderSeq = 0;
+  private readonly terminalSeqByWorktree = new Map<string, number>();
   private webviewReady = false;
   private fallbackRendered = false;
   private readonly terminalOrder = new Map<string, number>();
@@ -185,6 +184,8 @@ export class EmbeddedTerminalViewProvider
       if (closed) {
         await this.renderSessions();
       }
+    } else if (message?.type === "setTerminalAlias") {
+      await this.setTerminalAliasForSession(String(message.id));
     } else if (message?.type === "reorderSession") {
       this.reorderSession(String(message.draggedId), String(message.targetId));
       await this.renderSessions();
@@ -376,6 +377,39 @@ export class EmbeddedTerminalViewProvider
     return true;
   }
 
+  private async setTerminalAliasForSession(id: string): Promise<void> {
+    const session = this.sessions.get(id);
+    if (!session) return;
+
+    const alias = await vscode.window.showInputBox({
+      prompt: `Alias for ${session.label}`,
+      placeHolder: session.worktree.name,
+      value: terminalAliasFromLabel(session.label) ?? session.worktree.name,
+    });
+    if (alias === undefined) return;
+
+    session.label = this.formatTerminalLabel(
+      session.terminalNumber,
+      alias.trim() || session.worktree.name,
+    );
+    await this.renderSessions();
+  }
+
+  private nextTerminalLabel(worktree: Worktree): { label: string; terminalNumber: number } {
+    const key = this.worktreeKey(worktree);
+    const terminalNumber = (this.terminalSeqByWorktree.get(key) ?? 0) + 1;
+    this.terminalSeqByWorktree.set(key, terminalNumber);
+    return { label: this.formatTerminalLabel(terminalNumber, worktree.name), terminalNumber };
+  }
+
+  private formatTerminalLabel(terminalNumber: number, alias: string): string {
+    return `terminal ${terminalNumber} ~ ${alias}`;
+  }
+
+  private worktreeKey(worktree: Worktree): string {
+    return path.resolve(worktree.path);
+  }
+
   private createSession(
     worktree: Worktree,
     options: {
@@ -384,8 +418,9 @@ export class EmbeddedTerminalViewProvider
     } = {},
   ): EmbeddedSession {
     const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const label =
-      options.label ?? `${worktree.name} terminal ${++this.terminalSeq}`;
+    const generated = this.nextTerminalLabel(worktree);
+    const label = options.label ?? generated.label;
+    const terminalNumber = generated.terminalNumber;
     const shell = safeEnv("SHELL") || defaultShell();
     const env = ptyEnv(options.env);
     log("embedded terminal spawn prepare", {
@@ -417,17 +452,13 @@ export class EmbeddedTerminalViewProvider
     const session: EmbeddedSession = {
       id,
       label,
+      terminalNumber,
       worktree,
       process: proc,
       output: [],
-      inputBuffer: "",
     };
     this.terminalOrder.set(id, ++this.terminalOrderSeq);
     proc.onData((data) => {
-      if (session.runningCommand && looksLikePrompt(data)) {
-        session.runningCommand = undefined;
-        void this.renderSessions();
-      }
       session.output.push(data);
       if (session.output.length > 500) {
         session.output.splice(0, session.output.length - 500);
@@ -516,31 +547,6 @@ export class EmbeddedTerminalViewProvider
     if (!session) return;
 
     session.process.write(data);
-    for (const char of stripTerminalControlInput(data)) {
-      if (char === "\r" || char === "\n") {
-        const command = session.inputBuffer.trim();
-        if (command) {
-          session.runningCommand = command;
-          log("embedded terminal command captured", {
-            id: session.id,
-            label: session.label,
-            repo: session.worktree.repo.label,
-            worktree: session.worktree.name,
-            command,
-          });
-          void this.renderSessions();
-        }
-        session.inputBuffer = "";
-      } else if (char === "\u0003") {
-        session.runningCommand = undefined;
-        session.inputBuffer = "";
-        void this.renderSessions();
-      } else if (char === "\u007f") {
-        session.inputBuffer = session.inputBuffer.slice(0, -1);
-      } else if (char >= " ") {
-        session.inputBuffer += char;
-      }
-    }
   }
 
   private async renderSessions(): Promise<void> {
@@ -567,29 +573,14 @@ export class EmbeddedTerminalViewProvider
           [...this.sessions.values()].filter(
             (session) => session.worktree.path === worktree.path,
           ),
-        ).map((session) => {
-          const fullCommand = session.runningCommand?.trim();
-          const isRunning = Boolean(fullCommand);
-          const displayName = fullCommand || session.label;
-          if (fullCommand && displayName !== session.label) {
-            log("regular terminal display name follows running command", {
-              id: session.id,
-              label: session.label,
-              displayName,
-              repo: worktree.repo.label,
-              worktree: worktree.name,
-            });
-          }
-          return {
-            id: session.id,
-            label: session.label,
-            state: isRunning ? "running" : "idle",
-            displayName,
-            statusText: isRunning ? "running" : "idle",
-            fullCommand,
-            preview: outputPreview(session.output),
-          };
-        }),
+        ).map((session) => ({
+          id: session.id,
+          label: session.label,
+          state: "idle",
+          displayName: session.label,
+          statusText: "idle",
+          preview: outputPreview(session.output),
+        })),
       })),
     }));
     const active = this.activeSessionId
@@ -803,7 +794,7 @@ function staticTerminalListHtml(state: any): string {
         const stateName = session.state === "running" ? "running" : "idle";
         const preview = htmlEscape(session.preview);
         const nativeHref = htmlEscape(commandUri("worktreeManager.openNativeTerminalForPath", wt.path));
-        parts.push(`<details class="staticGroup" open><summary class="terminalLeaf"><span class="terminalStatus ${stateName}"></span><span class="terminalLabel ${stateName}">${htmlEscape(session.displayName || session.label)}</span><span class="terminalStateText">${htmlEscape(session.statusText || (stateName === "running" ? session.fullCommand || "working" : "idle"))}</span><a class="addTerminal" href="${nativeHref}" title="Open interactive VS Code terminal here">open</a></summary>${preview ? `<div class="staticPreview">${preview}</div>` : `<div class="staticPreview">No captured output yet.</div>`}</details>`);
+        parts.push(`<details class="staticGroup" open><summary class="terminalLeaf"><span class="terminalStatus ${stateName}"></span><span class="terminalLabel ${stateName}">${htmlEscape(session.label)}</span><span class="terminalStateText">${htmlEscape(session.statusText || "idle")}</span><a class="addTerminal" href="${nativeHref}" title="Open interactive VS Code terminal here">open</a></summary>${preview ? `<div class="staticPreview">${preview}</div>` : `<div class="staticPreview">No captured output yet.</div>`}</details>`);
       }
       parts.push(`</details>`);
     }
@@ -861,6 +852,10 @@ function safeEnv(key: string): string | undefined {
   }
 }
 
+function terminalAliasFromLabel(label: string): string | undefined {
+  return /^terminal \d+ ~ (.*)$/.exec(label)?.[1];
+}
+
 function outputPreview(output: string[]): string {
   const text = output
     .join("")
@@ -873,14 +868,3 @@ function outputPreview(output: string[]): string {
   return text?.slice(0, 140) ?? "";
 }
 
-function stripTerminalControlInput(data: string): string {
-  return data
-    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, "")
-    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
-    .replace(/\x1b./g, "");
-}
-
-function looksLikePrompt(data: string): boolean {
-  const stripped = data.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
-  return /(?:^|\r|\n).*[$#>]\s*$/.test(stripped);
-}
