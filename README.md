@@ -96,7 +96,6 @@ echo 'gitdir: .bare' > .git
 Then run **Add Existing Bare Repository…** and select the full project folder to open a code tab with commands to convert an existing normal clone into the `.bare` layout:
 
 ```sh
-# Copy and paste this code to a terminal
 cd '/full/path/project'
 mkdir .bare
 mv .git/* .bare/

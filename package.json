@@ -1,7 +1,7 @@
 {
   "name": "worktree-workspace-manager",
   "displayName": "Worktree Workspace Manager",
-  "description": "Group terminals by git worktree, switch branches in one click, and auto-tidy editors from a single tree \u2014 built for bare-repo + worktree workflows.",
+  "description": "Group terminals by git worktree, switch branches in one click, and auto-tidy editors from a single tree — built for bare-repo + worktree workflows.",
   "version": "0.0.3",
   "publisher": "daniel12fsp",
   "author": "Daniel Pereira <daniel12fsp@yahoo.com.br>",
@@ -149,15 +149,15 @@
       },
       {
         "command": "worktreeManager.cloneBareRepository",
-        "title": "Clone Bare Repository\u2026"
+        "title": "Clone Bare Repository…"
       },
       {
         "command": "worktreeManager.addExistingBareRepository",
-        "title": "Add Existing Bare Repository\u2026"
+        "title": "Add Existing Bare Repository…"
       },
       {
         "command": "worktreeManager.addWorktree",
-        "title": "Add Worktree\u2026"
+        "title": "Add Worktree…"
       },
       {
         "command": "worktreeManager.copyRepositoryPath",
@@ -181,7 +181,7 @@
       },
       {
         "command": "worktreeManager.changeColor",
-        "title": "Change Worktree Color\u2026"
+        "title": "Change Worktree Color…"
       },
       {
         "command": "worktreeManager.removeWorktree",
@@ -197,7 +197,7 @@
       },
       {
         "command": "worktreeManager.configureRepositories",
-        "title": "Configure Repositories\u2026"
+        "title": "Configure Repositories…"
       },
       {
         "command": "worktreeManager.closeRepoTerminals",
