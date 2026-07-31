@@ -274,7 +274,7 @@ function renderList(repos) {
         const terminal = document.createElement('div');
         terminal.className = 'terminalLeaf' + (session.id === activeSessionId ? ' active' : '');
         terminal.draggable = true;
-        terminal.title = 'Idle: ' + session.label;
+        terminal.title = (session.state === 'running' ? 'Running: ' : 'Idle: ') + session.label;
         terminal.oncontextmenu = event => showContextMenu(event, [
           { label: 'Set Alias…', message: { type: 'setTerminalAlias', id: session.id } },
           { label: 'Close Terminal', message: { type: 'closeSession', id: session.id } }

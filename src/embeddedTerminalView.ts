@@ -17,6 +17,8 @@ import {
 } from "./workspaceFile";
 import { log, logError } from "./logger";
 
+type TerminalActivityState = "idle" | "running";
+
 interface EmbeddedSession {
   readonly id: string;
   label: string;
@@ -24,6 +26,10 @@ interface EmbeddedSession {
   readonly worktree: Worktree;
   readonly process: pty.IPty;
   readonly output: string[];
+  state: TerminalActivityState;
+  statusText: string;
+  activityMarkerRemainder: string;
+  readonly wrapperCleanupPaths: string[];
 }
 
 export class EmbeddedTerminalViewProvider
@@ -46,6 +52,7 @@ export class EmbeddedTerminalViewProvider
     this.explorerWorktreeChanged.dispose();
     for (const session of this.sessions.values()) {
       session.process.kill();
+      cleanupShellWrapper(session);
     }
     this.sessions.clear();
   }
@@ -351,6 +358,7 @@ export class EmbeddedTerminalViewProvider
       this.sessions.delete(session.id);
       this.terminalOrder.delete(session.id);
       session.process.kill();
+      cleanupShellWrapper(session);
     }
     if (matches.length) log("killed sessions", { count: matches.length });
     if (this.activeSessionId && !this.sessions.has(this.activeSessionId)) {
@@ -366,6 +374,7 @@ export class EmbeddedTerminalViewProvider
     this.sessions.delete(id);
     this.terminalOrder.delete(id);
     session.process.kill();
+    cleanupShellWrapper(session);
     if (this.activeSessionId === id) {
       this.activeSessionId = this.nextSessionId();
     }
@@ -403,7 +412,7 @@ export class EmbeddedTerminalViewProvider
   }
 
   private formatTerminalLabel(terminalNumber: number, alias: string): string {
-    return `terminal ${terminalNumber} ~ ${alias}`;
+    return `t${terminalNumber} - ${alias}`;
   }
 
   private worktreeKey(worktree: Worktree): string {
@@ -422,18 +431,20 @@ export class EmbeddedTerminalViewProvider
     const label = options.label ?? generated.label;
     const terminalNumber = generated.terminalNumber;
     const shell = safeEnv("SHELL") || defaultShell();
-    const env = ptyEnv(options.env);
+    const wrapper = shellActivityWrapper(shell);
+    const env = ptyEnv({ ...options.env, ...wrapper.env });
     log("embedded terminal spawn prepare", {
         repo: worktree.repo.label,
         worktree: worktree.name,
         cwd: worktree.path,
-        shell,
+        shell: wrapper.shell,
         label,
         envKeys: Object.keys(options.env ?? {}),
+        wrapped: wrapper.cleanupPaths.length > 0,
       },
     );
     this.ensureNodePtySpawnHelperExecutable();
-    const proc = pty.spawn(shell, [], {
+    const proc = pty.spawn(wrapper.shell, wrapper.args, {
       name: "xterm-256color",
       cwd: worktree.path,
       env,
@@ -444,9 +455,10 @@ export class EmbeddedTerminalViewProvider
         repo: worktree.repo.label,
         worktree: worktree.name,
         cwd: worktree.path,
-        shell,
+        shell: wrapper.shell,
         label,
         envKeys: Object.keys(options.env ?? {}),
+        wrapped: wrapper.cleanupPaths.length > 0,
       },
     );
     const session: EmbeddedSession = {
@@ -456,14 +468,22 @@ export class EmbeddedTerminalViewProvider
       worktree,
       process: proc,
       output: [],
+      state: "idle",
+      statusText: "idle",
+      activityMarkerRemainder: "",
+      wrapperCleanupPaths: wrapper.cleanupPaths,
     };
     this.terminalOrder.set(id, ++this.terminalOrderSeq);
     proc.onData((data) => {
-      session.output.push(data);
-      if (session.output.length > 500) {
-        session.output.splice(0, session.output.length - 500);
+      const { visibleData, stateChanged } = consumeActivityMarkers(session, data);
+      if (visibleData) {
+        session.output.push(visibleData);
+        if (session.output.length > 500) {
+          session.output.splice(0, session.output.length - 500);
+        }
+        this.view?.webview.postMessage({ type: "output", id, data: visibleData });
       }
-      this.view?.webview.postMessage({ type: "output", id, data });
+      if (stateChanged) void this.renderSessions();
     });
     proc.onExit((event) => {
       log("terminal exited", {
@@ -473,6 +493,7 @@ export class EmbeddedTerminalViewProvider
       });
       this.sessions.delete(id);
       this.terminalOrder.delete(id);
+      cleanupShellWrapper(session);
       if (this.activeSessionId === id) {
         this.activeSessionId = this.nextSessionId();
       }
@@ -576,9 +597,9 @@ export class EmbeddedTerminalViewProvider
         ).map((session) => ({
           id: session.id,
           label: session.label,
-          state: "idle",
+          state: session.state,
           displayName: session.label,
-          statusText: "idle",
+          statusText: session.statusText,
           preview: outputPreview(session.output),
         })),
       })),
@@ -803,6 +824,172 @@ function staticTerminalListHtml(state: any): string {
   return parts.join("");
 }
 
+const activityMarkerPrefix = "\x1b]777;wtwm;";
+const activityMarkerPattern = /\x1b\]777;wtwm;(start;([^\x07]*)|idle)\x07/g;
+
+function consumeActivityMarkers(
+  session: EmbeddedSession,
+  data: string,
+): { visibleData: string; stateChanged: boolean } {
+  let combined = session.activityMarkerRemainder + data;
+  session.activityMarkerRemainder = "";
+
+  const incompleteMarkerIndex = combined.lastIndexOf(activityMarkerPrefix);
+  if (
+    incompleteMarkerIndex >= 0 &&
+    combined.indexOf("\x07", incompleteMarkerIndex) < 0
+  ) {
+    session.activityMarkerRemainder = combined.slice(incompleteMarkerIndex);
+    combined = combined.slice(0, incompleteMarkerIndex);
+  }
+
+  let stateChanged = false;
+  const visibleData = combined.replace(activityMarkerPattern, (_match, kind: string, command?: string) => {
+    if (kind.startsWith("start;")) {
+      session.state = "running";
+      session.statusText = (command ?? "").trim() || "running";
+    } else {
+      session.state = "idle";
+      session.statusText = "idle";
+    }
+    stateChanged = true;
+    return "";
+  });
+  return { visibleData, stateChanged };
+}
+
+interface ShellActivityWrapper {
+  shell: string;
+  args: string[];
+  env: Record<string, string>;
+  cleanupPaths: string[];
+}
+
+function shellActivityWrapper(shell: string): ShellActivityWrapper {
+  const base: ShellActivityWrapper = {
+    shell,
+    args: [],
+    env: {},
+    cleanupPaths: [],
+  };
+
+  if (process.platform === "win32") {
+    return base;
+  }
+
+  const shellName = path.basename(shell);
+  try {
+    if (shellName === "zsh") {
+      const zDotDir = fs.mkdtempSync(path.join(os.tmpdir(), "wtwm-zsh-"));
+      const zshrcPath = path.join(zDotDir, ".zshrc");
+      fs.writeFileSync(zshrcPath, zshActivityRc(), { mode: 0o600 });
+      return {
+        ...base,
+        env: { ZDOTDIR: zDotDir },
+        cleanupPaths: [zDotDir],
+      };
+    }
+
+    if (shellName === "bash") {
+      const bashDir = fs.mkdtempSync(path.join(os.tmpdir(), "wtwm-bash-"));
+      const bashrcPath = path.join(bashDir, "bashrc");
+      fs.writeFileSync(bashrcPath, bashActivityRc(), { mode: 0o600 });
+      return {
+        ...base,
+        args: ["--rcfile", bashrcPath, "-i"],
+        cleanupPaths: [bashDir],
+      };
+    }
+
+    if (shellName === "fish") {
+      const fishDir = fs.mkdtempSync(path.join(os.tmpdir(), "wtwm-fish-"));
+      const fishInitPath = path.join(fishDir, "activity.fish");
+      fs.writeFileSync(fishInitPath, fishActivityRc(), { mode: 0o600 });
+      return {
+        ...base,
+        args: ["--init-command", `source ${fishQuote(fishInitPath)}`],
+        cleanupPaths: [fishDir],
+      };
+    }
+  } catch (error) {
+    logError("failed to create shell activity wrapper; terminal will run without activity tracking", { shell, error });
+  }
+
+  return base;
+}
+
+function zshActivityRc(): string {
+  return String.raw`# Generated by Worktree Workspace Manager. Detects command running/idle state.
+if [[ -r "$HOME/.zshrc" ]]; then
+  source "$HOME/.zshrc"
+fi
+
+__wtwm_preexec() {
+  print -rn -- $'\e]777;wtwm;start;' "$1" $'\a'
+}
+
+__wtwm_precmd() {
+  print -rn -- $'\e]777;wtwm;idle\a'
+}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook preexec __wtwm_preexec
+add-zsh-hook precmd __wtwm_precmd
+`;
+}
+
+function bashActivityRc(): string {
+  return `# Generated by Worktree Workspace Manager. Detects command running/idle state.
+if [[ -r "$HOME/.bashrc" ]]; then
+  source "$HOME/.bashrc"
+elif [[ -r "$HOME/.bash_profile" ]]; then
+  source "$HOME/.bash_profile"
+fi
+
+__wtwm_debug() {
+  local command="$BASH_COMMAND"
+  [[ -z "$command" || "$command" == __wtwm_* || "$command" == trap\\ * || "$command" == PROMPT_COMMAND=* ]] && return
+  printf '\\033]777;wtwm;start;%s\\a' "$command"
+}
+
+__wtwm_prompt() {
+  printf '\\033]777;wtwm;idle\\a'
+}
+
+trap '__wtwm_debug' DEBUG
+# Run after the user's prompt command. If PROMPT_COMMAND calls a function like
+# __my_prompt, DEBUG may briefly mark it as running; this final idle marker keeps
+# prompt rendering from being shown as terminal work.
+PROMPT_COMMAND="\${PROMPT_COMMAND:+$PROMPT_COMMAND;}__wtwm_prompt"
+`;
+}
+
+function fishActivityRc(): string {
+  return String.raw`# Generated by Worktree Workspace Manager. Detects command running/idle state.
+function __wtwm_preexec --on-event fish_preexec
+  printf '\033]777;wtwm;start;%s\a' "$argv"
+end
+
+function __wtwm_postexec --on-event fish_postexec
+  printf '\033]777;wtwm;idle\a'
+end
+`;
+}
+
+function fishQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function cleanupShellWrapper(session: EmbeddedSession): void {
+  for (const cleanupPath of session.wrapperCleanupPaths) {
+    try {
+      fs.rmSync(cleanupPath, { recursive: true, force: true });
+    } catch (error) {
+      logError("failed to clean shell activity wrapper", { cleanupPath, error });
+    }
+  }
+}
+
 function defaultShell(): string {
   if (process.platform === "win32") return "powershell.exe";
   if (process.platform === "darwin") return "/bin/zsh";
@@ -853,7 +1040,7 @@ function safeEnv(key: string): string | undefined {
 }
 
 function terminalAliasFromLabel(label: string): string | undefined {
-  return /^terminal \d+ ~ (.*)$/.exec(label)?.[1];
+  return /^(?:terminal \d+ ~|t\d+ -) (.*)$/.exec(label)?.[1];
 }
 
 function outputPreview(output: string[]): string {
