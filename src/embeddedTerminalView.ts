@@ -193,6 +193,10 @@ export class EmbeddedTerminalViewProvider
       }
     } else if (message?.type === "setTerminalAlias") {
       await this.setTerminalAliasForSession(String(message.id));
+    } else if (message?.type === "openSessionOutput") {
+      await this.openSessionOutput(String(message.id));
+    } else if (message?.type === "resetSessionOutput") {
+      await this.resetSessionOutput(String(message.id));
     } else if (message?.type === "reorderSession") {
       this.reorderSession(String(message.draggedId), String(message.targetId));
       await this.renderSessions();
@@ -384,6 +388,44 @@ export class EmbeddedTerminalViewProvider
       worktree: session.worktree.name,
     });
     return true;
+  }
+
+  private async openSessionOutput(id: string): Promise<void> {
+    const session = this.sessions.get(id);
+    if (!session) {
+      void vscode.window.showWarningMessage("Terminal output is no longer available.");
+      return;
+    }
+
+    const output = session.output.join("") || "No captured output yet.\n";
+    const content = [
+      `Terminal: ${session.label}`,
+      `Worktree: ${session.worktree.name}`,
+      `Branch: ${session.worktree.branch ?? "detached"}`,
+      `Path: ${session.worktree.path}`,
+      `Status: ${session.statusText || session.state}`,
+      "",
+      "--- Output ---",
+      "",
+      output,
+    ].join("\n");
+    const document = await vscode.workspace.openTextDocument({
+      content,
+      language: "log",
+    });
+    await vscode.window.showTextDocument(document, { preview: false });
+  }
+
+  private async resetSessionOutput(id: string): Promise<void> {
+    const session = this.sessions.get(id);
+    if (!session) {
+      void vscode.window.showWarningMessage("Terminal output is no longer available.");
+      return;
+    }
+
+    session.output.splice(0, session.output.length);
+    this.view?.webview.postMessage({ type: "clear", id });
+    await this.renderSessions();
   }
 
   private async setTerminalAliasForSession(id: string): Promise<void> {
