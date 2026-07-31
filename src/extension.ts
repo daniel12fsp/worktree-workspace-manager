@@ -287,20 +287,12 @@ async function addExistingBareRepository(): Promise<void> {
   const repoPath = folderChoice?.[0]?.fsPath;
   if (!repoPath) return;
 
-  const isBare = await isBareRepository(repoPath);
-  if (!isBare) {
-    void vscode.window.showErrorMessage(`${repoPath} is not a bare git repository.`);
-    return;
-  }
+  const script = existingBareRepositoryScript(repoPath);
+  const document = await vscode.workspace.openTextDocument({ content: script, language: 'shellscript' });
+  await vscode.window.showTextDocument(document);
 
-  if (await createAndOpenWorkspaceIfNeeded(repoPath)) return;
-
-  await addRepositoryToConfig(repoPath);
-  await addFolderToWorkspace(repoPath);
-  await openWorkspaceConfigurationFile();
-
-  log('added existing bare repository to config', { repoPath });
-  void vscode.window.showInformationMessage(`Added ${path.basename(repoPath)} to Worktree Manager settings.`);
+  log('existing bare repository commands opened', { repoPath });
+  void vscode.window.showInformationMessage('Existing bare repository commands opened. Run them in a terminal.');
 }
 
 async function cloneBareRepository(): Promise<void> {
@@ -340,39 +332,13 @@ async function cloneBareRepository(): Promise<void> {
     log('clone bare repository cancelled: no repository path');
     return;
   }
-  const barePath = path.join(repoPath, '.bare');
-  log('clone bare repository path accepted', { repoPath, barePath });
+  log('clone bare repository path accepted', { repoPath });
 
-  if (fs.existsSync(repoPath)) {
-    log('clone bare repository blocked: target path already exists', { repoPath, barePath });
-    void vscode.window.showErrorMessage(`Cannot clone: ${repoPath} already exists.`);
-    return;
-  }
-
-  await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: 'Worktree Manager' }, async () => {
-    try {
-      await fs.promises.mkdir(repoPath, { recursive: true });
-      log('clone bare repository git clone start', { remoteUrl, repoPath, barePath });
-      await execFileAsync('git', ['clone', '--bare', remoteUrl, barePath]);
-      log('clone bare repository git clone complete', { remoteUrl, repoPath, barePath });
-
-      const isBare = await isBareRepository(repoPath);
-      if (!isBare) {
-        throw new Error(`Cloned path is not a bare git repository: ${repoPath}`);
-      }
-
-      if (await createAndOpenWorkspaceIfNeeded(repoPath)) return;
-
-      await addRepositoryToConfig(repoPath);
-      await addFolderToWorkspace(repoPath);
-      await openWorkspaceConfigurationFile();
-      log('cloned bare repository and updated workspace/config', { remoteUrl, repoPath });
-      void vscode.window.showInformationMessage(`Cloned ${path.basename(repoPath)} and updated Worktree Manager settings.`);
-    } catch (error) {
-      logError('clone bare repository failed', { remoteUrl, repoPath, error });
-      void vscode.window.showErrorMessage(`Failed to clone bare repository: ${gitErrorMessage(error)}`);
-    }
-  });
+  const script = bareCloneSetupScript(remoteUrl, repoPath);
+  const document = await vscode.workspace.openTextDocument({ content: script, language: 'shellscript' });
+  await vscode.window.showTextDocument(document);
+  log('clone bare repository setup commands opened', { remoteUrl, repoPath });
+  void vscode.window.showInformationMessage('Bare repository setup commands opened. Run them in a terminal, then use Add Existing Bare Repository…');
 }
 
 async function localBranchExists(repo: BareRepository, branch: string): Promise<boolean> {
@@ -393,6 +359,36 @@ async function isBareRepository(repoPath: string): Promise<boolean> {
     logError('bare repository validation failed', { repoPath, gitDir, error });
     return false;
   }
+}
+
+function bareCloneSetupScript(remoteUrl: string, repoPath: string): string {
+  return [
+    '# Copy and paste this code to a terminal',
+    `mkdir -p ${shellQuote(repoPath)}`,
+    `cd ${shellQuote(repoPath)}`,
+    `git clone --bare ${shellQuote(remoteUrl)} .bare`,
+    `git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'`,
+    `echo 'gitdir: .bare' > .git`,
+    ''
+  ].join('\n');
+}
+
+function existingBareRepositoryScript(repoPath: string): string {
+  return [
+    '# Copy and paste this code to a terminal',
+    `cd ${shellQuote(repoPath)}`,
+    `mkdir .bare`,
+    `mv .git/* .bare/`,
+    `rm -rf .git`,
+    `echo 'gitdir: .bare' > .git`,
+    `git --git-dir=.bare config core.bare true`,
+    `git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'`,
+    ''
+  ].join('\n');
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function inferRepositoryRootName(remoteUrl: string): string {

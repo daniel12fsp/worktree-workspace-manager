@@ -2,7 +2,8 @@ npm install
 npm run compile
 vsce package
 code --install-extension worktree-workspace-manager-0.0.2.vsix
-
+npm version minor
+npm version patch
 To reset a VSCode extension on Linux:
 
 ### 1. Uninstall/reinstall extension

@@ -58,7 +58,7 @@ Minimal workspace settings:
 
 ```jsonc
 {
-  "worktreeManager.repositories": ["~/code/express"]
+  "worktreeManager.repositories": ["~/code/express"],
 }
 ```
 
@@ -75,35 +75,43 @@ Minimal workspace settings:
 1. Open a `.code-workspace` workspace.
 2. Open the status bar menu: **🌳 Worktree Manager**.
 3. Choose one of:
-   - **Clone Bare Repository…** — clones a remote into `<repo>/.bare`, adds the repo to the workspace, and opens the workspace config.
-   - **Add Existing Bare Repository…** — picks an existing bare repo, adds it to `worktreeManager.repositories`, and opens the workspace config.
+   - **Clone Bare Repository…** — opens a code tab with terminal commands that clone a remote into `<repo>/.bare`.
+   - **Add Existing Bare Repository…** — picks an existing bare repo root folder and opens a code tab with commands for that folder.
 
-If no workspace is open yet, either setup action creates a `.code-workspace` file for the repo and reopens VS Code with it.
-
-> **Git authentication note:** **Clone Bare Repository…** may have issues with remotes that require an interactive password/passphrase prompt. Prefer SSH keys loaded in `ssh-agent`, Git Credential Manager, or clone manually in a terminal first, then use **Add Existing Bare Repository…**.
-
-4. Add worktrees and select/check one to start working.
+4. Run the generated clone commands in a terminal. Use **Add Existing Bare Repository…** when you want a code tab that `cd`s to the full project folder containing `.bare`.
+5. Add worktrees and select/check one to start working.
 
 ### Manual bare repo setup
 
-If the UI clone has authentication issues, create the bare-worktree repo from a normal terminal:
+The clone command opens commands like this in a code tab so password/passphrase prompts work in your terminal:
 
 ```sh
-mkdir express.git
-cd express.git
+mkdir -p '/full/path/express.git'
+cd '/full/path/express.git'
 git clone --bare git@github.com:expressjs/express.git .bare
 git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
 echo 'gitdir: .bare' > .git
 ```
 
-Then run **Add Existing Bare Repository…** and select the `express` folder.
+Then run **Add Existing Bare Repository…** and select the full project folder to open a code tab with commands to convert an existing normal clone into the `.bare` layout:
+
+```sh
+# Copy and paste this code to a terminal
+cd '/full/path/project'
+mkdir .bare
+mv .git/* .bare/
+rm -rf .git
+echo 'gitdir: .bare' > .git
+git --git-dir=.bare config core.bare true
+git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+```
 
 To transform an already cloned normal git repo into this layout, run from the repo root:
 
 ```sh
 mkdir .bare
 mv .git/* .bare/
-rmdir .git
+rm -rf .git
 echo 'gitdir: .bare' > .git
 git --git-dir=.bare config core.bare true
 git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
@@ -137,18 +145,18 @@ Supported repo paths:
 
 ## Main actions
 
-| Action                            | What it does                                                                        |
-| --------------------------------- | ----------------------------------------------------------------------------------- |
-| **Clone Bare Repository…**        | Clone a remote into `<repo>/.bare`; creates/updates workspace config automatically. |
-| **Add Existing Bare Repository…** | Add an existing bare repo; creates/updates workspace config automatically.          |
-| **Add Worktree…**                 | Create a new git worktree.                                                          |
-| **Check Worktree**                | Focus that worktree and hide the others.                                            |
-| **Open Terminal Here**            | Open a terminal scoped to the worktree.                                             |
-| **Change Worktree Color…**        | Pick a custom color for a worktree.                                                 |
-| **Remove Worktree**               | Run `git worktree remove`.                                                          |
-| **Fetch**                         | Run `git fetch` for a repo.                                                         |
-| **Prune Stale**                   | Run `git worktree prune`.                                                           |
-| **Configure Repositories…**       | Open the workspace configuration.                                                   |
+| Action                            | What it does                                                  |
+| --------------------------------- | ------------------------------------------------------------- |
+| **Clone Bare Repository…**        | Open terminal commands to clone a remote into `<repo>/.bare`. |
+| **Add Existing Bare Repository…** | Open terminal commands for an existing bare repo root folder. |
+| **Add Worktree…**                 | Create a new git worktree.                                    |
+| **Check Worktree**                | Focus that worktree and hide the others.                      |
+| **Open Terminal Here**            | Open a terminal scoped to the worktree.                       |
+| **Change Worktree Color…**        | Pick a custom color for a worktree.                           |
+| **Remove Worktree**               | Run `git worktree remove`.                                    |
+| **Fetch**                         | Run `git fetch` for a repo.                                   |
+| **Prune Stale**                   | Run `git worktree prune`.                                     |
+| **Configure Repositories…**       | Open the workspace configuration.                             |
 
 ---
 
