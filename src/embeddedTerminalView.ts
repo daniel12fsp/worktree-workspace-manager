@@ -195,6 +195,14 @@ export class EmbeddedTerminalViewProvider
       await this.setTerminalAliasForSession(String(message.id));
     } else if (message?.type === "openSessionOutput") {
       await this.openSessionOutput(String(message.id));
+    } else if (message?.type === "openExternalLink") {
+      await this.openExternalLink(String(message.href));
+    } else if (message?.type === "openTerminalFileLink") {
+      await this.openTerminalFileLink(
+        String(message.path),
+        numberOrUndefined(message.line),
+        numberOrUndefined(message.column),
+      );
     } else if (message?.type === "resetSessionOutput") {
       await this.resetSessionOutput(String(message.id));
     } else if (message?.type === "reorderSession") {
@@ -306,6 +314,43 @@ export class EmbeddedTerminalViewProvider
           await this.renderSessions();
         }
       }
+    }
+  }
+
+  private async openExternalLink(href: string): Promise<void> {
+    let uri: vscode.Uri;
+    try {
+      uri = vscode.Uri.parse(href, true);
+    } catch {
+      void vscode.window.showWarningMessage(`Invalid link: ${href}`);
+      return;
+    }
+    if (uri.scheme !== "http" && uri.scheme !== "https") {
+      void vscode.window.showWarningMessage(`Unsupported link scheme: ${uri.scheme}`);
+      return;
+    }
+    await vscode.env.openExternal(uri);
+  }
+
+  private async openTerminalFileLink(
+    rawPath: string,
+    line?: number,
+    column?: number,
+  ): Promise<void> {
+    const session = this.activeSessionId
+      ? this.sessions.get(this.activeSessionId)
+      : undefined;
+    const resolvedPath = resolveTerminalFilePath(rawPath, session?.worktree.path);
+    if (!fs.existsSync(resolvedPath)) {
+      void vscode.window.showWarningMessage(`File not found: ${resolvedPath}`);
+      return;
+    }
+    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(resolvedPath));
+    const editor = await vscode.window.showTextDocument(document);
+    if (line && line > 0) {
+      const position = new vscode.Position(line - 1, Math.max((column ?? 1) - 1, 0));
+      editor.selection = new vscode.Selection(position, position);
+      editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     }
   }
 
@@ -1090,6 +1135,44 @@ function safeEnv(key: string): string | undefined {
 
 function terminalAliasFromLabel(label: string): string | undefined {
   return /^(?:terminal \d+ ~|t\d+ -) (.*)$/.exec(label)?.[1];
+}
+
+function numberOrUndefined(value: unknown): number | undefined {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : undefined;
+}
+
+function resolveTerminalFilePath(rawPath: string, cwd?: string): string {
+  if (rawPath.startsWith("file://")) {
+    return vscode.Uri.parse(rawPath).fsPath;
+  }
+  if (rawPath === "~") {
+    return os.homedir();
+  }
+  if (rawPath.startsWith(`~${path.sep}`) || rawPath.startsWith("~/")) {
+    return path.join(os.homedir(), rawPath.slice(2));
+  }
+  if (path.isAbsolute(rawPath)) {
+    return rawPath;
+  }
+
+  const base = cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
+  const resolvedPath = path.resolve(base, rawPath);
+  if (fs.existsSync(resolvedPath)) {
+    return resolvedPath;
+  }
+
+  // Git diff output commonly prints paths as a/file and b/file. Those prefixes
+  // are diff-side labels, not real folders in the worktree, so a clicked
+  // b/README.md should open README.md when that file exists.
+  if (/^[ab][\\/]/.test(rawPath)) {
+    const withoutDiffPrefix = path.resolve(base, rawPath.slice(2));
+    if (fs.existsSync(withoutDiffPrefix)) {
+      return withoutDiffPrefix;
+    }
+  }
+
+  return resolvedPath;
 }
 
 function outputPreview(output: string[]): string {

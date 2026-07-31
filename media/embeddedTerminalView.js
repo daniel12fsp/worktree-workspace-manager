@@ -47,6 +47,7 @@ function initTerminal() {
       return true;
     });
     term.open(terminalEl);
+    registerTerminalLinkProvider();
     terminalEl.addEventListener('mouseenter', () => {
       focusTerminalNow();
     });
@@ -210,6 +211,75 @@ function stripTerminalGeneratedInput(data) {
   // Some macOS shells echo those replies as visible ^[[3;1R noise, so do not
   // forward terminal-generated reports to the pty as user input.
   return data.replace(/\x1b\[\d+;\d+R/g, '');
+}
+function registerTerminalLinkProvider() {
+  if (!term || typeof term.registerLinkProvider !== 'function') return;
+  term.registerLinkProvider({
+    provideLinks(bufferLineNumber, callback) {
+      try {
+        const line = term.buffer.active.getLine(bufferLineNumber - 1);
+        const text = line?.translateToString(true) || '';
+        callback(detectTerminalLinks(text, bufferLineNumber));
+      } catch (error) {
+        callback(undefined);
+      }
+    }
+  });
+}
+function detectTerminalLinks(text, bufferLineNumber) {
+  const links = [];
+  const occupied = [];
+  collectMatches(text, /\bhttps?:\/\/[^\s<>"'`]+/g, 'url', links, occupied, bufferLineNumber);
+  collectMatches(text, /(?:~|\.{1,2}|\/|[A-Za-z]:[\\/]|[A-Za-z0-9_.-]+\/)[^\s<>"'`]+/g, 'file', links, occupied, bufferLineNumber);
+  return links.length ? links : undefined;
+}
+function collectMatches(text, regex, kind, links, occupied, bufferLineNumber) {
+  for (const match of text.matchAll(regex)) {
+    const raw = match[0];
+    const start = match.index || 0;
+    const trimmed = trimTerminalLink(raw);
+    if (!trimmed.text) continue;
+    const end = start + trimmed.text.length;
+    if (occupied.some(range => start < range.end && end > range.start)) continue;
+    occupied.push({ start, end });
+    const parsed = kind === 'file' ? parseFileLink(trimmed.text) : undefined;
+    const linkText = kind === 'file' ? parsed.path : trimmed.text;
+    links.push({
+      range: {
+        start: { x: start + 1, y: bufferLineNumber },
+        end: { x: end + 1, y: bufferLineNumber }
+      },
+      text: trimmed.text,
+      decorations: { pointerCursor: true, underline: true },
+      activate() {
+        if (kind === 'url') {
+          vscode.postMessage({ type: 'openExternalLink', href: trimmed.text });
+        } else {
+          vscode.postMessage({ type: 'openTerminalFileLink', path: linkText, line: parsed.line, column: parsed.column });
+        }
+      },
+      hover(event) {
+        if (event?.target) event.target.title = kind === 'url' ? 'Open link' : 'Open file';
+      }
+    });
+  }
+}
+function trimTerminalLink(value) {
+  let text = value;
+  while (/[),.;:!?\]}]+$/.test(text)) {
+    // Preserve :line and :line:column suffixes on file links.
+    if (/:[0-9]+(?::[0-9]+)?$/.test(text)) break;
+    text = text.slice(0, -1);
+  }
+  return { text };
+}
+function parseFileLink(value) {
+  const match = /^(.*?)(?::([0-9]+)(?::([0-9]+))?)?$/.exec(value);
+  return {
+    path: match?.[1] || value,
+    line: match?.[2] ? Number(match[2]) : undefined,
+    column: match?.[3] ? Number(match[3]) : undefined
+  };
 }
 function renderList(repos) {
   const list = document.getElementById('list');
