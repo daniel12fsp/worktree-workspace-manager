@@ -19,6 +19,7 @@ let term;
 let searchAddon;
 let activeSessionId;
 let shouldFocusTerminalOnce = false;
+let terminalHasFocus = false;
 const collapsedRepos = new Set();
 const collapsedWorktrees = new Set();
 const loadingWorktreePaths = new Set();
@@ -46,6 +47,31 @@ function initTerminal() {
       return true;
     });
     term.open(terminalEl);
+    terminalEl.addEventListener('mouseenter', () => {
+      focusTerminalNow();
+    });
+    terminalEl.addEventListener('focusin', () => {
+      terminalHasFocus = true;
+      updateTerminalFocusClasses();
+    });
+    terminalEl.addEventListener('focusout', () => {
+      setTimeout(() => {
+        terminalHasFocus = terminalEl.contains(document.activeElement);
+        updateTerminalFocusClasses();
+      }, 0);
+    });
+    if (typeof term.onFocus === 'function') {
+      term.onFocus(() => {
+        terminalHasFocus = true;
+        updateTerminalFocusClasses();
+      });
+    }
+    if (typeof term.onBlur === 'function') {
+      term.onBlur(() => {
+        terminalHasFocus = false;
+        updateTerminalFocusClasses();
+      });
+    }
     term.onData(data => {
       if (!activeSessionId) return;
       const sanitized = stripTerminalGeneratedInput(data);
@@ -344,6 +370,7 @@ function renderList(repos) {
           inline.appendChild(terminalEl);
           terminalEl.style.display = 'block';
           list.appendChild(inline);
+          updateTerminalFocusClasses();
         }
       }
     }
@@ -423,13 +450,26 @@ function requestActiveTerminalFocus() {
   shouldFocusTerminalOnce = true;
   focusActiveTerminalIfRequested();
 }
+function updateTerminalFocusClasses() {
+  const inline = terminalEl.parentElement && terminalEl.parentElement.classList.contains('terminalInline')
+    ? terminalEl.parentElement
+    : undefined;
+  if (!inline) return;
+  inline.classList.toggle('focused', terminalHasFocus);
+  inline.classList.toggle('lostFocus', !terminalHasFocus);
+}
+function focusTerminalNow() {
+  if (!activeSessionId || !terminalEl.parentElement || !terminalEl.parentElement.classList.contains('terminalInline')) return;
+  if (!term) return;
+  term.focus();
+  terminalHasFocus = true;
+  updateTerminalFocusClasses();
+}
 function focusActiveTerminalIfRequested() {
   if (!shouldFocusTerminalOnce || !activeSessionId) return;
   shouldFocusTerminalOnce = false;
   setTimeout(() => {
-    if (activeSessionId && terminalEl.parentElement && terminalEl.parentElement.classList.contains('terminalInline')) {
-      if (term) term.focus();
-    }
+    focusTerminalNow();
   }, 0);
 }
 function resize() {

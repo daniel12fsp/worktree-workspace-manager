@@ -789,7 +789,9 @@ export class EmbeddedTerminalViewProvider
     .loadingCheckbox { width: 13px; height: 13px; flex: 0 0 auto; border: 2px solid var(--vscode-progressBar-background, #0e70c0); border-top-color: transparent; border-radius: 50%; box-sizing: border-box; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .terminalInline { margin: 4px 0 8px 0; width: 100%; height: min(420px, 65vh); border: 1px solid var(--vscode-panel-border); padding: 4px; background: #000; box-sizing: border-box; }
-    .terminalInline.active { border-color: var(--vscode-focusBorder, #007fd4); box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007fd4); }
+    .terminalInline.active { border-color: var(--vscode-terminal-ansiYellow, #ffcc00); box-shadow: 0 0 0 1px var(--vscode-terminal-ansiYellow, #ffcc00); }
+    .terminalInline.active.focused { border-color: var(--vscode-focusBorder, #007fd4); box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007fd4); }
+    .terminalInline.active.lostFocus { border-color: var(--vscode-terminal-ansiYellow, #ffcc00); box-shadow: 0 0 0 1px var(--vscode-terminal-ansiYellow, #ffcc00); }
     #terminal { height: 100%; }
     .badge { margin-left: auto; opacity: 0.7; font-size: 11px; }
     .addTerminal { margin-left: auto; border: none; background: transparent; color: var(--vscode-foreground); cursor: pointer; opacity: 0.8; }
