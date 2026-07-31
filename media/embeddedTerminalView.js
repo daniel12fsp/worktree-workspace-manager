@@ -18,6 +18,7 @@ const findResultEl = document.getElementById('findResult');
 let term;
 let searchAddon;
 let activeSessionId;
+let shouldFocusTerminalOnce = false;
 const collapsedRepos = new Set();
 const collapsedWorktrees = new Set();
 const loadingWorktreePaths = new Set();
@@ -90,7 +91,7 @@ window.addEventListener('message', event => {
       term.clear();
       if (message.activeOutput) term.write(message.activeOutput);
       resize();
-      focusActiveTerminalSoon();
+      focusActiveTerminalIfRequested();
     }
   } else if (message.type === 'loadingDone') {
     loadingWorktreePaths.delete(message.path);
@@ -98,7 +99,6 @@ window.addEventListener('message', event => {
   } else if (message.type === 'output' && message.id === activeSessionId) {
     if (term) {
       term.write(message.data);
-      focusActiveTerminalSoon();
     }
   } else if (message.type === 'clear' && message.id === activeSessionId) {
     if (term) term.clear();
@@ -151,7 +151,7 @@ function closeFindBox() {
   findBoxEl.classList.remove('visible');
   searchAddon?.clearDecorations();
   updateFindResult({ resultIndex: -1, resultCount: 0 });
-  focusActiveTerminalSoon();
+  requestActiveTerminalFocus();
 }
 function isFindBoxOpen() {
   return Boolean(findBoxEl && findBoxEl.classList.contains('visible'));
@@ -265,6 +265,7 @@ function renderList(repos) {
       addButton.textContent = '+';
       addButton.onclick = event => {
         event.stopPropagation();
+        shouldFocusTerminalOnce = true;
         vscode.postMessage({ type: 'create', path: wt.path });
       };
       row.append(expandIcon, dot, state, label, addButton);
@@ -281,6 +282,7 @@ function renderList(repos) {
         ]);
         terminal.onclick = event => {
           event.stopPropagation();
+          if (session.id !== activeSessionId) shouldFocusTerminalOnce = true;
           vscode.postMessage({ type: session.id === activeSessionId ? 'collapse' : 'select', id: session.id });
         };
         terminal.ondragstart = event => {
@@ -414,8 +416,13 @@ function showContextMenu(event, items) {
 function hideContextMenu() {
   contextMenuEl.style.display = 'none';
 }
-function focusActiveTerminalSoon() {
-  if (!activeSessionId) return;
+function requestActiveTerminalFocus() {
+  shouldFocusTerminalOnce = true;
+  focusActiveTerminalIfRequested();
+}
+function focusActiveTerminalIfRequested() {
+  if (!shouldFocusTerminalOnce || !activeSessionId) return;
+  shouldFocusTerminalOnce = false;
   setTimeout(() => {
     if (activeSessionId && terminalEl.parentElement && terminalEl.parentElement.classList.contains('terminalInline')) {
       if (term) term.focus();
