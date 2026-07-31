@@ -253,6 +253,11 @@ export class EmbeddedTerminalViewProvider
       if (worktree) {
         await vscode.commands.executeCommand("worktreeManager.copyWorktreePath", { worktree });
       }
+    } else if (message?.type === "copyWorktreeBranch") {
+      const worktree = await this.findWorktree(String(message.path));
+      if (worktree) {
+        await vscode.commands.executeCommand("worktreeManager.copyWorktreeBranch", { worktree });
+      }
     } else if (message?.type === "killRepo") {
       const repoPath = String(message.path);
       const confirmed = await vscode.window.showWarningMessage(

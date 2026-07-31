@@ -227,6 +227,7 @@ function renderList(repos) {
       row.oncontextmenu = event => showContextMenu(event, [
         { label: 'Remove Worktree', message: { type: 'removeWorktree', path: wt.path } },
         { label: 'Copy Worktree Path', message: { type: 'copyWorktreePath', path: wt.path } },
+        { label: 'Copy Branch', message: { type: 'copyWorktreeBranch', path: wt.path } },
         { label: 'Change Color…', message: { type: 'changeColor', path: wt.path } },
         { label: 'Kill Related Terminals', message: { type: 'killWorktree', path: wt.path } }
       ]);

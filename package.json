@@ -47,6 +47,7 @@
     "onCommand:worktreeManager.addWorktree",
     "onCommand:worktreeManager.copyRepositoryPath",
     "onCommand:worktreeManager.copyWorktreePath",
+    "onCommand:worktreeManager.copyWorktreeBranch",
     "onCommand:worktreeManager.checkWorktree",
     "onCommand:worktreeManager.changeColor",
     "onCommand:worktreeManager.removeWorktree",
@@ -167,6 +168,10 @@
         "title": "Copy Worktree Path"
       },
       {
+        "command": "worktreeManager.copyWorktreeBranch",
+        "title": "Copy Branch"
+      },
+      {
         "command": "worktreeManager.checkWorktree",
         "title": "Check Worktree"
       },
@@ -264,6 +269,11 @@
         },
         {
           "command": "worktreeManager.copyWorktreePath",
+          "when": "viewItem == worktree",
+          "group": "navigation"
+        },
+        {
+          "command": "worktreeManager.copyWorktreeBranch",
           "when": "viewItem == worktree",
           "group": "navigation"
         },

@@ -107,6 +107,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('worktreeManager.copyWorktreePath', async (node?: WorktreeNode) => {
       await copyWorktreePath(node?.worktree ?? selectedWorktree);
     }),
+    vscode.commands.registerCommand('worktreeManager.copyWorktreeBranch', async (node?: WorktreeNode) => {
+      await copyWorktreeBranch(node?.worktree ?? selectedWorktree);
+    }),
     vscode.commands.registerCommand('worktreeManager.cloneBareRepository', async () => {
       await cloneBareRepository();
       refreshAll();
@@ -493,6 +496,14 @@ async function copyWorktreePath(worktree?: Worktree): Promise<void> {
   if (!worktree) return;
   await vscode.env.clipboard.writeText(worktree.path);
   void vscode.window.showInformationMessage(`Copied ${worktree.name} path`);
+}
+
+async function copyWorktreeBranch(worktree?: Worktree): Promise<void> {
+  worktree = worktree ?? await pickWorktree();
+  if (!worktree) return;
+  const branch = worktree.branch ?? 'detached';
+  await vscode.env.clipboard.writeText(branch);
+  void vscode.window.showInformationMessage(`Copied ${worktree.name} branch`);
 }
 
 async function removeWorktree(worktree?: Worktree): Promise<void> {
