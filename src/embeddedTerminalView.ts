@@ -586,26 +586,35 @@ export class EmbeddedTerminalViewProvider
   private ensureNodePtySpawnHelperExecutable(): void {
     if (process.platform !== "darwin") return;
 
-    const helperPath = path.join(
+    const nodePtyPath = path.join(
       this.extensionUri.fsPath,
       "node_modules",
       "node-pty",
-      "prebuilds",
-      `darwin-${process.arch}`,
-      "spawn-helper",
     );
+    const helperPaths = [
+      path.join(nodePtyPath, "build", "Release", "spawn-helper"),
+      path.join(
+        nodePtyPath,
+        "prebuilds",
+        `darwin-${process.arch}`,
+        "spawn-helper",
+      ),
+    ];
 
-    try {
-      const mode = fs.statSync(helperPath).mode;
-      if ((mode & 0o111) === 0) {
-        fs.chmodSync(helperPath, 0o755);
-        log("made node-pty macOS spawn-helper executable", { helperPath });
+    for (const helperPath of helperPaths) {
+      if (!fs.existsSync(helperPath)) continue;
+      try {
+        const mode = fs.statSync(helperPath).mode;
+        if ((mode & 0o111) === 0) {
+          fs.chmodSync(helperPath, 0o755);
+          log("made node-pty macOS spawn-helper executable", { helperPath });
+        }
+      } catch (error) {
+        logError("failed to prepare node-pty macOS spawn-helper", {
+          helperPath,
+          error,
+        });
       }
-    } catch (error) {
-      logError("failed to prepare node-pty macOS spawn-helper", {
-        helperPath,
-        error,
-      });
     }
   }
 
