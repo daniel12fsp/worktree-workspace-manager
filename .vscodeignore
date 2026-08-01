@@ -1,7 +1,9 @@
 .git/**
 .vscode/**
 src/**
+webview/**
 *.vsix
 AGENTS.md
 tsconfig.json
+vite.config.mts
 .gitignore

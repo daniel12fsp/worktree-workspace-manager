@@ -1,0 +1,305 @@
+html, body {
+  height: 100%;
+  margin: 0;
+  color: var(--vscode-foreground);
+  background: var(--vscode-panel-background);
+  font-family: var(--vscode-font-family);
+}
+
+.root {
+  height: 100%;
+  overflow: auto;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.sidebar {
+  min-width: 0;
+}
+
+.repo {
+  margin: 8px 0 4px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.wt, .terminalLeaf {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.terminalLeaf {
+  margin-left: 22px;
+  color: var(--vscode-foreground);
+}
+
+.terminalLeaf[draggable="true"] {
+  cursor: grab;
+}
+
+.terminalLeaf.dragOver {
+  outline: 1px dashed var(--vscode-focusBorder, #007fd4);
+}
+
+.wt:hover, .terminalLeaf:hover, .wt.active, .terminalLeaf.active {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.terminalIcon {
+  color: var(--vscode-terminal-ansiGreen);
+}
+
+.terminalStatus {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+}
+
+.terminalStatus.running {
+  background: var(--vscode-terminal-ansiGreen);
+  box-shadow: 0 0 0 0 rgba(46, 160, 67, 0.75);
+  animation: pulse 1.4s ease-out infinite;
+}
+
+.terminalStatus.idle {
+  border: 1px solid var(--vscode-descriptionForeground);
+  opacity: 0.7;
+}
+
+@keyframes pulse {
+  70% { box-shadow: 0 0 0 5px rgba(46, 160, 67, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(46, 160, 67, 0); }
+}
+
+.expandIcon {
+  width: 12px;
+  flex: 0 0 12px;
+  text-align: center;
+  color: var(--vscode-foreground);
+  opacity: 0.85;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.workspaceState {
+  flex: 0 0 auto;
+  accent-color: #2ea043;
+  cursor: pointer;
+}
+
+.loadingCheckbox {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  border: 2px solid var(--vscode-progressBar-background, #0e70c0);
+  border-top-color: transparent;
+  border-radius: 50%;
+  box-sizing: border-box;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.terminalInline {
+  margin: 4px 0 8px 0;
+  width: 100%;
+  height: min(420px, 65vh);
+  border: 1px solid var(--vscode-panel-border);
+  padding: 4px;
+  background: #000;
+  box-sizing: border-box;
+}
+
+.terminalInline.active {
+  border-color: var(--vscode-terminal-ansiYellow, #ffcc00);
+  box-shadow: 0 0 0 1px var(--vscode-terminal-ansiYellow, #ffcc00);
+}
+
+.terminalInline.active.focused {
+  border-color: var(--vscode-focusBorder, #007fd4);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, #007fd4);
+}
+
+.terminalInline.active.lostFocus {
+  border-color: var(--vscode-terminal-ansiYellow, #ffcc00);
+  box-shadow: 0 0 0 1px var(--vscode-terminal-ansiYellow, #ffcc00);
+}
+
+#terminal {
+  height: 100%;
+}
+
+.badge {
+  margin-left: auto;
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+.addTerminal {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.terminalLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminalLabel.running {
+  font-weight: 600;
+}
+
+.terminalLabel.idle {
+  color: var(--vscode-descriptionForeground);
+}
+
+.terminalStateText {
+  opacity: 0.65;
+  font-size: 11px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.terminalActions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.terminalAction {
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  opacity: 0.75;
+  padding: 1px 5px;
+}
+
+.addTerminal:hover, .terminalAction:hover {
+  opacity: 1;
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.contextMenu {
+  position: fixed;
+  z-index: 10;
+  min-width: 180px;
+  padding: 4px 0;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+
+.contextMenu button {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.contextMenu button:hover {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.welcome {
+  height: calc(100vh - 16px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+}
+
+.welcome strong {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+.welcome button {
+  border: 0;
+  border-radius: 2px;
+  padding: 6px 12px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+}
+
+.welcome button:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.findBox {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  gap: 4px;
+  align-items: center;
+  padding: 4px;
+  margin-bottom: 6px;
+  background: var(--vscode-panel-background);
+  border: 1px solid var(--vscode-panel-border);
+}
+
+.findBox.visible {
+  display: flex;
+}
+
+.findBox input {
+  min-width: 0;
+  flex: 1;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  padding: 3px 5px;
+}
+
+.findBox button {
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.findBox button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.findResult {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  min-width: 48px;
+  text-align: right;
+  white-space: nowrap;
+}

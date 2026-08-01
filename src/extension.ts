@@ -17,12 +17,9 @@ import {
 import { closeEditorsOutsideWorktree } from "./editorTabs";
 import {
   checkWorktreeInLiveWorkspace,
-  getCheckedWorktreePaths,
   hideBareRepositoryFolders,
-  normalizePath,
 } from "./workspaceFile";
 import { RepoNode, WorktreeNode, WorktreeProvider } from "./worktreeView";
-
 const execFileAsync = promisify(execFile);
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -60,7 +57,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   let selectedWorktree: Worktree | undefined;
   let selectedRepo: BareRepository | undefined;
-
   let suppressTerminalRefreshUntil = 0;
 
   const refreshAll = () => {
@@ -76,10 +72,11 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(
-    worktreeView,
     terminalView,
+    worktreeView,
     status,
     terminalProvider,
+    worktreeProvider,
     { dispose: disposeLogger },
     worktreeView.onDidChangeSelection((event) => {
       const node = event.selection[0];
@@ -100,7 +97,6 @@ export function activate(context: vscode.ExtensionContext): void {
       if (node instanceof WorktreeNode) {
         suppressTerminalRefreshUntil = Date.now() + 3000;
         await checkWorktree(node.worktree);
-        log("worktree checkbox flow: refreshing views after check");
         refreshAll();
         terminalProvider.refresh();
       }
@@ -131,26 +127,26 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("worktreeManager.refresh", refreshAll),
     vscode.commands.registerCommand(
       "worktreeManager.addWorktree",
-      async (node?: RepoNode) => {
+      async (node?: RepoNode | { repo?: BareRepository }) => {
         await addWorktree(node?.repo ?? selectedRepo);
         refreshAll();
       },
     ),
     vscode.commands.registerCommand(
       "worktreeManager.copyRepositoryPath",
-      async (node?: RepoNode) => {
+      async (node?: RepoNode | { repo?: BareRepository }) => {
         await copyRepositoryPath(node?.repo ?? selectedRepo);
       },
     ),
     vscode.commands.registerCommand(
       "worktreeManager.copyWorktreePath",
-      async (node?: WorktreeNode) => {
+      async (node?: WorktreeNode | { worktree?: Worktree }) => {
         await copyWorktreePath(node?.worktree ?? selectedWorktree);
       },
     ),
     vscode.commands.registerCommand(
       "worktreeManager.copyWorktreeBranch",
-      async (node?: WorktreeNode) => {
+      async (node?: WorktreeNode | { worktree?: Worktree }) => {
         await copyWorktreeBranch(node?.worktree ?? selectedWorktree);
       },
     ),
@@ -170,25 +166,21 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand(
       "worktreeManager.removeWorktree",
-      async (node?: WorktreeNode) => {
+      async (node?: WorktreeNode | { worktree?: Worktree }) => {
         await removeWorktree(node?.worktree ?? selectedWorktree);
         refreshAll();
       },
     ),
     vscode.commands.registerCommand(
       "worktreeManager.fetch",
-      async (node?: RepoNode) => {
-        await runRepoGit(
-          node?.repo ?? selectedRepo,
-          ["fetch"],
-          "Fetch complete",
-        );
+      async (node?: RepoNode | { repo?: BareRepository }) => {
+        await runRepoGit(node?.repo ?? selectedRepo, ["fetch"], "Fetch complete");
         refreshAll();
       },
     ),
     vscode.commands.registerCommand(
       "worktreeManager.pruneStale",
-      async (node?: RepoNode) => {
+      async (node?: RepoNode | { repo?: BareRepository }) => {
         await runRepoGit(
           node?.repo ?? selectedRepo,
           ["worktree", "prune"],
@@ -199,7 +191,7 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand(
       "worktreeManager.changeColor",
-      async (node?: WorktreeNode) => {
+      async (node?: WorktreeNode | { worktree?: Worktree }) => {
         await changeWorktreeColor(node?.worktree ?? selectedWorktree);
         refreshAll();
         terminalProvider.refresh();
@@ -214,24 +206,17 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand(
       "worktreeManager.checkWorktree",
-      async (node?: WorktreeNode) => {
+      async (node?: WorktreeNode | { worktree?: Worktree }) => {
         const target = node?.worktree ?? selectedWorktree;
-        log("check worktree command invoked", {
-          fromNode: Boolean(node?.worktree),
-          selectedWorktree: selectedWorktree?.name,
-          target: target?.name,
-          path: target?.path,
-        });
         suppressTerminalRefreshUntil = Date.now() + 3000;
         await checkWorktree(target);
-        log("check worktree command flow: refreshing views after check");
         refreshAll();
         terminalProvider.refresh();
       },
     ),
     vscode.commands.registerCommand(
       "worktreeManager.openTerminalHere",
-      async (node?: WorktreeNode) =>
+      async (node?: WorktreeNode | { worktree?: Worktree }) =>
         openTerminalHere(node?.worktree ?? selectedWorktree, terminalProvider),
     ),
     vscode.commands.registerCommand(
@@ -246,23 +231,19 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.commands.registerCommand(
       "worktreeManager.closeRepoTerminals",
-      async (node?: RepoNode) =>
+      async (node?: RepoNode | { repo?: BareRepository }) =>
         closeRepoTerminals(node?.repo ?? selectedRepo, terminalProvider),
     ),
     vscode.commands.registerCommand(
       "worktreeManager.killWorktreeTerminals",
-      async (node?: WorktreeNode) =>
+      async (node?: WorktreeNode | { worktree?: Worktree }) =>
         killWorktreeTerminals(
           node?.worktree ?? selectedWorktree,
           terminalProvider,
         ),
     ),
     vscode.commands.registerCommand("worktreeManager.showMenu", async () => {
-      log("bottom menu opened", {
-        hasSelectedWorktree: Boolean(selectedWorktree),
-        selectedWorktree: selectedWorktree?.name,
-        selectedRepo: selectedRepo?.label,
-      });
+      log("bottom menu opened");
       const choice = await vscode.window.showQuickPick(
         menuItems(Boolean(selectedWorktree)),
         { placeHolder: "Worktree Workspace" },

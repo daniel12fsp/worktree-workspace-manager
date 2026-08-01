@@ -38,8 +38,8 @@
   },
   "activationEvents": [
     "onStartupFinished",
-    "onView:worktreeManager.worktrees",
     "onView:worktreeManager.terminals",
+    "onView:worktreeManager.worktrees",
     "onCommand:worktreeManager.refresh",
     "onCommand:worktreeManager.showMenu",
     "onCommand:worktreeManager.cloneBareRepository",
@@ -61,13 +61,21 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "build": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "compile": "tsc -p ./ && npm run webview:build",
+    "watch": "tsc -watch -p ./",
+    "webview:build": "vite build --config vite.config.mts",
+    "webview:watch": "vite build --watch --config vite.config.mts"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@types/vscode": "^1.90.0",
-    "typescript": "^5.4.5"
+    "@vitejs/plugin-react": "^6.0.5",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "^5.4.5",
+    "vite": "^8.2.0"
   },
   "contributes": {
     "configuration": {
@@ -103,6 +111,13 @@
       }
     },
     "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "worktreeManagerContainer",
+          "title": "Worktree Workspace",
+          "icon": "resources/tree.svg"
+        }
+      ],
       "panel": [
         {
           "id": "worktreeManagerTerminals",
@@ -112,7 +127,7 @@
       ]
     },
     "views": {
-      "explorer": [
+      "worktreeManagerContainer": [
         {
           "id": "worktreeManager.worktrees",
           "name": "Worktree"
@@ -126,18 +141,6 @@
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "worktreeManager.worktrees",
-        "contents": "This feature only works with a workspace.\n[Open Worktree Manager Menu](command:worktreeManager.showMenu)",
-        "when": "!worktreeManager.hasWorkspace"
-      },
-      {
-        "view": "worktreeManager.worktrees",
-        "contents": "No repositories configured yet.\n[Open Worktree Manager Menu](command:worktreeManager.showMenu)",
-        "when": "worktreeManager.hasWorkspace && !worktreeManager.hasRepositories"
-      }
-    ],
     "commands": [
       {
         "command": "worktreeManager.refresh",
@@ -286,6 +289,7 @@
     }
   },
   "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/xterm": "^6.0.0",
     "jsonc-parser": "^3.3.1",
