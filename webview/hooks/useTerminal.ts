@@ -229,7 +229,7 @@ export function useTerminal(
   );
 }
 
-function updateFocusClasses(focused: boolean) {
+export function updateFocusClasses(focused: boolean) {
   const inline = document.querySelector(".terminalInline");
   if (!inline) return;
   inline.classList.toggle("focused", focused);
@@ -262,7 +262,7 @@ function registerTerminalLinkProvider(term: any) {
   });
 }
 
-function detectTerminalLinks(text: string, bufferLineNumber: number) {
+export function detectTerminalLinks(text: string, bufferLineNumber: number) {
   const links: any[] = [];
   const occupied: Array<{ start: number; end: number }> = [];
 
@@ -286,7 +286,7 @@ function detectTerminalLinks(text: string, bufferLineNumber: number) {
   return links.length ? links : undefined;
 }
 
-function collectMatches(
+export function collectMatches(
   text: string,
   regex: RegExp,
   kind: string,
@@ -331,7 +331,7 @@ function collectMatches(
   }
 }
 
-function trimTerminalLink(value: string) {
+export function trimTerminalLink(value: string) {
   let text = value;
   while (/[),.;:!?\]}]+$/.test(text)) {
     if (/:[0-9]+(?::[0-9]+)?$/.test(text)) break;
@@ -340,7 +340,7 @@ function trimTerminalLink(value: string) {
   return { text };
 }
 
-function parseFileLink(value: string) {
+export function parseFileLink(value: string) {
   const match = /^(.*?)(?::([0-9]+)(?::([0-9]+))?)?$/.exec(value);
   return {
     path: match?.[1] || value,

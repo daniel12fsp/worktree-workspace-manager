@@ -574,11 +574,11 @@ function existingBareRepositoryScript(repoPath: string): string {
   ].join("\n");
 }
 
-function shellQuote(value: string): string {
+export function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function inferRepositoryRootName(remoteUrl: string): string {
+export function inferRepositoryRootName(remoteUrl: string): string {
   const trimmed = remoteUrl.trim().replace(/[\\/]+$/, "");
   const last =
     trimmed
@@ -588,7 +588,7 @@ function inferRepositoryRootName(remoteUrl: string): string {
   return last.endsWith(".git") ? last.slice(0, -".git".length) : last;
 }
 
-function defaultWorktreeParent(repo: BareRepository): string {
+export function defaultWorktreeParent(repo: BareRepository): string {
   return path.resolve(repo.gitDir) ===
     path.resolve(path.join(repo.fsPath, ".bare"))
     ? repo.fsPath
@@ -632,13 +632,13 @@ async function createAndOpenWorkspaceIfNeeded(
   return true;
 }
 
-function workspaceFileParent(repoPath: string): string {
+export function workspaceFileParent(repoPath: string): string {
   return path.basename(repoPath) === ".bare"
     ? path.dirname(path.dirname(repoPath))
     : path.dirname(repoPath);
 }
 
-function workspaceFileBaseName(repoLabel: string): string {
+export function workspaceFileBaseName(repoLabel: string): string {
   return repoLabel.endsWith(".git")
     ? repoLabel.slice(0, -".git".length)
     : repoLabel;
@@ -697,7 +697,7 @@ async function addRepositoryToConfig(repoPath: string): Promise<void> {
   }
 }
 
-function expandMaybeHome(input: string): string {
+export function expandMaybeHome(input: string): string {
   if (input === "~") return os.homedir();
   if (input.startsWith("~/") || input.startsWith("~\\"))
     return path.join(os.homedir(), input.slice(2));
@@ -822,7 +822,7 @@ async function pickWorktree(): Promise<Worktree | undefined> {
   return choice?.worktree;
 }
 
-function gitErrorMessage(error: unknown): string {
+export function gitErrorMessage(error: unknown): string {
   if (error && typeof error === "object") {
     const stderr = (error as { stderr?: unknown }).stderr;
     if (typeof stderr === "string" && stderr.trim()) return stderr.trim();
@@ -832,7 +832,7 @@ function gitErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function menuItems(
+export function menuItems(
   hasSelectedWorktree: boolean,
 ): Array<{ label: string; command: string }> {
   const worktreeActions = [

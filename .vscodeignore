@@ -6,4 +6,10 @@ webview/**
 AGENTS.md
 tsconfig.json
 vite.config.mts
+vitest.config.mts
+test-setup.ts
 .gitignore
+coverage/**
+docs/**
+assets/**
+package-lock.json

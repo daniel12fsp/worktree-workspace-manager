@@ -72,7 +72,7 @@ export async function closeEditorsOutsideWorktree(activeWorktree: Worktree): Pro
   }
 }
 
-function tabUris(tab: vscode.Tab): vscode.Uri[] {
+export function tabUris(tab: vscode.Tab): vscode.Uri[] {
   const input = tab.input;
   if (input instanceof vscode.TabInputText) return [input.uri];
   if (input instanceof vscode.TabInputTextDiff) return [input.original, input.modified];
@@ -82,7 +82,7 @@ function tabUris(tab: vscode.Tab): vscode.Uri[] {
   return [];
 }
 
-function describeTabInput(tab: vscode.Tab): string {
+export function describeTabInput(tab: vscode.Tab): string {
   const input = tab.input;
   if (input instanceof vscode.TabInputText) return 'text';
   if (input instanceof vscode.TabInputTextDiff) return 'textDiff';
@@ -93,7 +93,7 @@ function describeTabInput(tab: vscode.Tab): string {
   return typeof input;
 }
 
-function isUnderAnyPath(fsPath: string, roots: readonly string[]): boolean {
+export function isUnderAnyPath(fsPath: string, roots: readonly string[]): boolean {
   const normalized = normalizePath(fsPath);
   return roots.some(root => {
     const relative = path.relative(root, normalized);

@@ -1,6 +1,7 @@
 node_modules/
 out/
+media/dist/
 .vscode-test/
 *.vsix
-# Isolated Extension Development Host profile (see .vscode/launch.json)
+coverage/
 .vscode/.dev-profile/

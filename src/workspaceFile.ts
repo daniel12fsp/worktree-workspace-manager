@@ -255,7 +255,7 @@ function findFolderForRepo(repo: BareRepository): vscode.WorkspaceFolder | undef
   return (vscode.workspace.workspaceFolders ?? []).find(folder => normalizePath(folder.uri.fsPath) === target);
 }
 
-function excludePatterns(worktree: Worktree): string[] {
+export function excludePatterns(worktree: Worktree): string[] {
   return unique([
     `${worktree.repo.label}/${worktree.name}`,
     `${worktree.repo.label}/${worktree.name}/**`,
@@ -267,7 +267,7 @@ function excludePatterns(worktree: Worktree): string[] {
   ]);
 }
 
-function pathExcludePatterns(fsPath: string): string[] {
+export function pathExcludePatterns(fsPath: string): string[] {
   const absolute = toAbsolutePath(fsPath);
   const patterns = [absolute, `${absolute}/**`];
 
@@ -292,15 +292,15 @@ async function writeWorkspaceExclude(section: 'search.exclude' | 'files.exclude'
   await vscode.workspace.getConfiguration(undefined, null).update(section, value, vscode.ConfigurationTarget.Workspace);
 }
 
-function hasWorkspaceFile(): boolean {
+export function hasWorkspaceFile(): boolean {
   return Boolean(vscode.workspace.workspaceFile);
 }
 
-function unique<T>(values: T[]): T[] {
+export function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
-function excludeObjectsEqual(a: Record<string, boolean>, b: Record<string, boolean>): boolean {
+export function excludeObjectsEqual(a: Record<string, boolean>, b: Record<string, boolean>): boolean {
   const ak = Object.keys(a);
   const bk = Object.keys(b);
   if (ak.length !== bk.length) return false;
@@ -335,7 +335,7 @@ function removeExistingManagedFolderEntries(text: string, managedPaths: Set<stri
   }
 }
 
-function readActiveManagedPathOrder(text: string): string[] {
+export function readActiveManagedPathOrder(text: string): string[] {
   const foldersNode = findFoldersArray(text);
   const range = foldersNode ? findExistingBlockRange(text, foldersNode) : undefined;
   if (!range) return [];
@@ -355,7 +355,7 @@ function readActiveManagedPathOrder(text: string): string[] {
   return active;
 }
 
-function buildManagedBlock(all: Map<unknown, Worktree[]>, previousActivePaths: string[], target: Worktree): string {
+export function buildManagedBlock(all: Map<unknown, Worktree[]>, previousActivePaths: string[], target: Worktree): string {
   const lines: string[] = [BEGIN_MARKER];
   const targetRepoKey = repoKey(target);
   const targetPath = normalizePath(target.path);
@@ -372,7 +372,7 @@ function buildManagedBlock(all: Map<unknown, Worktree[]>, previousActivePaths: s
   return lines.join('\n');
 }
 
-function chooseActiveWorktree(worktrees: Worktree[], previousActivePaths: string[], targetRepoKey: string, targetPath: string): Worktree | undefined {
+export function chooseActiveWorktree(worktrees: Worktree[], previousActivePaths: string[], targetRepoKey: string, targetPath: string): Worktree | undefined {
   if (!worktrees.length) return undefined;
   if (repoKey(worktrees[0]) === targetRepoKey) {
     return worktrees.find(worktree => normalizePath(worktree.path) === targetPath) ?? worktrees[0];
@@ -384,7 +384,7 @@ function chooseActiveWorktree(worktrees: Worktree[], previousActivePaths: string
   return worktrees.find(worktree => !worktree.prunable) ?? worktrees[0];
 }
 
-function patchManagedBlock(text: string, foldersNode: JsonNode, block: string): string | undefined {
+export function patchManagedBlock(text: string, foldersNode: JsonNode, block: string): string | undefined {
   const existing = findExistingBlockRange(text, foldersNode);
   if (existing) {
     const indent = indentationAt(text, existing.beginLineStart);
@@ -404,7 +404,7 @@ function patchManagedBlock(text: string, foldersNode: JsonNode, block: string): 
   return text.slice(0, arrayEnd) + insertion + text.slice(arrayEnd);
 }
 
-function findExistingBlockRange(text: string, containingNode: JsonNode): { beginLineStart: number; contentStart: number; contentEnd: number; endLineEnd: number } | undefined {
+export function findExistingBlockRange(text: string, containingNode: JsonNode): { beginLineStart: number; contentStart: number; contentEnd: number; endLineEnd: number } | undefined {
   const nodeEnd = containingNode.offset + containingNode.length;
   const begin = text.indexOf(BEGIN_MARKER, containingNode.offset);
   const end = text.indexOf(END_MARKER, begin + BEGIN_MARKER.length);
@@ -417,25 +417,25 @@ function findExistingBlockRange(text: string, containingNode: JsonNode): { begin
   return { beginLineStart, contentStart: afterBeginLine, contentEnd: endLineStart, endLineEnd };
 }
 
-function lineEndIncludingNewline(text: string, offset: number): number {
+export function lineEndIncludingNewline(text: string, offset: number): number {
   const lineEnd = text.indexOf('\n', offset);
   return lineEnd === -1 ? text.length : lineEnd + 1;
 }
 
-function indentationAt(text: string, offset: number): string {
+export function indentationAt(text: string, offset: number): string {
   const lineStart = text.lastIndexOf('\n', offset) + 1;
   return /^\s*/.exec(text.slice(lineStart, offset))?.[0] ?? '';
 }
 
-function indentBlock(block: string, indent: string): string {
+export function indentBlock(block: string, indent: string): string {
   return block.split('\n').map(line => `${indent}${line}`).join('\n');
 }
 
-function repoKey(worktree: Worktree): string {
+export function repoKey(worktree: Worktree): string {
   return normalizePath(worktree.repo.gitDir);
 }
 
-function toAbsolutePath(input: string): string {
+export function toAbsolutePath(input: string): string {
   return path.resolve(input);
 }
 

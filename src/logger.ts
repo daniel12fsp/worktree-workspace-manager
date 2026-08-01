@@ -25,7 +25,7 @@ export function disposeLogger(): void {
   channel = undefined;
 }
 
-function format(value: unknown): string {
+export function format(value: unknown): string {
   if (value instanceof Error) {
     return JSON.stringify({ name: value.name, message: value.message, stack: value.stack }, null, 2);
   }

@@ -82,7 +82,7 @@ export function getConfiguredRepositories(): BareRepository[] {
   return repos;
 }
 
-function normalizeConfiguredRepositoryPath(fsPath: string): string {
+export function normalizeConfiguredRepositoryPath(fsPath: string): string {
   if (fs.existsSync(path.join(fsPath, '.bare'))) {
     return fsPath;
   }
@@ -234,7 +234,7 @@ export async function updateWorktreeColor(worktree: Worktree, color: string): Pr
   log('updated worktree color', { key: worktree.colorKey, color });
 }
 
-function configuredColors(): WorktreeColors {
+export function configuredColors(): WorktreeColors {
   const raw = vscode.workspace.getConfiguration('worktreeManager').get<Record<string, unknown>>('colors', {});
   const colors: WorktreeColors = {};
   for (const [key, value] of Object.entries(raw ?? {})) {
@@ -247,17 +247,17 @@ function configuredColors(): WorktreeColors {
   return colors;
 }
 
-function configurationTarget(): vscode.ConfigurationTarget {
+export function configurationTarget(): vscode.ConfigurationTarget {
   return vscode.workspace.workspaceFile || vscode.workspace.workspaceFolders?.length
     ? vscode.ConfigurationTarget.Workspace
     : vscode.ConfigurationTarget.Global;
 }
 
-function isValidHexColor(value: unknown): value is string {
+export function isValidHexColor(value: unknown): value is string {
   return typeof value === 'string' && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value);
 }
 
-function hash(input: string): number {
+export function hash(input: string): number {
   let h = 5381;
   for (let i = 0; i < input.length; i++) {
     h = ((h << 5) + h) ^ input.charCodeAt(i);
