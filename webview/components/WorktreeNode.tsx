@@ -79,8 +79,20 @@ export function WorktreeNode({
 
   return (
     <div className="wt" onClick={handleClick} onContextMenu={handleContextMenu}>
-      <span className="expandIcon">{collapsed ? "\u25b8" : "\u25be"}</span>
-      <span className="dot" style={{ background: worktree.color }} />
+      <span
+        className="expandIcon"
+        style={{
+          visibility: worktree.sessions.length === 0 ? "hidden" : undefined,
+        }}
+      >
+        {collapsed ? "\u25b8" : "\u25be"}
+      </span>
+      <span
+        className="dot"
+        style={{
+          background: worktree.color,
+        }}
+      />
       {loading ? (
         <span className="loadingCheckbox" title="Loading worktree\u2026" />
       ) : (

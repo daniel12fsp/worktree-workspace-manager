@@ -108,17 +108,20 @@
     ],
     "worktreeManager.colors": {
       "fe-project.git/fe-1": {
-        "color": "#008080",
+        "color": "#008080"
       },
       "fe-project.git/fe-2": {
-        "color": "#fabebe",
+        "color": "#fabebe"
       },
       "be-project.git/be-1": {
-        "color": "#b15928",
+        "color": "#b15928"
       },
       "be-project.git/be-2": {
-        "color": "#8dd3c7",
+        "color": "#8dd3c7"
       },
+      "fe-project.git/test": {
+        "color": "#4363d8"
+      }
     },
   },
 }

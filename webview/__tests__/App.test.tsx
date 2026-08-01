@@ -410,7 +410,7 @@ describe("App", () => {
         activeOutput: "",
         hasWorkspace: true,
         home: "/home/user",
-      loadingWorktrees: new Set(),
+        loadingWorktrees: new Set(),
       },
     });
     window.dispatchEvent(event);

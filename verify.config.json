@@ -19,6 +19,12 @@
       "timeout": "5m",
       "hint": "(FAIL|failed|Error:|AssertionError|Test Files|Tests)"
     },
+    "coverage": {
+      "command": "npm run test:coverage",
+      "category": "test",
+      "timeout": "5m",
+      "hint": "(FAIL|failed|Error:|AssertionError|Coverage|All files)"
+    },
     "compile": {
       "command": "npm run compile",
       "category": "build",
@@ -26,5 +32,5 @@
       "hint": "(error TS[0-9]+|ERROR|failed|Error:)"
     }
   },
-  "order": [["prettier", "tsc"], "unit_test", "compile"]
+  "order": [["prettier", "tsc"], "unit_test", "coverage", "compile"]
 }
