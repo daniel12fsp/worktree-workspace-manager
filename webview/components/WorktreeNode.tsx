@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback } from "react";
 import { useVsCode, showContextMenu } from "../hooks/useVsCode";
 import type { WorktreeData, ContextMenuItem } from "../types";
 
@@ -8,6 +8,8 @@ interface Props {
   collapsed: boolean;
   onToggle: () => void;
   onCreateTerminal: (path: string) => void;
+  loading: boolean;
+  onSetExplorerWorktree: (path: string) => void;
 }
 
 export function WorktreeNode({
@@ -16,9 +18,10 @@ export function WorktreeNode({
   collapsed,
   onToggle,
   onCreateTerminal,
+  loading,
+  onSetExplorerWorktree,
 }: Props) {
   const vscode = useVsCode();
-  const [loading, setLoading] = useState(false);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -61,14 +64,9 @@ export function WorktreeNode({
   const handleCheckboxChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       e.stopPropagation();
-      setLoading(true);
-      vscode.postMessage({
-        type: "setExplorerWorktree",
-        path: worktree.path,
-        enabled: e.target.checked,
-      });
+      onSetExplorerWorktree(worktree.path);
     },
-    [worktree.path, vscode],
+    [worktree.path, onSetExplorerWorktree],
   );
 
   const handleAdd = useCallback(

@@ -15,6 +15,7 @@ export interface AppState {
   activeOutput: string;
   hasWorkspace: boolean;
   home: string;
+  loadingWorktrees: Set<string>;
 }
 
 interface Props {
@@ -114,6 +115,18 @@ export function App({ initialState }: Props) {
     [vscode, terminalApi],
   );
 
+  const handleSetExplorerWorktree = useCallback(
+    (path: string) => {
+      setState((prev) => {
+        const next = new Set(prev.loadingWorktrees);
+        next.add(path);
+        return { ...prev, loadingWorktrees: next };
+      });
+      vscode.postMessage({ type: "setExplorerWorktree", path });
+    },
+    [vscode],
+  );
+
   const toggleRepo = useCallback(
     (label: string) => {
       const collapsed = collapsedReposRef.current;
@@ -168,13 +181,14 @@ export function App({ initialState }: Props) {
     const handler = (event: MessageEvent) => {
       const message = event.data;
       if (message.type === "state") {
-        setState({
+        setState((prev) => ({
           repos: message.repos || [],
           activeSessionId: message.activeSessionId,
           activeOutput: message.activeOutput || "",
           hasWorkspace: Boolean(message.hasWorkspace),
           home: message.home || "",
-        });
+          loadingWorktrees: prev.loadingWorktrees,
+        }));
       } else if (
         message.type === "output" &&
         message.id === state.activeSessionId
@@ -186,7 +200,11 @@ export function App({ initialState }: Props) {
       ) {
         terminalApi?.clear();
       } else if (message.type === "loadingDone") {
-        forceRender((n) => n + 1);
+        setState((prev) => {
+          const next = new Set(prev.loadingWorktrees);
+          next.delete(String(message.path));
+          return { ...prev, loadingWorktrees: next };
+        });
       }
     };
     window.addEventListener("message", handler);
@@ -254,6 +272,8 @@ export function App({ initialState }: Props) {
                         collapsed={isWtCollapsed}
                         onToggle={() => toggleWorktree(repo.label, wt.path)}
                         onCreateTerminal={handleCreateTerminal}
+                        loading={state.loadingWorktrees.has(wt.path)}
+                        onSetExplorerWorktree={handleSetExplorerWorktree}
                       />
                       {!isWtCollapsed &&
                         wt.sessions.map((session) => (

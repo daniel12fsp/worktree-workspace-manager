@@ -68,6 +68,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: false,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     expect(
@@ -82,6 +83,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     expect(screen.getByText("No repositories configured yet.")).toBeTruthy();
@@ -100,6 +102,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     expect(screen.getByText(/project\.git/)).toBeTruthy();
@@ -127,6 +130,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     expect(screen.getByText(/feat-login/)).toBeTruthy();
@@ -164,6 +168,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     expect(screen.getByText("terminal 1")).toBeTruthy();
@@ -182,6 +187,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     expect(screen.getByText(/project\.git/)).toBeTruthy();
@@ -200,6 +206,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Click to expand
@@ -238,6 +245,7 @@ describe("App", () => {
       activeOutput: "test output",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     // Mock ResizeObserver
     (globalThis as any).ResizeObserver = class {
@@ -256,6 +264,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     const { container } = renderWithVsCode(state);
     expect(container.querySelector(".root")).toBeTruthy();
@@ -279,6 +288,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     expect(screen.getByText(/project\.git/)).toBeTruthy();
@@ -307,6 +317,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     expect(screen.getByText(/feat-login/)).toBeTruthy();
@@ -344,6 +355,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     expect(screen.getByText("terminal 1")).toBeTruthy();
@@ -362,6 +374,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // First click expands
@@ -379,6 +392,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: false,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Simulate state message
@@ -396,6 +410,7 @@ describe("App", () => {
         activeOutput: "",
         hasWorkspace: true,
         home: "/home/user",
+      loadingWorktrees: new Set(),
       },
     });
     window.dispatchEvent(event);
@@ -410,6 +425,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Simulate output message
@@ -430,6 +446,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Simulate clear message
@@ -449,6 +466,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Simulate loadingDone message
@@ -460,6 +478,55 @@ describe("App", () => {
     window.dispatchEvent(event);
   });
 
+  it("loadingDone clears loading state for worktree path", () => {
+    const worktreePath = "/tmp/feat-login";
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: worktreePath,
+              color: "#e6194b",
+              activeInExplorer: false,
+              sessions: [],
+            },
+          ],
+        },
+      ],
+      activeSessionId: undefined,
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set([worktreePath]),
+    };
+    renderWithVsCode(state);
+    // Checkbox should be in loading state (not visible)
+    expect(document.querySelector(".loadingCheckbox")).toBeTruthy();
+
+    // Simulate loadingDone message with path
+    const event = new MessageEvent("message", {
+      data: {
+        type: "loadingDone",
+        path: worktreePath,
+      },
+    });
+    window.dispatchEvent(event);
+
+    // After loadingDone, checkbox should reappear
+    // Note: React state updates are async, so we use waitFor
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        expect(screen.getByRole("checkbox")).toBeTruthy();
+        expect(document.querySelector(".loadingCheckbox")).toBeNull();
+        resolve();
+      }, 0);
+    });
+  });
+
   it("handles output message for non-active session", () => {
     const state: AppState = {
       repos: [],
@@ -467,6 +534,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Simulate output message for different session
@@ -487,6 +555,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Simulate clear message for different session
@@ -521,6 +590,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Click worktree to toggle
@@ -551,6 +621,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state, mockVsCode);
     // Click add button
@@ -582,6 +653,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Worktree should be visible initially
@@ -614,6 +686,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Collapse first
@@ -656,6 +729,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state, mockVsCode);
     // Click on terminal leaf to select
@@ -697,6 +771,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state, mockVsCode);
     // Click on active terminal leaf to collapse
@@ -737,6 +812,7 @@ describe("App", () => {
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
+      loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
     // Click worktree name to toggle (collapse terminal)

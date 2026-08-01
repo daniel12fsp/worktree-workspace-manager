@@ -135,6 +135,8 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
       />,
     );
     expect(screen.getByText(/feat-login/)).toBeTruthy();
@@ -149,6 +151,8 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
       />,
     );
     expect(screen.getByRole("checkbox")).toBeTruthy();
@@ -162,6 +166,8 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
       />,
     );
     expect(screen.getByText("+")).toBeTruthy();
@@ -177,6 +183,8 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={onToggle}
         onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
       />,
       mockVsCode,
     );
@@ -195,6 +203,8 @@ describe("WorktreeNode", () => {
         collapsed={true}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
       />,
     );
     expect(screen.getByText(/▸/)).toBeTruthy();
@@ -208,13 +218,15 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
       />,
     );
     expect(screen.getByText(/▾/)).toBeTruthy();
   });
 
-  it("checkbox change posts setExplorerWorktree", () => {
-    const mockVsCode = createMockVsCode();
+  it("checkbox change calls onSetExplorerWorktree", () => {
+    const onSetExplorerWorktree = vi.fn();
     renderWithVsCode(
       <WorktreeNode
         repoLabel="project.git"
@@ -222,17 +234,13 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={onSetExplorerWorktree}
       />,
-      mockVsCode,
     );
     const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
     fireEvent.click(checkbox);
-    expect(mockVsCode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "setExplorerWorktree",
-        path: "/tmp/feat-login",
-      }),
-    );
+    expect(onSetExplorerWorktree).toHaveBeenCalledWith("/tmp/feat-login");
   });
 
   it("add button calls onCreateTerminal", () => {
@@ -244,6 +252,8 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={onCreateTerminal}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByText("+"));
@@ -258,6 +268,8 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
       />,
     );
     const wt = screen.getByText(/feat-login/).closest(".wt")!;
@@ -272,8 +284,7 @@ describe("WorktreeNode", () => {
     wt.dispatchEvent(contextMenuEvent);
   });
 
-  it("checkbox shows loading state", () => {
-    const mockVsCode = createMockVsCode();
+  it("checkbox shows loading state when loading prop is true", () => {
     renderWithVsCode(
       <WorktreeNode
         repoLabel="project.git"
@@ -281,13 +292,52 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
+        loading={true}
+        onSetExplorerWorktree={vi.fn()}
+      />,
+    );
+    // Loading should be shown, checkbox hidden
+    expect(document.querySelector(".loadingCheckbox")).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("loading state resets when loading prop changes to false", () => {
+    const mockVsCode = createMockVsCode();
+    const onSetExplorerWorktree = vi.fn();
+    const { rerender } = renderWithVsCode(
+      <WorktreeNode
+        repoLabel="project.git"
+        worktree={worktree}
+        collapsed={false}
+        onToggle={vi.fn()}
+        onCreateTerminal={vi.fn()}
+        loading={true}
+        onSetExplorerWorktree={onSetExplorerWorktree}
       />,
       mockVsCode,
     );
-    const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
-    fireEvent.click(checkbox);
-    // After click, loading state should show a loading span instead of checkbox
+    // Loading should be shown
     expect(document.querySelector(".loadingCheckbox")).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+
+    // Simulate loadingDone by rerendering with loading=false
+    rerender(
+      <VsCodeContext.Provider value={mockVsCode}>
+        <WorktreeNode
+          repoLabel="project.git"
+          worktree={worktree}
+          collapsed={false}
+          onToggle={vi.fn()}
+          onCreateTerminal={vi.fn()}
+          loading={false}
+          onSetExplorerWorktree={onSetExplorerWorktree}
+        />
+      </VsCodeContext.Provider>,
+    );
+
+    // Checkbox should reappear, loading should be gone
+    expect(screen.getByRole("checkbox")).toBeTruthy();
+    expect(document.querySelector(".loadingCheckbox")).toBeNull();
   });
 
   it("shows dot with worktree color", () => {
@@ -298,6 +348,8 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
       />,
     );
     const dot = document.querySelector(".dot") as HTMLElement;

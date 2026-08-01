@@ -39,6 +39,7 @@ const initialState: AppState = {
   activeOutput: "",
   hasWorkspace: true,
   home: "",
+  loadingWorktrees: new Set(),
 };
 
 // Mount React
