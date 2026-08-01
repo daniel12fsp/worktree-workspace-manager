@@ -104,16 +104,16 @@ export class EmbeddedTerminalViewProvider
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
-    log("Terminals by Worktree resolve webview view", { visible: webviewView.visible });
+    log("Terminals by Worktree resolve webview view", {
+      visible: webviewView.visible,
+    });
     this.view = webviewView;
     this.webviewReady = false;
     this.fallbackRendered = false;
     webviewView.webview.options = {
       enableScripts: true,
       enableCommandUris: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.extensionUri, "media"),
-      ],
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
     };
     webviewView.webview.onDidReceiveMessage(async (message) => {
       try {
@@ -126,7 +126,9 @@ export class EmbeddedTerminalViewProvider
               ? { name: error.name, message: error.message, stack: error.stack }
               : String(error),
         });
-        void vscode.window.showErrorMessage(`Terminals by Worktree command failed: ${error instanceof Error ? error.message : String(error)}`);
+        void vscode.window.showErrorMessage(
+          `Terminals by Worktree command failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     });
     webviewView.webview.html = this.html(webviewView.webview);
@@ -137,12 +139,16 @@ export class EmbeddedTerminalViewProvider
     if (message?.type === "ready") {
       this.webviewReady = true;
       this.fallbackRendered = false;
-      log("Terminals by Worktree webview ready", { sessionCount: this.sessions.size });
+      log("Terminals by Worktree webview ready", {
+        sessionCount: this.sessions.size,
+      });
       await this.renderSessions();
     } else if (message?.type === "webviewBootstrap") {
       this.webviewReady = true;
       this.fallbackRendered = false;
-      log("Terminals by Worktree webview bootstrap script running", { sessionCount: this.sessions.size });
+      log("Terminals by Worktree webview bootstrap script running", {
+        sessionCount: this.sessions.size,
+      });
     } else if (message?.type === "webviewError") {
       logError("Terminals by Worktree webview error", {
         message: String(message.message ?? "unknown webview error"),
@@ -151,7 +157,9 @@ export class EmbeddedTerminalViewProvider
         column: message.column ? Number(message.column) : undefined,
         stack: message.stack ? String(message.stack) : undefined,
       });
-      void vscode.window.showErrorMessage(`Terminals by Worktree UI error: ${String(message.message ?? "unknown error")}`);
+      void vscode.window.showErrorMessage(
+        `Terminals by Worktree UI error: ${String(message.message ?? "unknown error")}`,
+      );
     } else if (message?.type === "webviewRender") {
       log("Terminals by Worktree webview rendered", {
         repoCount: Number(message.repoCount) || 0,
@@ -230,29 +238,42 @@ export class EmbeddedTerminalViewProvider
     } else if (message?.type === "addWorktree") {
       const repo = await this.findRepo(String(message.path));
       if (repo) {
-        await vscode.commands.executeCommand("worktreeManager.addWorktree", { repo });
+        await vscode.commands.executeCommand("worktreeManager.addWorktree", {
+          repo,
+        });
         await this.renderSessions();
       }
     } else if (message?.type === "copyRepoPath") {
       const repo = await this.findRepo(String(message.path));
       if (repo) {
-        await vscode.commands.executeCommand("worktreeManager.copyRepositoryPath", { repo });
+        await vscode.commands.executeCommand(
+          "worktreeManager.copyRepositoryPath",
+          { repo },
+        );
       }
     } else if (message?.type === "removeWorktree") {
       const worktree = await this.findWorktree(String(message.path));
       if (worktree) {
-        await vscode.commands.executeCommand("worktreeManager.removeWorktree", { worktree });
+        await vscode.commands.executeCommand("worktreeManager.removeWorktree", {
+          worktree,
+        });
         await this.renderSessions();
       }
     } else if (message?.type === "copyWorktreePath") {
       const worktree = await this.findWorktree(String(message.path));
       if (worktree) {
-        await vscode.commands.executeCommand("worktreeManager.copyWorktreePath", { worktree });
+        await vscode.commands.executeCommand(
+          "worktreeManager.copyWorktreePath",
+          { worktree },
+        );
       }
     } else if (message?.type === "copyWorktreeBranch") {
       const worktree = await this.findWorktree(String(message.path));
       if (worktree) {
-        await vscode.commands.executeCommand("worktreeManager.copyWorktreeBranch", { worktree });
+        await vscode.commands.executeCommand(
+          "worktreeManager.copyWorktreeBranch",
+          { worktree },
+        );
       }
     } else if (message?.type === "killRepo") {
       const repoPath = String(message.path);
@@ -314,7 +335,9 @@ export class EmbeddedTerminalViewProvider
       return;
     }
     if (uri.scheme !== "http" && uri.scheme !== "https") {
-      void vscode.window.showWarningMessage(`Unsupported link scheme: ${uri.scheme}`);
+      void vscode.window.showWarningMessage(
+        `Unsupported link scheme: ${uri.scheme}`,
+      );
       return;
     }
     await vscode.env.openExternal(uri);
@@ -328,17 +351,28 @@ export class EmbeddedTerminalViewProvider
     const session = this.activeSessionId
       ? this.sessions.get(this.activeSessionId)
       : undefined;
-    const resolvedPath = resolveTerminalFilePath(rawPath, session?.worktree.path);
+    const resolvedPath = resolveTerminalFilePath(
+      rawPath,
+      session?.worktree.path,
+    );
     if (!fs.existsSync(resolvedPath)) {
       void vscode.window.showWarningMessage(`File not found: ${resolvedPath}`);
       return;
     }
-    const document = await vscode.workspace.openTextDocument(vscode.Uri.file(resolvedPath));
+    const document = await vscode.workspace.openTextDocument(
+      vscode.Uri.file(resolvedPath),
+    );
     const editor = await vscode.window.showTextDocument(document);
     if (line && line > 0) {
-      const position = new vscode.Position(line - 1, Math.max((column ?? 1) - 1, 0));
+      const position = new vscode.Position(
+        line - 1,
+        Math.max((column ?? 1) - 1, 0),
+      );
       editor.selection = new vscode.Selection(position, position);
-      editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+      editor.revealRange(
+        new vscode.Range(position, position),
+        vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+      );
     }
   }
 
@@ -431,7 +465,9 @@ export class EmbeddedTerminalViewProvider
   private async openSessionOutput(id: string): Promise<void> {
     const session = this.sessions.get(id);
     if (!session) {
-      void vscode.window.showWarningMessage("Terminal output is no longer available.");
+      void vscode.window.showWarningMessage(
+        "Terminal output is no longer available.",
+      );
       return;
     }
 
@@ -457,7 +493,9 @@ export class EmbeddedTerminalViewProvider
   private async resetSessionOutput(id: string): Promise<void> {
     const session = this.sessions.get(id);
     if (!session) {
-      void vscode.window.showWarningMessage("Terminal output is no longer available.");
+      void vscode.window.showWarningMessage(
+        "Terminal output is no longer available.",
+      );
       return;
     }
 
@@ -484,11 +522,17 @@ export class EmbeddedTerminalViewProvider
     await this.renderSessions();
   }
 
-  private nextTerminalLabel(worktree: Worktree): { label: string; terminalNumber: number } {
+  private nextTerminalLabel(worktree: Worktree): {
+    label: string;
+    terminalNumber: number;
+  } {
     const key = this.worktreeKey(worktree);
     const terminalNumber = (this.terminalSeqByWorktree.get(key) ?? 0) + 1;
     this.terminalSeqByWorktree.set(key, terminalNumber);
-    return { label: this.formatTerminalLabel(terminalNumber, worktree.name), terminalNumber };
+    return {
+      label: this.formatTerminalLabel(terminalNumber, worktree.name),
+      terminalNumber,
+    };
   }
 
   private formatTerminalLabel(terminalNumber: number, alias: string): string {
@@ -514,15 +558,14 @@ export class EmbeddedTerminalViewProvider
     const wrapper = shellActivityWrapper(shell);
     const env = ptyEnv({ ...options.env, ...wrapper.env });
     log("embedded terminal spawn prepare", {
-        repo: worktree.repo.label,
-        worktree: worktree.name,
-        cwd: worktree.path,
-        shell: wrapper.shell,
-        label,
-        envKeys: Object.keys(options.env ?? {}),
-        wrapped: wrapper.cleanupPaths.length > 0,
-      },
-    );
+      repo: worktree.repo.label,
+      worktree: worktree.name,
+      cwd: worktree.path,
+      shell: wrapper.shell,
+      label,
+      envKeys: Object.keys(options.env ?? {}),
+      wrapped: wrapper.cleanupPaths.length > 0,
+    });
     this.ensureNodePtySpawnHelperExecutable();
     const proc = pty.spawn(wrapper.shell, wrapper.args, {
       name: "xterm-256color",
@@ -532,15 +575,14 @@ export class EmbeddedTerminalViewProvider
       rows: 24,
     });
     log("spawn embedded terminal", {
-        repo: worktree.repo.label,
-        worktree: worktree.name,
-        cwd: worktree.path,
-        shell: wrapper.shell,
-        label,
-        envKeys: Object.keys(options.env ?? {}),
-        wrapped: wrapper.cleanupPaths.length > 0,
-      },
-    );
+      repo: worktree.repo.label,
+      worktree: worktree.name,
+      cwd: worktree.path,
+      shell: wrapper.shell,
+      label,
+      envKeys: Object.keys(options.env ?? {}),
+      wrapped: wrapper.cleanupPaths.length > 0,
+    });
     const session: EmbeddedSession = {
       id,
       label,
@@ -555,13 +597,20 @@ export class EmbeddedTerminalViewProvider
     };
     this.terminalOrder.set(id, ++this.terminalOrderSeq);
     proc.onData((data) => {
-      const { visibleData, stateChanged } = consumeActivityMarkers(session, data);
+      const { visibleData, stateChanged } = consumeActivityMarkers(
+        session,
+        data,
+      );
       if (visibleData) {
         session.output.push(visibleData);
         if (session.output.length > 500) {
           session.output.splice(0, session.output.length - 500);
         }
-        this.view?.webview.postMessage({ type: "output", id, data: visibleData });
+        this.view?.webview.postMessage({
+          type: "output",
+          id,
+          data: visibleData,
+        });
       }
       if (stateChanged) void this.renderSessions();
     });
@@ -661,91 +710,110 @@ export class EmbeddedTerminalViewProvider
 
   private async renderSessions(): Promise<void> {
     if (!this.view) {
-      log("render skipped: Terminals by Worktree webview is not ready", { sessionCount: this.sessions.size });
+      log("render skipped: Terminals by Worktree webview is not ready", {
+        sessionCount: this.sessions.size,
+      });
       return;
     }
     try {
       const hasWorkspace = Boolean(vscode.workspace.workspaceFile);
       const all = await listAllWorktrees();
       const activeWorkspaceFolders = await getCheckedWorktreePaths();
-    const repos = [...all].map(([repo, worktrees]) => ({
-      label: repo.label,
-      path: repo.fsPath,
-      worktrees: worktrees.map((worktree) => ({
-        name: worktree.name,
-        branch: worktree.branch ?? "detached",
-        path: worktree.path,
-        color: worktree.color,
-        activeInExplorer: activeWorkspaceFolders.has(
-          normalizePath(worktree.path),
-        ),
-        sessions: this.orderedSessions(
-          [...this.sessions.values()].filter(
-            (session) => session.worktree.path === worktree.path,
-          ),
-        ).map((session) => ({
-          id: session.id,
-          label: session.label,
-          state: session.state,
-          displayName: session.label,
-          statusText: session.statusText,
-          preview: outputPreview(session.output),
-        })),
-      })),
-    }));
-    const active = this.activeSessionId
-      ? this.sessions.get(this.activeSessionId)
-      : undefined;
-    const state = {
-      type: "state",
-      repos,
-      activeSessionId: this.activeSessionId,
-      activeOutput: active?.output.join("") ?? "",
-      hasWorkspace,
-      home: os.homedir(),
-    };
-    log("render Terminals by Worktree state", {
-      hasWorkspace,
-      repoCount: repos.length,
-      worktreeCount: repos.reduce((count, repo) => count + repo.worktrees.length, 0),
-      sessionCount: this.sessions.size,
-      activeSessionId: this.activeSessionId,
-      repos: repos.map(repo => ({
+      const repos = [...all].map(([repo, worktrees]) => ({
         label: repo.label,
-        worktrees: repo.worktrees.map(worktree => ({
+        path: repo.fsPath,
+        worktrees: worktrees.map((worktree) => ({
           name: worktree.name,
-          sessionCount: worktree.sessions.length,
-          sessions: worktree.sessions.map(session => ({ id: session.id, label: session.label, state: session.state }))
-        }))
-      }))
-    });
-    if (!this.webviewReady && !this.fallbackRendered) {
-      this.fallbackRendered = true;
-      const view = this.view;
-      setTimeout(() => {
-        if (this.webviewReady || !this.view || this.view !== view) return;
-        view.webview.html = this.html(view.webview);
-        log("rendered static fallback HTML for Terminals by Worktree", {
-          repoCount: repos.length,
-          sessionCount: this.sessions.size,
-        });
-      }, 750);
-    }
-    const delivered = await this.view.webview.postMessage(state);
-    if (!delivered) {
-      logError("failed to post Terminals by Worktree state; webview did not accept message", {
+          branch: worktree.branch ?? "detached",
+          path: worktree.path,
+          color: worktree.color,
+          activeInExplorer: activeWorkspaceFolders.has(
+            normalizePath(worktree.path),
+          ),
+          sessions: this.orderedSessions(
+            [...this.sessions.values()].filter(
+              (session) => session.worktree.path === worktree.path,
+            ),
+          ).map((session) => ({
+            id: session.id,
+            label: session.label,
+            state: session.state,
+            displayName: session.label,
+            statusText: session.statusText,
+            preview: outputPreview(session.output),
+          })),
+        })),
+      }));
+      const active = this.activeSessionId
+        ? this.sessions.get(this.activeSessionId)
+        : undefined;
+      const state = {
+        type: "state",
+        repos,
+        activeSessionId: this.activeSessionId,
+        activeOutput: active?.output.join("") ?? "",
+        hasWorkspace,
+        home: os.homedir(),
+      };
+      log("render Terminals by Worktree state", {
+        hasWorkspace,
         repoCount: repos.length,
+        worktreeCount: repos.reduce(
+          (count, repo) => count + repo.worktrees.length,
+          0,
+        ),
         sessionCount: this.sessions.size,
+        activeSessionId: this.activeSessionId,
+        repos: repos.map((repo) => ({
+          label: repo.label,
+          worktrees: repo.worktrees.map((worktree) => ({
+            name: worktree.name,
+            sessionCount: worktree.sessions.length,
+            sessions: worktree.sessions.map((session) => ({
+              id: session.id,
+              label: session.label,
+              state: session.state,
+            })),
+          })),
+        })),
       });
-      void vscode.window.showErrorMessage("Terminals by Worktree failed to update: webview did not accept state message.");
-    }
+      if (!this.webviewReady && !this.fallbackRendered) {
+        this.fallbackRendered = true;
+        const view = this.view;
+        setTimeout(() => {
+          if (this.webviewReady || !this.view || this.view !== view) return;
+          view.webview.html = this.html(view.webview);
+          log("rendered static fallback HTML for Terminals by Worktree", {
+            repoCount: repos.length,
+            sessionCount: this.sessions.size,
+          });
+        }, 750);
+      }
+      const delivered = await this.view.webview.postMessage(state);
+      if (!delivered) {
+        logError(
+          "failed to post Terminals by Worktree state; webview did not accept message",
+          {
+            repoCount: repos.length,
+            sessionCount: this.sessions.size,
+          },
+        );
+        void vscode.window.showErrorMessage(
+          "Terminals by Worktree failed to update: webview did not accept state message.",
+        );
+      }
     } catch (error) {
       logError("failed to render Terminals by Worktree", {
-        error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+        error:
+          error instanceof Error
+            ? { name: error.name, message: error.message, stack: error.stack }
+            : String(error),
         sessionCount: this.sessions.size,
         activeSessionId: this.activeSessionId,
       });
-      void vscode.window.showErrorMessage(`Terminals by Worktree failed to render: ${error instanceof Error ? error.message : String(error)}`);
+      void vscode.window.showErrorMessage(
+        `Terminals by Worktree failed to render: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -758,7 +826,9 @@ export class EmbeddedTerminalViewProvider
 
   private async findRepo(fsPath: string): Promise<BareRepository | undefined> {
     const all = await listAllWorktrees();
-    return [...all.keys()].find((repo) => path.resolve(repo.fsPath) === path.resolve(fsPath));
+    return [...all.keys()].find(
+      (repo) => path.resolve(repo.fsPath) === path.resolve(fsPath),
+    );
   }
 
   private html(webview: vscode.Webview): string {
@@ -803,17 +873,20 @@ export function consumeActivityMarkers(
   }
 
   let stateChanged = false;
-  const visibleData = combined.replace(activityMarkerPattern, (_match, kind: string, command?: string) => {
-    if (kind.startsWith("start;")) {
-      session.state = "running";
-      session.statusText = (command ?? "").trim() || "running";
-    } else {
-      session.state = "idle";
-      session.statusText = "idle";
-    }
-    stateChanged = true;
-    return "";
-  });
+  const visibleData = combined.replace(
+    activityMarkerPattern,
+    (_match, kind: string, command?: string) => {
+      if (kind.startsWith("start;")) {
+        session.state = "running";
+        session.statusText = (command ?? "").trim() || "running";
+      } else {
+        session.state = "idle";
+        session.statusText = "idle";
+      }
+      stateChanged = true;
+      return "";
+    },
+  );
   return { visibleData, stateChanged };
 }
 
@@ -871,7 +944,10 @@ export function shellActivityWrapper(shell: string): ShellActivityWrapper {
       };
     }
   } catch (error) {
-    logError("failed to create shell activity wrapper; terminal will run without activity tracking", { shell, error });
+    logError(
+      "failed to create shell activity wrapper; terminal will run without activity tracking",
+      { shell, error },
+    );
   }
 
   return base;
@@ -944,7 +1020,10 @@ export function cleanupShellWrapper(session: EmbeddedSession): void {
     try {
       fs.rmSync(cleanupPath, { recursive: true, force: true });
     } catch (error) {
-      logError("failed to clean shell activity wrapper", { cleanupPath, error });
+      logError("failed to clean shell activity wrapper", {
+        cleanupPath,
+        error,
+      });
     }
   }
 }
@@ -1021,7 +1100,8 @@ export function resolveTerminalFilePath(rawPath: string, cwd?: string): string {
     return rawPath;
   }
 
-  const base = cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
+  const base =
+    cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
   const resolvedPath = path.resolve(base, rawPath);
   if (fs.existsSync(resolvedPath)) {
     return resolvedPath;
@@ -1051,4 +1131,3 @@ export function outputPreview(output: string[]): string {
     .slice(-1)[0];
   return text?.slice(0, 140) ?? "";
 }
-

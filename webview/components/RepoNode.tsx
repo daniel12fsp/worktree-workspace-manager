@@ -19,17 +19,30 @@ export function RepoNode({ repo, collapsed, onToggle }: Props) {
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       const items: ContextMenuItem[] = [
-        { label: "Add Worktree\u2026", message: { type: "addWorktree", path: repo.path } },
-        { label: "Copy Bare Repository Path", message: { type: "copyRepoPath", path: repo.path } },
-        { label: "Close All Terminals", message: { type: "killRepo", path: repo.path } },
+        {
+          label: "Add Worktree\u2026",
+          message: { type: "addWorktree", path: repo.path },
+        },
+        {
+          label: "Copy Bare Repository Path",
+          message: { type: "copyRepoPath", path: repo.path },
+        },
+        {
+          label: "Close All Terminals",
+          message: { type: "killRepo", path: repo.path },
+        },
       ];
       showContextMenu(e, items, (msg) => vscode.postMessage(msg));
     },
-    [repo.path, vscode]
+    [repo.path, vscode],
   );
 
   return (
-    <div className="repo" onClick={handleClick} onContextMenu={handleContextMenu}>
+    <div
+      className="repo"
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+    >
       {(collapsed ? "\u25b8 " : "\u25be ") + repo.label}
     </div>
   );

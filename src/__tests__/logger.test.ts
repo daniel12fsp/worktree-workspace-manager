@@ -43,7 +43,11 @@ describe("format", () => {
 
   it("handles non-serializable values", () => {
     const obj = {};
-    Object.defineProperty(obj, "toJSON", { value: () => { throw new Error("fail"); } });
+    Object.defineProperty(obj, "toJSON", {
+      value: () => {
+        throw new Error("fail");
+      },
+    });
     const result = format(obj);
     expect(typeof result).toBe("string");
   });

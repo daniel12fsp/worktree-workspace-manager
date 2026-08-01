@@ -174,7 +174,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "worktreeManager.fetch",
       async (node?: RepoNode | { repo?: BareRepository }) => {
-        await runRepoGit(node?.repo ?? selectedRepo, ["fetch"], "Fetch complete");
+        await runRepoGit(
+          node?.repo ?? selectedRepo,
+          ["fetch"],
+          "Fetch complete",
+        );
         refreshAll();
       },
     ),

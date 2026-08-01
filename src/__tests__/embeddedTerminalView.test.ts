@@ -257,7 +257,9 @@ describe("safeEnv", () => {
 });
 
 describe("consumeActivityMarkers", () => {
-  const makeSession = (overrides: Partial<EmbeddedSession> = {}): EmbeddedSession => ({
+  const makeSession = (
+    overrides: Partial<EmbeddedSession> = {},
+  ): EmbeddedSession => ({
     id: "test-id",
     label: "test",
     terminalNumber: 1,
@@ -288,7 +290,10 @@ describe("consumeActivityMarkers", () => {
   });
 
   it("detects idle marker and sets idle state", () => {
-    const session = makeSession({ state: "running", statusText: "npm run dev" });
+    const session = makeSession({
+      state: "running",
+      statusText: "npm run dev",
+    });
     const data = "\x1b]777;wtwm;idle\x07";
     const result = consumeActivityMarkers(session, data);
     expect(session.state).toBe("idle");
@@ -312,7 +317,9 @@ describe("consumeActivityMarkers", () => {
   });
 
   it("combines remainder from previous call", () => {
-    const session = makeSession({ activityMarkerRemainder: "\x1b]777;wtwm;start;full-cmd" });
+    const session = makeSession({
+      activityMarkerRemainder: "\x1b]777;wtwm;start;full-cmd",
+    });
     const data = "\x07more text";
     const result = consumeActivityMarkers(session, data);
     expect(session.state).toBe("running");
@@ -366,7 +373,9 @@ describe("shellActivityWrapper", () => {
   });
 
   it("returns base wrapper when fs.mkdtempSync throws", () => {
-    mockMkdtempSync.mockImplementation(() => { throw new Error("mkdtemp failed"); });
+    mockMkdtempSync.mockImplementation(() => {
+      throw new Error("mkdtemp failed");
+    });
     const wrapper = shellActivityWrapper("/bin/zsh");
     expect(wrapper.env).toEqual({});
     expect(wrapper.cleanupPaths).toEqual([]);
@@ -450,7 +459,12 @@ describe("EmbeddedTerminalViewProvider", () => {
 
   it("openTerminal creates a session", async () => {
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       path: "/tmp/feat-login",
       name: "feat-login",
       branch: "feat/login",
@@ -464,7 +478,12 @@ describe("EmbeddedTerminalViewProvider", () => {
 
   it("openTerminalForPath opens when worktree found", async () => {
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       path: "/tmp/feat-login",
       name: "feat-login",
       branch: "feat/login",
@@ -472,7 +491,9 @@ describe("EmbeddedTerminalViewProvider", () => {
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     await provider.openTerminalForPath("/tmp/feat-login");
     expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalled();
   });
@@ -485,7 +506,12 @@ describe("EmbeddedTerminalViewProvider", () => {
 
   it("openNativeTerminalForPath creates native terminal", async () => {
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       path: "/tmp/feat-login",
       name: "feat-login",
       branch: "feat/login",
@@ -493,7 +519,9 @@ describe("EmbeddedTerminalViewProvider", () => {
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     await provider.openNativeTerminalForPath("/tmp/feat-login");
     expect(vi.mocked(vscode.window.createTerminal)).toHaveBeenCalled();
   });
@@ -508,7 +536,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -527,7 +558,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -547,7 +581,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -567,7 +604,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -586,7 +626,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -598,14 +641,19 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     await messageHandler!({ type: "openMenu" });
-    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith("worktreeManager.showMenu");
+    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
+      "worktreeManager.showMenu",
+    );
   });
 
   it("handleWebviewMessage webviewError logs error", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -616,7 +664,13 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    await messageHandler!({ type: "webviewError", message: "test error", source: "test.ts", line: 1, column: 1 });
+    await messageHandler!({
+      type: "webviewError",
+      message: "test error",
+      source: "test.ts",
+      line: 1,
+      column: 1,
+    });
     expect(vi.mocked(vscode.window.showErrorMessage)).toHaveBeenCalled();
   });
 
@@ -624,7 +678,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -635,14 +692,23 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    await messageHandler!({ type: "webviewRender", repoCount: "1", worktreeCount: "2", sessionCount: "0", childNodeCount: "3" });
+    await messageHandler!({
+      type: "webviewRender",
+      repoCount: "1",
+      worktreeCount: "2",
+      sessionCount: "0",
+      childNodeCount: "3",
+    });
   });
 
   it("handleWebviewMessage webviewBootstrap sets ready", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -660,7 +726,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -682,7 +751,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -701,7 +773,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -712,14 +787,22 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    await messageHandler!({ type: "resize", id: "nonexistent", cols: 120, rows: 40 });
+    await messageHandler!({
+      type: "resize",
+      id: "nonexistent",
+      cols: 120,
+      rows: 40,
+    });
   });
 
   it("handleWebviewMessage setTerminalAlias shows input box", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -737,7 +820,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -756,7 +842,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -775,7 +864,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -793,7 +885,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -812,7 +907,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -824,14 +922,20 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     mockListAllWorktrees.mockResolvedValueOnce(new Map());
-    await messageHandler!({ type: "setExplorerWorktree", path: "/tmp/nonexistent" });
+    await messageHandler!({
+      type: "setExplorerWorktree",
+      path: "/tmp/nonexistent",
+    });
   });
 
   it("handleWebviewMessage addWorktree not found", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -850,7 +954,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -869,7 +976,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -888,7 +998,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -900,14 +1013,20 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     mockListAllWorktrees.mockResolvedValueOnce(new Map());
-    await messageHandler!({ type: "copyWorktreePath", path: "/tmp/nonexistent" });
+    await messageHandler!({
+      type: "copyWorktreePath",
+      path: "/tmp/nonexistent",
+    });
   });
 
   it("handleWebviewMessage copyWorktreeBranch not found", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -919,14 +1038,20 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     mockListAllWorktrees.mockResolvedValueOnce(new Map());
-    await messageHandler!({ type: "copyWorktreeBranch", path: "/tmp/nonexistent" });
+    await messageHandler!({
+      type: "copyWorktreeBranch",
+      path: "/tmp/nonexistent",
+    });
   });
 
   it("handleWebviewMessage openExternalLink with invalid href", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -937,7 +1062,10 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    await messageHandler!({ type: "openExternalLink", href: "not-a-valid-url" });
+    await messageHandler!({
+      type: "openExternalLink",
+      href: "not-a-valid-url",
+    });
     expect(vi.mocked(vscode.window.showWarningMessage)).toHaveBeenCalled();
   });
 
@@ -945,7 +1073,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -956,7 +1087,10 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    await messageHandler!({ type: "openExternalLink", href: "ftp://example.com" });
+    await messageHandler!({
+      type: "openExternalLink",
+      href: "ftp://example.com",
+    });
     expect(vi.mocked(vscode.window.showWarningMessage)).toHaveBeenCalled();
   });
 
@@ -964,7 +1098,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -975,7 +1112,12 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    await messageHandler!({ type: "openTerminalFileLink", path: "/nonexistent/file.ts", line: 1, column: 1 });
+    await messageHandler!({
+      type: "openTerminalFileLink",
+      path: "/nonexistent/file.ts",
+      line: 1,
+      column: 1,
+    });
     expect(vi.mocked(vscode.window.showWarningMessage)).toHaveBeenCalled();
   });
 
@@ -983,7 +1125,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1002,7 +1147,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1014,14 +1162,21 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     mockListAllWorktrees.mockResolvedValue(new Map());
-    await messageHandler!({ type: "reorderSession", draggedId: "a", targetId: "b" });
+    await messageHandler!({
+      type: "reorderSession",
+      draggedId: "a",
+      targetId: "b",
+    });
   });
 
   it("handleWebviewMessage killRepo with confirmation", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1032,7 +1187,9 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce("Close Terminals" as any);
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      "Close Terminals" as any,
+    );
     await messageHandler!({ type: "killRepo", path: "/repos/project" });
     expect(vi.mocked(vscode.window.showInformationMessage)).toHaveBeenCalled();
   });
@@ -1041,7 +1198,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1052,7 +1212,9 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(undefined);
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      undefined,
+    );
     await messageHandler!({ type: "killRepo", path: "/repos/project" });
   });
 
@@ -1060,7 +1222,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1071,7 +1236,9 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce("Kill Terminals" as any);
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      "Kill Terminals" as any,
+    );
     await messageHandler!({ type: "killWorktree", path: "/tmp/feat" });
     expect(vi.mocked(vscode.window.showInformationMessage)).toHaveBeenCalled();
   });
@@ -1080,7 +1247,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1091,7 +1261,9 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(undefined);
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      undefined,
+    );
     await messageHandler!({ type: "killWorktree", path: "/tmp/feat" });
   });
 
@@ -1099,7 +1271,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1111,7 +1286,12 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       path: "/tmp/feat-login",
       name: "feat-login",
       branch: "feat/login",
@@ -1119,8 +1299,13 @@ describe("EmbeddedTerminalViewProvider", () => {
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
-    await messageHandler!({ type: "setExplorerWorktree", path: "/tmp/feat-login" });
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
+    await messageHandler!({
+      type: "setExplorerWorktree",
+      path: "/tmp/feat-login",
+    });
     expect(mockWebview.postMessage).toHaveBeenCalled();
   });
 
@@ -1128,7 +1313,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1139,17 +1327,28 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    const repo = { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" };
+    const repo = {
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      label: "project.git",
+      configPath: "/repos/project.git",
+    };
     mockListAllWorktrees.mockResolvedValueOnce(new Map([[repo, []]]));
     await messageHandler!({ type: "addWorktree", path: "/repos/project" });
-    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith("worktreeManager.addWorktree", { repo });
+    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
+      "worktreeManager.addWorktree",
+      { repo },
+    );
   });
 
   it("handleWebviewMessage copyRepoPath with matching repo", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1160,17 +1359,28 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    const repo = { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" };
+    const repo = {
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      label: "project.git",
+      configPath: "/repos/project.git",
+    };
     mockListAllWorktrees.mockResolvedValueOnce(new Map([[repo, []]]));
     await messageHandler!({ type: "copyRepoPath", path: "/repos/project" });
-    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith("worktreeManager.copyRepositoryPath", { repo });
+    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
+      "worktreeManager.copyRepositoryPath",
+      { repo },
+    );
   });
 
   it("handleWebviewMessage removeWorktree with matching worktree", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1182,7 +1392,12 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       path: "/tmp/feat-login",
       name: "feat-login",
       branch: "feat/login",
@@ -1190,16 +1405,24 @@ describe("EmbeddedTerminalViewProvider", () => {
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     await messageHandler!({ type: "removeWorktree", path: "/tmp/feat-login" });
-    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith("worktreeManager.removeWorktree", { worktree });
+    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
+      "worktreeManager.removeWorktree",
+      { worktree },
+    );
   });
 
   it("handleWebviewMessage copyWorktreePath with matching worktree", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1211,7 +1434,12 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       path: "/tmp/feat-login",
       name: "feat-login",
       branch: "feat/login",
@@ -1219,16 +1447,27 @@ describe("EmbeddedTerminalViewProvider", () => {
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
-    await messageHandler!({ type: "copyWorktreePath", path: "/tmp/feat-login" });
-    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith("worktreeManager.copyWorktreePath", { worktree });
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
+    await messageHandler!({
+      type: "copyWorktreePath",
+      path: "/tmp/feat-login",
+    });
+    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
+      "worktreeManager.copyWorktreePath",
+      { worktree },
+    );
   });
 
   it("handleWebviewMessage copyWorktreeBranch with matching worktree", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1240,7 +1479,12 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       path: "/tmp/feat-login",
       name: "feat-login",
       branch: "feat/login",
@@ -1248,16 +1492,27 @@ describe("EmbeddedTerminalViewProvider", () => {
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
-    await messageHandler!({ type: "copyWorktreeBranch", path: "/tmp/feat-login" });
-    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith("worktreeManager.copyWorktreeBranch", { worktree });
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
+    await messageHandler!({
+      type: "copyWorktreeBranch",
+      path: "/tmp/feat-login",
+    });
+    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
+      "worktreeManager.copyWorktreeBranch",
+      { worktree },
+    );
   });
 
   it("handleWebviewMessage changeColor with matching worktree shows input", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1269,7 +1524,12 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       path: "/tmp/feat-login",
       name: "feat-login",
       branch: "feat/login",
@@ -1277,7 +1537,9 @@ describe("EmbeddedTerminalViewProvider", () => {
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce("#00ff00");
     await messageHandler!({ type: "changeColor", path: "/tmp/feat-login" });
     expect(vi.mocked(vscode.window.showInputBox)).toHaveBeenCalled();
@@ -1287,7 +1549,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1305,7 +1570,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1319,7 +1587,7 @@ describe("EmbeddedTerminalViewProvider", () => {
     mockListAllWorktrees.mockResolvedValue(new Map());
     await messageHandler!({ type: "ready" });
     expect(mockWebview.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "state" })
+      expect.objectContaining({ type: "state" }),
     );
   });
 
@@ -1327,7 +1595,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => false),
       cspSource: "csp",
@@ -1347,9 +1618,14 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
-      postMessage: vi.fn(async () => { throw new Error("post failed"); }),
+      postMessage: vi.fn(async () => {
+        throw new Error("post failed");
+      }),
       cspSource: "csp",
       asWebviewUri: vi.fn((uri: any) => uri),
     };
@@ -1372,7 +1648,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1389,7 +1668,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1398,16 +1680,32 @@ describe("EmbeddedTerminalViewProvider", () => {
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     await provider.openTerminal(worktree);
     const session = (provider as any).sessions;
     const sessionIds = [...session.keys()];
     if (sessionIds.length > 0) {
-      await messageHandler!({ type: "resize", id: sessionIds[0], cols: 120, rows: 40 });
+      await messageHandler!({
+        type: "resize",
+        id: sessionIds[0],
+        cols: 120,
+        rows: 40,
+      });
     }
   });
 
@@ -1415,7 +1713,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1424,11 +1725,22 @@ describe("EmbeddedTerminalViewProvider", () => {
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     await provider.openTerminal(worktree);
     const sessions = (provider as any).sessions;
     const sessionIds = [...sessions.keys()];
@@ -1442,7 +1754,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1451,11 +1766,22 @@ describe("EmbeddedTerminalViewProvider", () => {
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     await provider.openTerminal(worktree);
     const sessions = (provider as any).sessions;
     const sessionIds = [...sessions.keys()];
@@ -1469,7 +1795,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1478,11 +1807,22 @@ describe("EmbeddedTerminalViewProvider", () => {
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     await provider.openTerminal(worktree);
     const sessions = (provider as any).sessions;
     const sessionIds = [...sessions.keys()];
@@ -1497,7 +1837,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1506,11 +1849,22 @@ describe("EmbeddedTerminalViewProvider", () => {
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     await provider.openTerminal(worktree);
     const sessions = (provider as any).sessions;
     const sessionIds = [...sessions.keys()];
@@ -1525,7 +1879,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1533,17 +1890,29 @@ describe("EmbeddedTerminalViewProvider", () => {
     };
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
-    const repo = { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" };
+    const repo = {
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      label: "project.git",
+      configPath: "/repos/project.git",
+    };
     const worktree = {
-      repo, path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo,
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
     mockListAllWorktrees.mockResolvedValueOnce(new Map([[repo, [worktree]]]));
     await provider.openTerminal(worktree);
     const sessions = (provider as any).sessions;
     const count = sessions.size;
     if (count > 0) {
-      const killed = provider.killRepoTerminals({ fsPath: "/repos/project" } as any);
+      const killed = provider.killRepoTerminals({
+        fsPath: "/repos/project",
+      } as any);
       expect(killed).toBeGreaterThanOrEqual(1);
     }
   });
@@ -1552,7 +1921,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1560,28 +1932,51 @@ describe("EmbeddedTerminalViewProvider", () => {
     };
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
-    const repo = { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" };
+    const repo = {
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      label: "project.git",
+      configPath: "/repos/project.git",
+    };
     const worktree = {
-      repo, path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo,
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
     mockListAllWorktrees.mockResolvedValueOnce(new Map([[repo, [worktree]]]));
     await provider.openTerminal(worktree);
     const sessions = (provider as any).sessions;
     const count = sessions.size;
     if (count > 0) {
-      const killed = provider.killWorktreeTerminals({ path: "/tmp/feat-login" } as any);
+      const killed = provider.killWorktreeTerminals({
+        path: "/tmp/feat-login",
+      } as any);
       expect(killed).toBeGreaterThanOrEqual(1);
     }
   });
 
   it("dispose with active sessions kills them", async () => {
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     await provider.openTerminal(worktree);
     const sessions = (provider as any).sessions;
     if (sessions.size > 0) {
@@ -1594,7 +1989,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1603,13 +2001,27 @@ describe("EmbeddedTerminalViewProvider", () => {
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     mockCheckWorktree.mockResolvedValueOnce("rootFoldersCannotBeHidden");
-    await messageHandler!({ type: "setExplorerWorktree", path: "/tmp/feat-login" });
+    await messageHandler!({
+      type: "setExplorerWorktree",
+      path: "/tmp/feat-login",
+    });
     expect(vi.mocked(vscode.window.showWarningMessage)).toHaveBeenCalled();
   });
 
@@ -1617,7 +2029,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1626,13 +2041,27 @@ describe("EmbeddedTerminalViewProvider", () => {
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     mockCheckWorktree.mockResolvedValueOnce("noWorkspaceFile");
-    await messageHandler!({ type: "setExplorerWorktree", path: "/tmp/feat-login" });
+    await messageHandler!({
+      type: "setExplorerWorktree",
+      path: "/tmp/feat-login",
+    });
     expect(vi.mocked(vscode.window.showErrorMessage)).toHaveBeenCalled();
   });
 
@@ -1640,7 +2069,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1649,13 +2081,27 @@ describe("EmbeddedTerminalViewProvider", () => {
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     mockCheckWorktree.mockResolvedValueOnce("missingFolders");
-    await messageHandler!({ type: "setExplorerWorktree", path: "/tmp/feat-login" });
+    await messageHandler!({
+      type: "setExplorerWorktree",
+      path: "/tmp/feat-login",
+    });
     expect(vi.mocked(vscode.window.showErrorMessage)).toHaveBeenCalled();
   });
 
@@ -1663,7 +2109,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1672,13 +2121,27 @@ describe("EmbeddedTerminalViewProvider", () => {
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
     const worktree = {
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
-      path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
-    mockListAllWorktrees.mockResolvedValueOnce(new Map([[worktree.repo, [worktree]]]));
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
     mockCheckWorktree.mockRejectedValueOnce(new Error("check failed"));
-    await messageHandler!({ type: "setExplorerWorktree", path: "/tmp/feat-login" });
+    await messageHandler!({
+      type: "setExplorerWorktree",
+      path: "/tmp/feat-login",
+    });
     expect(vi.mocked(vscode.window.showErrorMessage)).toHaveBeenCalled();
   });
 
@@ -1686,7 +2149,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
-      onDidReceiveMessage: vi.fn((cb: any) => { messageHandler = cb; return { dispose: vi.fn() }; }),
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
       html: "",
       postMessage: vi.fn(async () => true),
       cspSource: "csp",
@@ -1694,10 +2160,20 @@ describe("EmbeddedTerminalViewProvider", () => {
     };
     const mockView = { visible: true, webview: mockWebview } as any;
     provider.resolveWebviewView(mockView);
-    const repo = { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" };
+    const repo = {
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      label: "project.git",
+      configPath: "/repos/project.git",
+    };
     const worktree = {
-      repo, path: "/tmp/feat-login", name: "feat-login", branch: "feat/login",
-      head: "abc123", color: "#ff0000", colorKey: "project.git/feat-login",
+      repo,
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
     } as any;
     mockListAllWorktrees.mockResolvedValueOnce(new Map([[repo, [worktree]]]));
     await provider.openTerminal(worktree);
@@ -1706,12 +2182,18 @@ describe("EmbeddedTerminalViewProvider", () => {
     const sessions = (provider as any).sessions;
     const sessionIds = [...sessions.keys()];
     if (sessionIds.length >= 2) {
-      await messageHandler!({ type: "reorderSession", draggedId: sessionIds[0], targetId: sessionIds[1] });
+      await messageHandler!({
+        type: "reorderSession",
+        draggedId: sessionIds[0],
+        targetId: sessionIds[1],
+      });
     }
   });
 });
 
-function makeSession(overrides: Partial<EmbeddedSession> = {}): EmbeddedSession {
+function makeSession(
+  overrides: Partial<EmbeddedSession> = {},
+): EmbeddedSession {
   return {
     id: "test-id",
     label: "test",

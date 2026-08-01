@@ -52,7 +52,7 @@ const renderWithVsCode = (state: AppState, mockVsCode?: VsCodeApi) => {
   return render(
     <VsCodeContext.Provider value={vscode}>
       <App initialState={state} />
-    </VsCodeContext.Provider>
+    </VsCodeContext.Provider>,
   );
 };
 
@@ -70,7 +70,9 @@ describe("App", () => {
       home: "/home/user",
     };
     renderWithVsCode(state);
-    expect(screen.getByText("This feature only works with a workspace.")).toBeTruthy();
+    expect(
+      screen.getByText("This feature only works with a workspace."),
+    ).toBeTruthy();
   });
 
   it("shows no repositories message when empty repos", () => {
@@ -554,7 +556,7 @@ describe("App", () => {
     // Click add button
     fireEvent.click(screen.getByText("+"));
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "create", path: "/tmp/feat-login" })
+      expect.objectContaining({ type: "create", path: "/tmp/feat-login" }),
     );
   });
 
@@ -659,7 +661,7 @@ describe("App", () => {
     // Click on terminal leaf to select
     fireEvent.click(screen.getByText("terminal 1"));
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "select", id: "s1" })
+      expect.objectContaining({ type: "select", id: "s1" }),
     );
   });
 
@@ -700,7 +702,7 @@ describe("App", () => {
     // Click on active terminal leaf to collapse
     fireEvent.click(screen.getByText("terminal 1"));
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "collapse", id: "s1" })
+      expect.objectContaining({ type: "collapse", id: "s1" }),
     );
   });
 

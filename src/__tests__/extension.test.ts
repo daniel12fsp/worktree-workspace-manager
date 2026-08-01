@@ -74,15 +74,21 @@ describe("shellQuote", () => {
 
 describe("inferRepositoryRootName", () => {
   it("extracts name from git@ URL", () => {
-    expect(inferRepositoryRootName("git@github.com:owner/project.git")).toBe("project");
+    expect(inferRepositoryRootName("git@github.com:owner/project.git")).toBe(
+      "project",
+    );
   });
 
   it("extracts name from https URL", () => {
-    expect(inferRepositoryRootName("https://github.com/owner/project.git")).toBe("project");
+    expect(
+      inferRepositoryRootName("https://github.com/owner/project.git"),
+    ).toBe("project");
   });
 
   it("removes trailing .git", () => {
-    expect(inferRepositoryRootName("https://example.com/repo.git")).toBe("repo");
+    expect(inferRepositoryRootName("https://example.com/repo.git")).toBe(
+      "repo",
+    );
   });
 
   it("handles URL without .git", () => {
@@ -98,7 +104,9 @@ describe("inferRepositoryRootName", () => {
   });
 
   it("handles SSH URL with port", () => {
-    expect(inferRepositoryRootName("git@github.com:22:owner/project.git")).toBe("project");
+    expect(inferRepositoryRootName("git@github.com:22:owner/project.git")).toBe(
+      "project",
+    );
   });
 });
 

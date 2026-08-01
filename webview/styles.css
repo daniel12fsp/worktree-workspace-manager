@@ -1,4 +1,5 @@
-html, body {
+html,
+body {
   height: 100%;
   margin: 0;
   color: var(--vscode-foreground);
@@ -24,7 +25,8 @@ html, body {
   user-select: none;
 }
 
-.wt, .terminalLeaf {
+.wt,
+.terminalLeaf {
   display: flex;
   gap: 6px;
   align-items: center;
@@ -46,7 +48,10 @@ html, body {
   outline: 1px dashed var(--vscode-focusBorder, #007fd4);
 }
 
-.wt:hover, .terminalLeaf:hover, .wt.active, .terminalLeaf.active {
+.wt:hover,
+.terminalLeaf:hover,
+.wt.active,
+.terminalLeaf.active {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -74,8 +79,12 @@ html, body {
 }
 
 @keyframes pulse {
-  70% { box-shadow: 0 0 0 5px rgba(46, 160, 67, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(46, 160, 67, 0); }
+  70% {
+    box-shadow: 0 0 0 5px rgba(46, 160, 67, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(46, 160, 67, 0);
+  }
 }
 
 .expandIcon {
@@ -111,7 +120,9 @@ html, body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .terminalInline {
@@ -196,7 +207,8 @@ html, body {
   padding: 1px 5px;
 }
 
-.addTerminal:hover, .terminalAction:hover {
+.addTerminal:hover,
+.terminalAction:hover {
   opacity: 1;
   background: var(--vscode-button-secondaryHoverBackground);
 }
@@ -209,7 +221,7 @@ html, body {
   background: var(--vscode-menu-background);
   color: var(--vscode-menu-foreground);
   border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
-  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .contextMenu button {

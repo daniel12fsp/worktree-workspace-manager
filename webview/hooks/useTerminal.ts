@@ -8,7 +8,7 @@ export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   activeSessionId: string | undefined,
   onData: (data: string) => void,
-  onResize: (cols: number, rows: number) => void
+  onResize: (cols: number, rows: number) => void,
 ) {
   const termRef = useRef<any>(null);
   const searchAddonRef = useRef<any>(null);
@@ -62,7 +62,9 @@ export function useTerminal(
 
       searchAddon.onDidChangeResults((event: any) => {
         const resultEl = document.getElementById("findResult");
-        const inputEl = document.getElementById("findInput") as HTMLInputElement | null;
+        const inputEl = document.getElementById(
+          "findInput",
+        ) as HTMLInputElement | null;
         if (!resultEl) return;
         if (!inputEl?.value || !event || event.resultCount <= 0) {
           resultEl.textContent = inputEl?.value ? "0/0" : "";
@@ -81,7 +83,9 @@ export function useTerminal(
           event.preventDefault();
           event.stopPropagation();
           const findBox = document.getElementById("findBox");
-          const findInput = document.getElementById("findInput") as HTMLInputElement | null;
+          const findInput = document.getElementById(
+            "findInput",
+          ) as HTMLInputElement | null;
           if (findBox && findInput) {
             findBox.classList.add("visible");
             findInput.select();
@@ -97,7 +101,11 @@ export function useTerminal(
 
       const terminalElement = term.element as HTMLElement | undefined;
       terminalElement?.addEventListener("mouseenter", () => {
-        focusTerminalNow(termRef.current, activeSessionIdRef.current, hasFocusRef);
+        focusTerminalNow(
+          termRef.current,
+          activeSessionIdRef.current,
+          hasFocusRef,
+        );
       });
       terminalElement?.addEventListener("focusin", () => {
         hasFocusRef.current = true;
@@ -105,7 +113,9 @@ export function useTerminal(
       });
       terminalElement?.addEventListener("focusout", () => {
         setTimeout(() => {
-          hasFocusRef.current = Boolean(terminalElement.contains(document.activeElement));
+          hasFocusRef.current = Boolean(
+            terminalElement.contains(document.activeElement),
+          );
           updateFocusClasses(hasFocusRef.current);
         }, 0);
       });
@@ -117,18 +127,14 @@ export function useTerminal(
         if (sanitized) onDataRef.current(sanitized);
       });
 
-      if (typeof term.onFocus === "function") {
-        term.onFocus(() => {
-          hasFocusRef.current = true;
-          updateFocusClasses(true);
-        });
-      }
-      if (typeof term.onBlur === "function") {
-        term.onBlur(() => {
-          hasFocusRef.current = false;
-          updateFocusClasses(false);
-        });
-      }
+      term.element?.addEventListener("focus", () => {
+        hasFocusRef.current = true;
+        updateFocusClasses(true);
+      });
+      term.element?.addEventListener("blur", () => {
+        hasFocusRef.current = false;
+        updateFocusClasses(false);
+      });
 
       registerTerminalLinkProvider(term);
 
@@ -140,42 +146,38 @@ export function useTerminal(
     }
   }, [containerRef, attachExistingTerminal]);
 
-  const runSearch = useCallback(
-    (previous: boolean) => {
-      if (!activeSessionIdRef.current || !searchAddonRef.current) return;
-      const inputEl = document.getElementById("findInput") as HTMLInputElement | null;
-      if (!inputEl) return;
-      const query = inputEl.value;
-      if (!query) {
-        searchAddonRef.current.clearDecorations();
-        return;
-      }
-      const options = {
-        decorations: {
-          activeMatchColorOverviewRuler: "#ffcc00",
-          matchOverviewRuler: "#d18616",
-        },
-        incremental: !previous,
-      };
-      previous
-        ? searchAddonRef.current.findPrevious(query, options)
-        : searchAddonRef.current.findNext(query, options);
-    },
-    []
-  );
+  const runSearch = useCallback((previous: boolean) => {
+    if (!activeSessionIdRef.current || !searchAddonRef.current) return;
+    const inputEl = document.getElementById(
+      "findInput",
+    ) as HTMLInputElement | null;
+    if (!inputEl) return;
+    const query = inputEl.value;
+    if (!query) {
+      searchAddonRef.current.clearDecorations();
+      return;
+    }
+    const options = {
+      decorations: {
+        activeMatchColorOverviewRuler: "#ffcc00",
+        matchOverviewRuler: "#d18616",
+      },
+      incremental: !previous,
+    };
+    previous
+      ? searchAddonRef.current.findPrevious(query, options)
+      : searchAddonRef.current.findNext(query, options);
+  }, []);
 
   const focus = useCallback(() => {
     focusTerminalNow(termRef.current, activeSessionIdRef.current, hasFocusRef);
   }, []);
 
-  const clearAndWrite = useCallback(
-    (data: string) => {
-      if (!termRef.current) return;
-      termRef.current.clear();
-      if (data) termRef.current.write(data);
-    },
-    []
-  );
+  const clearAndWrite = useCallback((data: string) => {
+    if (!termRef.current) return;
+    termRef.current.clear();
+    if (data) termRef.current.write(data);
+  }, []);
 
   const write = useCallback((data: string) => {
     if (termRef.current) termRef.current.write(data);
@@ -194,8 +196,14 @@ export function useTerminal(
         onResizeRef.current(dims.cols, dims.rows);
       }
     } else {
-      const cols = Math.max(20, Math.floor(containerRef.current.clientWidth / 9));
-      const rows = Math.max(5, Math.floor(containerRef.current.clientHeight / 18));
+      const cols = Math.max(
+        20,
+        Math.floor(containerRef.current.clientWidth / 9),
+      );
+      const rows = Math.max(
+        5,
+        Math.floor(containerRef.current.clientHeight / 18),
+      );
       termRef.current.resize(cols, rows);
       onResizeRef.current(cols, rows);
     }
@@ -225,7 +233,7 @@ export function useTerminal(
       runSearch,
       hasFocusRef,
     }),
-    [focus, clearAndWrite, write, clear, resize, runSearch]
+    [focus, clearAndWrite, write, clear, resize, runSearch],
   );
 }
 
@@ -239,9 +247,10 @@ export function updateFocusClasses(focused: boolean) {
 function focusTerminalNow(
   term: any,
   activeSessionId: string | undefined,
-  hasFocusRef: MutableRefObject<boolean>
+  hasFocusRef: MutableRefObject<boolean>,
 ) {
-  if (!activeSessionId || !term || !document.querySelector(".terminalInline")) return;
+  if (!activeSessionId || !term || !document.querySelector(".terminalInline"))
+    return;
   term.focus();
   hasFocusRef.current = true;
   updateFocusClasses(true);
@@ -250,7 +259,10 @@ function focusTerminalNow(
 function registerTerminalLinkProvider(term: any) {
   if (typeof term.registerLinkProvider !== "function") return;
   term.registerLinkProvider({
-    provideLinks(bufferLineNumber: number, callback: (links: any[] | undefined) => void) {
+    provideLinks(
+      bufferLineNumber: number,
+      callback: (links: any[] | undefined) => void,
+    ) {
       try {
         const line = term.buffer.active.getLine(bufferLineNumber - 1);
         const text = line?.translateToString(true) || "";
@@ -272,7 +284,7 @@ export function detectTerminalLinks(text: string, bufferLineNumber: number) {
     "url",
     links,
     occupied,
-    bufferLineNumber
+    bufferLineNumber,
   );
   collectMatches(
     text,
@@ -280,7 +292,7 @@ export function detectTerminalLinks(text: string, bufferLineNumber: number) {
     "file",
     links,
     occupied,
-    bufferLineNumber
+    bufferLineNumber,
   );
 
   return links.length ? links : undefined;
@@ -292,7 +304,7 @@ export function collectMatches(
   kind: string,
   links: any[],
   occupied: Array<{ start: number; end: number }>,
-  bufferLineNumber: number
+  bufferLineNumber: number,
 ) {
   for (const match of text.matchAll(regex)) {
     const raw = match[0];
@@ -300,7 +312,8 @@ export function collectMatches(
     const trimmed = trimTerminalLink(raw);
     if (!trimmed.text) continue;
     const end = start + trimmed.text.length;
-    if (occupied.some((range) => start < range.end && end > range.start)) continue;
+    if (occupied.some((range) => start < range.end && end > range.start))
+      continue;
     occupied.push({ start, end });
     const parsed = kind === "file" ? parseFileLink(trimmed.text) : undefined;
     const linkText = parsed?.path ?? trimmed.text;
@@ -325,7 +338,8 @@ export function collectMatches(
         }
       },
       hover(event: any) {
-        if (event?.target) event.target.title = kind === "url" ? "Open link" : "Open file";
+        if (event?.target)
+          event.target.title = kind === "url" ? "Open link" : "Open file";
       },
     });
   }

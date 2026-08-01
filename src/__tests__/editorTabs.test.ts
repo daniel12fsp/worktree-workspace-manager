@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { isUnderAnyPath, tabUris, describeTabInput } from "../editorTabs";
 import * as vscode from "vscode";
-import { TabInputText, TabInputTextDiff, TabInputCustom, TabInputNotebook, TabInputNotebookDiff, TabInputTerminal } from "vscode";
+import {
+  TabInputText,
+  TabInputTextDiff,
+  TabInputCustom,
+  TabInputNotebook,
+  TabInputNotebookDiff,
+  TabInputTerminal,
+} from "vscode";
 
 vi.mock("vscode", () => import("../__mocks__/vscode"));
 vi.mock("../logger", () => ({
@@ -39,7 +46,10 @@ describe("isUnderAnyPath", () => {
 describe("tabUris", () => {
   it("returns uri for TabInputText", () => {
     const tab = {
-      input: new TabInputText({ fsPath: "/tmp/file.ts", scheme: "file" } as any),
+      input: new TabInputText({
+        fsPath: "/tmp/file.ts",
+        scheme: "file",
+      } as any),
     } as any;
     const uris = tabUris(tab);
     expect(uris).toHaveLength(1);
@@ -58,7 +68,10 @@ describe("tabUris", () => {
 
   it("returns uri for TabInputCustom", () => {
     const tab = {
-      input: new TabInputCustom({ fsPath: "/tmp/c.ts", scheme: "file" } as any, "myView"),
+      input: new TabInputCustom(
+        { fsPath: "/tmp/c.ts", scheme: "file" } as any,
+        "myView",
+      ),
     } as any;
     const uris = tabUris(tab);
     expect(uris).toHaveLength(1);
@@ -66,7 +79,10 @@ describe("tabUris", () => {
 
   it("returns uri for TabInputNotebook", () => {
     const tab = {
-      input: new TabInputNotebook({ fsPath: "/tmp/n.ipynb", scheme: "file" } as any, "jupyter"),
+      input: new TabInputNotebook(
+        { fsPath: "/tmp/n.ipynb", scheme: "file" } as any,
+        "jupyter",
+      ),
     } as any;
     const uris = tabUris(tab);
     expect(uris).toHaveLength(1);
@@ -99,7 +115,12 @@ describe("closeEditorsOutsideWorktree", () => {
       name: "feat-login",
       branch: "feat/login",
       head: "abc",
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
@@ -112,13 +133,19 @@ describe("closeEditorsOutsideWorktree", () => {
       {
         tabs: [
           {
-            input: new TabInputText({ fsPath: "/tmp/feat-login/src/index.ts", scheme: "file" } as any),
+            input: new TabInputText({
+              fsPath: "/tmp/feat-login/src/index.ts",
+              scheme: "file",
+            } as any),
             label: "index.ts",
             isActive: false,
             isDirty: false,
           },
           {
-            input: new TabInputText({ fsPath: "/tmp/other/file.ts", scheme: "file" } as any),
+            input: new TabInputText({
+              fsPath: "/tmp/other/file.ts",
+              scheme: "file",
+            } as any),
             label: "file.ts",
             isActive: false,
             isDirty: false,
@@ -126,7 +153,10 @@ describe("closeEditorsOutsideWorktree", () => {
         ],
       },
     ];
-    Object.defineProperty(vscode.window.tabGroups, "all", { value: allGroups, configurable: true });
+    Object.defineProperty(vscode.window.tabGroups, "all", {
+      value: allGroups,
+      configurable: true,
+    });
 
     await closeEditorsOutsideWorktree(worktree);
     expect(vscode.window.tabGroups.close).toHaveBeenCalled();
@@ -139,7 +169,12 @@ describe("closeEditorsOutsideWorktree", () => {
       name: "feat-login",
       branch: "feat/login",
       head: "abc",
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
@@ -150,7 +185,10 @@ describe("closeEditorsOutsideWorktree", () => {
       {
         tabs: [
           {
-            input: new TabInputText({ fsPath: "/tmp/feat-login/src/index.ts", scheme: "file" } as any),
+            input: new TabInputText({
+              fsPath: "/tmp/feat-login/src/index.ts",
+              scheme: "file",
+            } as any),
             label: "index.ts",
             isActive: false,
             isDirty: false,
@@ -158,7 +196,10 @@ describe("closeEditorsOutsideWorktree", () => {
         ],
       },
     ];
-    Object.defineProperty(vscode.window.tabGroups, "all", { value: allGroups, configurable: true });
+    Object.defineProperty(vscode.window.tabGroups, "all", {
+      value: allGroups,
+      configurable: true,
+    });
 
     vi.mocked(vscode.window.tabGroups.close).mockClear();
     await closeEditorsOutsideWorktree(worktree);
@@ -172,7 +213,12 @@ describe("closeEditorsOutsideWorktree", () => {
       name: "feat-login",
       branch: "feat/login",
       head: "abc",
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
@@ -183,7 +229,10 @@ describe("closeEditorsOutsideWorktree", () => {
       {
         tabs: [
           {
-            input: new TabInputText({ fsPath: "/tmp/other/file.ts", scheme: "file" } as any),
+            input: new TabInputText({
+              fsPath: "/tmp/other/file.ts",
+              scheme: "file",
+            } as any),
             label: "file.ts",
             isActive: false,
             isDirty: false,
@@ -191,9 +240,14 @@ describe("closeEditorsOutsideWorktree", () => {
         ],
       },
     ];
-    Object.defineProperty(vscode.window.tabGroups, "all", { value: allGroups, configurable: true });
+    Object.defineProperty(vscode.window.tabGroups, "all", {
+      value: allGroups,
+      configurable: true,
+    });
 
-    vi.mocked(vscode.window.tabGroups.close).mockRejectedValueOnce(new Error("close failed"));
+    vi.mocked(vscode.window.tabGroups.close).mockRejectedValueOnce(
+      new Error("close failed"),
+    );
     await closeEditorsOutsideWorktree(worktree);
     // Should not throw
   });
@@ -205,7 +259,12 @@ describe("closeEditorsOutsideWorktree", () => {
       name: "feat-login",
       branch: "feat/login",
       head: "abc",
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
@@ -224,7 +283,10 @@ describe("closeEditorsOutsideWorktree", () => {
         ],
       },
     ];
-    Object.defineProperty(vscode.window.tabGroups, "all", { value: allGroups, configurable: true });
+    Object.defineProperty(vscode.window.tabGroups, "all", {
+      value: allGroups,
+      configurable: true,
+    });
 
     vi.mocked(vscode.window.tabGroups.close).mockClear();
     await closeEditorsOutsideWorktree(worktree);
@@ -239,14 +301,22 @@ describe("closeEditorsOutsideWorktree", () => {
       name: "feat-login",
       branch: "feat/login",
       head: "abc",
-      repo: { fsPath: "/repos/project", gitDir: "/repos/project/.bare", label: "project.git", configPath: "/repos/project.git" },
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
       color: "#ff0000",
       colorKey: "project.git/feat-login",
     } as any;
 
     mockNormalizePath.mockImplementation((p: string) => p);
 
-    Object.defineProperty(vscode.window.tabGroups, "all", { value: [], configurable: true });
+    Object.defineProperty(vscode.window.tabGroups, "all", {
+      value: [],
+      configurable: true,
+    });
 
     await closeEditorsOutsideWorktree(worktree);
     expect(vscode.window.tabGroups.close).not.toHaveBeenCalled();

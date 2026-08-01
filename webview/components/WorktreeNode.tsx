@@ -26,30 +26,49 @@ export function WorktreeNode({
       onToggle();
       vscode.postMessage({ type: "collapseAll" });
     },
-    [onToggle, vscode]
+    [onToggle, vscode],
   );
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       const items: ContextMenuItem[] = [
-        { label: "Remove Worktree", message: { type: "removeWorktree", path: worktree.path } },
-        { label: "Copy Worktree Path", message: { type: "copyWorktreePath", path: worktree.path } },
-        { label: "Copy Branch", message: { type: "copyWorktreeBranch", path: worktree.path } },
-        { label: "Change Color\u2026", message: { type: "changeColor", path: worktree.path } },
-        { label: "Kill Related Terminals", message: { type: "killWorktree", path: worktree.path } },
+        {
+          label: "Remove Worktree",
+          message: { type: "removeWorktree", path: worktree.path },
+        },
+        {
+          label: "Copy Worktree Path",
+          message: { type: "copyWorktreePath", path: worktree.path },
+        },
+        {
+          label: "Copy Branch",
+          message: { type: "copyWorktreeBranch", path: worktree.path },
+        },
+        {
+          label: "Change Color\u2026",
+          message: { type: "changeColor", path: worktree.path },
+        },
+        {
+          label: "Kill Related Terminals",
+          message: { type: "killWorktree", path: worktree.path },
+        },
       ];
       showContextMenu(e, items, (msg) => vscode.postMessage(msg));
     },
-    [worktree.path, vscode]
+    [worktree.path, vscode],
   );
 
   const handleCheckboxChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       e.stopPropagation();
       setLoading(true);
-      vscode.postMessage({ type: "setExplorerWorktree", path: worktree.path, enabled: e.target.checked });
+      vscode.postMessage({
+        type: "setExplorerWorktree",
+        path: worktree.path,
+        enabled: e.target.checked,
+      });
     },
-    [worktree.path, vscode]
+    [worktree.path, vscode],
   );
 
   const handleAdd = useCallback(
@@ -57,7 +76,7 @@ export function WorktreeNode({
       e.stopPropagation();
       onCreateTerminal(worktree.path);
     },
-    [worktree.path, onCreateTerminal]
+    [worktree.path, onCreateTerminal],
   );
 
   return (
@@ -71,7 +90,11 @@ export function WorktreeNode({
           type="checkbox"
           className="workspaceState"
           checked={worktree.activeInExplorer}
-          title={worktree.activeInExplorer ? "Enabled in VSCode Explorer" : "Enable in VSCode Explorer"}
+          title={
+            worktree.activeInExplorer
+              ? "Enabled in VSCode Explorer"
+              : "Enable in VSCode Explorer"
+          }
           onChange={handleCheckboxChange}
           onClick={(e) => e.stopPropagation()}
         />
@@ -79,7 +102,11 @@ export function WorktreeNode({
       <span style={{ color: worktree.color, fontWeight: 600 }}>
         {worktree.name} ({worktree.branch})
       </span>
-      <button className="addTerminal" title="New terminal here" onClick={handleAdd}>
+      <button
+        className="addTerminal"
+        title="New terminal here"
+        onClick={handleAdd}
+      >
         +
       </button>
     </div>

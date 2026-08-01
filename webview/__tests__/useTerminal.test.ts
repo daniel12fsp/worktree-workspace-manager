@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { trimTerminalLink, parseFileLink, detectTerminalLinks, collectMatches, updateFocusClasses } from "../hooks/useTerminal";
+import {
+  trimTerminalLink,
+  parseFileLink,
+  detectTerminalLinks,
+  collectMatches,
+  updateFocusClasses,
+} from "../hooks/useTerminal";
 
 describe("trimTerminalLink", () => {
   it("trims trailing punctuation", () => {
@@ -11,7 +17,9 @@ describe("trimTerminalLink", () => {
   });
 
   it("preserves colon-number-colon-number", () => {
-    expect(trimTerminalLink("file.txt:42:5")).toEqual({ text: "file.txt:42:5" });
+    expect(trimTerminalLink("file.txt:42:5")).toEqual({
+      text: "file.txt:42:5",
+    });
   });
 
   it("returns original when no trailing punctuation", () => {
@@ -34,12 +42,20 @@ describe("trimTerminalLink", () => {
 describe("parseFileLink", () => {
   it("parses path only", () => {
     const result = parseFileLink("src/file.ts");
-    expect(result).toEqual({ path: "src/file.ts", line: undefined, column: undefined });
+    expect(result).toEqual({
+      path: "src/file.ts",
+      line: undefined,
+      column: undefined,
+    });
   });
 
   it("parses path with line", () => {
     const result = parseFileLink("src/file.ts:42");
-    expect(result).toEqual({ path: "src/file.ts", line: 42, column: undefined });
+    expect(result).toEqual({
+      path: "src/file.ts",
+      line: 42,
+      column: undefined,
+    });
   });
 
   it("parses path with line and column", () => {
@@ -77,7 +93,7 @@ describe("collectMatches", () => {
       "url",
       links,
       occupied,
-      1
+      1,
     );
     expect(links.length).toBe(1);
     expect(links[0].text).toContain("https://example.com");
@@ -85,14 +101,16 @@ describe("collectMatches", () => {
 
   it("does not overlap with occupied ranges", () => {
     const links: any[] = [];
-    const occupied: Array<{ start: number; end: number }> = [{ start: 0, end: 30 }];
+    const occupied: Array<{ start: number; end: number }> = [
+      { start: 0, end: 30 },
+    ];
     collectMatches(
       "https://example.com",
       /\bhttps?:\/\/[^\s<>"'`]+/g,
       "url",
       links,
       occupied,
-      1
+      1,
     );
     expect(links.length).toBe(0);
   });
@@ -106,7 +124,7 @@ describe("collectMatches", () => {
       "file",
       links,
       occupied,
-      1
+      1,
     );
     expect(links.length).toBeGreaterThan(0);
   });
@@ -114,14 +132,7 @@ describe("collectMatches", () => {
   it("handles empty text", () => {
     const links: any[] = [];
     const occupied: Array<{ start: number; end: number }> = [];
-    collectMatches(
-      "",
-      /\bhttps?:\/\/[^\s<>"'`]+/g,
-      "url",
-      links,
-      occupied,
-      1
-    );
+    collectMatches("", /\bhttps?:\/\/[^\s<>"'`]+/g, "url", links, occupied, 1);
     expect(links.length).toBe(0);
   });
 
@@ -134,7 +145,7 @@ describe("collectMatches", () => {
       "url",
       links,
       occupied,
-      1
+      1,
     );
     expect(links.length).toBe(0);
   });
@@ -158,7 +169,10 @@ describe("detectTerminalLinks", () => {
   });
 
   it("detects multiple URLs", () => {
-    const links = detectTerminalLinks("visit https://a.com and https://b.com", 1);
+    const links = detectTerminalLinks(
+      "visit https://a.com and https://b.com",
+      1,
+    );
     expect(links).toBeTruthy();
     expect(links!.length).toBeGreaterThanOrEqual(2);
   });
@@ -195,7 +209,9 @@ describe("updateFocusClasses", () => {
 describe("collectMatches activate/hover", () => {
   it("activate posts openExternalLink for URL", () => {
     const mockPostMessage = vi.fn();
-    (window as any).WorktreeTerminals = { vscodeApi: { postMessage: mockPostMessage } };
+    (window as any).WorktreeTerminals = {
+      vscodeApi: { postMessage: mockPostMessage },
+    };
     const links: any[] = [];
     const occupied: Array<{ start: number; end: number }> = [];
     collectMatches(
@@ -204,17 +220,22 @@ describe("collectMatches activate/hover", () => {
       "url",
       links,
       occupied,
-      1
+      1,
     );
     expect(links.length).toBe(1);
     links[0].activate();
-    expect(mockPostMessage).toHaveBeenCalledWith({ type: "openExternalLink", href: "https://example.com" });
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: "openExternalLink",
+      href: "https://example.com",
+    });
     delete (window as any).WorktreeTerminals;
   });
 
   it("activate posts openTerminalFileLink for file", () => {
     const mockPostMessage = vi.fn();
-    (window as any).WorktreeTerminals = { vscodeApi: { postMessage: mockPostMessage } };
+    (window as any).WorktreeTerminals = {
+      vscodeApi: { postMessage: mockPostMessage },
+    };
     const links: any[] = [];
     const occupied: Array<{ start: number; end: number }> = [];
     collectMatches(
@@ -223,12 +244,12 @@ describe("collectMatches activate/hover", () => {
       "file",
       links,
       occupied,
-      1
+      1,
     );
     expect(links.length).toBeGreaterThan(0);
     links[0].activate();
     expect(mockPostMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "openTerminalFileLink" })
+      expect.objectContaining({ type: "openTerminalFileLink" }),
     );
     delete (window as any).WorktreeTerminals;
   });
@@ -242,7 +263,7 @@ describe("collectMatches activate/hover", () => {
       "url",
       links,
       occupied,
-      1
+      1,
     );
     expect(links.length).toBe(1);
     const target = { title: "" };
@@ -259,7 +280,7 @@ describe("collectMatches activate/hover", () => {
       "file",
       links,
       occupied,
-      1
+      1,
     );
     expect(links.length).toBeGreaterThan(0);
     const target = { title: "" };
@@ -270,7 +291,9 @@ describe("collectMatches activate/hover", () => {
 
 describe("trimTerminalLink edge cases", () => {
   it("does not trim after colon-number pattern", () => {
-    expect(trimTerminalLink("file.txt:42:5")).toEqual({ text: "file.txt:42:5" });
+    expect(trimTerminalLink("file.txt:42:5")).toEqual({
+      text: "file.txt:42:5",
+    });
   });
 
   it("trims trailing punctuation after colon-number", () => {
@@ -288,7 +311,10 @@ describe("detectTerminalLinks overlapping", () => {
         for (let j = i + 1; j < links.length; j++) {
           const a = links[i].range;
           const b = links[j].range;
-          const noOverlap = a.end.x <= b.start.x || b.end.x <= a.start.x || a.end.y !== b.start.y;
+          const noOverlap =
+            a.end.x <= b.start.x ||
+            b.end.x <= a.start.x ||
+            a.end.y !== b.start.y;
           expect(noOverlap).toBe(true);
         }
       }

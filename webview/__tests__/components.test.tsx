@@ -43,54 +43,80 @@ const createMockVsCode = (): VsCodeApi => ({
   setState: vi.fn(),
 });
 
-const renderWithVsCode = (component: React.ReactNode, mockVsCode?: VsCodeApi) => {
+const renderWithVsCode = (
+  component: React.ReactNode,
+  mockVsCode?: VsCodeApi,
+) => {
   const vscode = mockVsCode ?? createMockVsCode();
   return render(
-    <VsCodeContext.Provider value={vscode}>
-      {component}
-    </VsCodeContext.Provider>
+    <VsCodeContext.Provider value={vscode}>{component}</VsCodeContext.Provider>,
   );
 };
 
 describe("RepoNode", () => {
-  beforeEach(() => { document.body.innerHTML = ""; });
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
 
-  const repo: RepoData = { label: "project.git", path: "/repos/project", worktrees: [] };
+  const repo: RepoData = {
+    label: "project.git",
+    path: "/repos/project",
+    worktrees: [],
+  };
 
   it("renders repo label", () => {
-    renderWithVsCode(<RepoNode repo={repo} collapsed={true} onToggle={vi.fn()} />);
+    renderWithVsCode(
+      <RepoNode repo={repo} collapsed={true} onToggle={vi.fn()} />,
+    );
     expect(screen.getByText(/project\.git/)).toBeTruthy();
   });
 
   it("shows collapsed icon when collapsed", () => {
-    renderWithVsCode(<RepoNode repo={repo} collapsed={true} onToggle={vi.fn()} />);
+    renderWithVsCode(
+      <RepoNode repo={repo} collapsed={true} onToggle={vi.fn()} />,
+    );
     expect(screen.getByText(/▸/)).toBeTruthy();
   });
 
   it("shows expanded icon when expanded", () => {
-    renderWithVsCode(<RepoNode repo={repo} collapsed={false} onToggle={vi.fn()} />);
+    renderWithVsCode(
+      <RepoNode repo={repo} collapsed={false} onToggle={vi.fn()} />,
+    );
     expect(screen.getByText(/▾/)).toBeTruthy();
   });
 
   it("calls onToggle when clicked", () => {
     const onToggle = vi.fn();
-    renderWithVsCode(<RepoNode repo={repo} collapsed={true} onToggle={onToggle} />);
+    renderWithVsCode(
+      <RepoNode repo={repo} collapsed={true} onToggle={onToggle} />,
+    );
     fireEvent.click(screen.getByText(/project\.git/));
     expect(onToggle).toHaveBeenCalled();
   });
 
   it("shows context menu on right click", () => {
     const mockVsCode = createMockVsCode();
-    renderWithVsCode(<RepoNode repo={repo} collapsed={true} onToggle={vi.fn()} />, mockVsCode);
+    renderWithVsCode(
+      <RepoNode repo={repo} collapsed={true} onToggle={vi.fn()} />,
+      mockVsCode,
+    );
     const el = screen.getByText(/project\.git/);
-    const contextMenuEvent = new MouseEvent("contextmenu", { bubbles: true, clientX: 100, clientY: 100 });
-    Object.defineProperty(contextMenuEvent, "preventDefault", { value: vi.fn() });
+    const contextMenuEvent = new MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    });
+    Object.defineProperty(contextMenuEvent, "preventDefault", {
+      value: vi.fn(),
+    });
     el.dispatchEvent(contextMenuEvent);
   });
 });
 
 describe("WorktreeNode", () => {
-  beforeEach(() => { document.body.innerHTML = ""; });
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
 
   const worktree: WorktreeData = {
     name: "feat-login",
@@ -109,7 +135,7 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText(/feat-login/)).toBeTruthy();
     expect(screen.getByText(/feat\/login/)).toBeTruthy();
@@ -123,7 +149,7 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByRole("checkbox")).toBeTruthy();
   });
@@ -136,7 +162,7 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText("+")).toBeTruthy();
   });
@@ -152,11 +178,13 @@ describe("WorktreeNode", () => {
         onToggle={onToggle}
         onCreateTerminal={vi.fn()}
       />,
-      mockVsCode
+      mockVsCode,
     );
     fireEvent.click(screen.getByText(/feat-login/));
     expect(onToggle).toHaveBeenCalled();
-    expect(mockVsCode.postMessage).toHaveBeenCalledWith({ type: "collapseAll" });
+    expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+      type: "collapseAll",
+    });
   });
 
   it("shows collapsed icon when collapsed", () => {
@@ -167,7 +195,7 @@ describe("WorktreeNode", () => {
         collapsed={true}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText(/▸/)).toBeTruthy();
   });
@@ -180,7 +208,7 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText(/▾/)).toBeTruthy();
   });
@@ -195,12 +223,15 @@ describe("WorktreeNode", () => {
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
       />,
-      mockVsCode
+      mockVsCode,
     );
     const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
     fireEvent.click(checkbox);
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "setExplorerWorktree", path: "/tmp/feat-login" })
+      expect.objectContaining({
+        type: "setExplorerWorktree",
+        path: "/tmp/feat-login",
+      }),
     );
   });
 
@@ -213,7 +244,7 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={onCreateTerminal}
-      />
+      />,
     );
     fireEvent.click(screen.getByText("+"));
     expect(onCreateTerminal).toHaveBeenCalledWith("/tmp/feat-login");
@@ -227,11 +258,17 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
-      />
+      />,
     );
     const wt = screen.getByText(/feat-login/).closest(".wt")!;
-    const contextMenuEvent = new MouseEvent("contextmenu", { bubbles: true, clientX: 100, clientY: 100 });
-    Object.defineProperty(contextMenuEvent, "preventDefault", { value: vi.fn() });
+    const contextMenuEvent = new MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    });
+    Object.defineProperty(contextMenuEvent, "preventDefault", {
+      value: vi.fn(),
+    });
     wt.dispatchEvent(contextMenuEvent);
   });
 
@@ -245,7 +282,7 @@ describe("WorktreeNode", () => {
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
       />,
-      mockVsCode
+      mockVsCode,
     );
     const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
     fireEvent.click(checkbox);
@@ -261,7 +298,7 @@ describe("WorktreeNode", () => {
         collapsed={false}
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
-      />
+      />,
     );
     const dot = document.querySelector(".dot") as HTMLElement;
     // jsdom converts hex to rgb
@@ -270,7 +307,9 @@ describe("WorktreeNode", () => {
 });
 
 describe("TerminalLeaf", () => {
-  beforeEach(() => { document.body.innerHTML = ""; });
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
 
   const session: SessionData = {
     id: "s1",
@@ -292,7 +331,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText("terminal 1")).toBeTruthy();
   });
@@ -308,9 +347,11 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
-    expect(screen.getByText("terminal 1").closest(".terminalLeaf")?.className).toContain("active");
+    expect(
+      screen.getByText("terminal 1").closest(".terminalLeaf")?.className,
+    ).toContain("active");
   });
 
   it("calls onSelect when clicked and not active", () => {
@@ -325,7 +366,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     fireEvent.click(screen.getByText("terminal 1"));
     expect(onSelect).toHaveBeenCalledWith("s1");
@@ -343,7 +384,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     fireEvent.click(screen.getByText("terminal 1"));
     expect(onCollapse).toHaveBeenCalledWith("s1");
@@ -360,7 +401,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText("×")).toBeTruthy();
   });
@@ -377,7 +418,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     expect(screen.getByText("idle")).toBeTruthy();
   });
@@ -393,7 +434,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf");
     expect(leaf?.getAttribute("title")).toContain("Running");
@@ -411,7 +452,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf");
     expect(leaf?.getAttribute("title")).toContain("Idle");
@@ -429,11 +470,13 @@ describe("TerminalLeaf", () => {
         onDragStartSession={onDragStartSession}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
     const dragStartEvent = new Event("dragstart", { bubbles: true });
-    Object.defineProperty(dragStartEvent, "dataTransfer", { value: { effectAllowed: "", setData: vi.fn() } });
+    Object.defineProperty(dragStartEvent, "dataTransfer", {
+      value: { effectAllowed: "", setData: vi.fn() },
+    });
     leaf.dispatchEvent(dragStartEvent);
     expect(onDragStartSession).toHaveBeenCalledWith("s1");
   });
@@ -449,7 +492,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => "other-id"}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
     const dragOverEvent = new Event("dragover", { bubbles: true });
@@ -469,7 +512,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => "s1"}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
     const dragOverEvent = new Event("dragover", { bubbles: true });
@@ -489,7 +532,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => undefined}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
     const dragOverEvent = new Event("dragover", { bubbles: true });
@@ -510,14 +553,16 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => "dragged-id"}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
     const dropEvent = new Event("drop", { bubbles: true });
     Object.defineProperty(dropEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dropEvent, "stopPropagation", { value: vi.fn() });
     Object.defineProperty(dropEvent, "currentTarget", { value: leaf });
-    Object.defineProperty(dropEvent, "dataTransfer", { value: { getData: vi.fn(() => "dragged-id"), remove: vi.fn() } });
+    Object.defineProperty(dropEvent, "dataTransfer", {
+      value: { getData: vi.fn(() => "dragged-id"), remove: vi.fn() },
+    });
     leaf.dispatchEvent(dropEvent);
     expect(onReorder).toHaveBeenCalledWith("dragged-id", "s1");
   });
@@ -534,14 +579,16 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => "s1"}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
     const dropEvent = new Event("drop", { bubbles: true });
     Object.defineProperty(dropEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dropEvent, "stopPropagation", { value: vi.fn() });
     Object.defineProperty(dropEvent, "currentTarget", { value: leaf });
-    Object.defineProperty(dropEvent, "dataTransfer", { value: { getData: vi.fn(() => "s1"), remove: vi.fn() } });
+    Object.defineProperty(dropEvent, "dataTransfer", {
+      value: { getData: vi.fn(() => "s1"), remove: vi.fn() },
+    });
     leaf.dispatchEvent(dropEvent);
     expect(onReorder).not.toHaveBeenCalled();
   });
@@ -557,11 +604,17 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
-    const contextMenuEvent = new MouseEvent("contextmenu", { bubbles: true, clientX: 100, clientY: 100 });
-    Object.defineProperty(contextMenuEvent, "preventDefault", { value: vi.fn() });
+    const contextMenuEvent = new MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: 100,
+      clientY: 100,
+    });
+    Object.defineProperty(contextMenuEvent, "preventDefault", {
+      value: vi.fn(),
+    });
     leaf.dispatchEvent(contextMenuEvent);
   });
 
@@ -576,7 +629,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
     const dragEndEvent = new Event("dragend", { bubbles: true });
@@ -595,7 +648,7 @@ describe("TerminalLeaf", () => {
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
-      />
+      />,
     );
     const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
     leaf.classList.add("dragOver");
@@ -617,15 +670,20 @@ describe("TerminalLeaf", () => {
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
-      mockVsCode
+      mockVsCode,
     );
     fireEvent.click(screen.getByText("×"));
-    expect(mockVsCode.postMessage).toHaveBeenCalledWith({ type: "closeSession", id: "s1" });
+    expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+      type: "closeSession",
+      id: "s1",
+    });
   });
 });
 
 describe("Welcome", () => {
-  beforeEach(() => { document.body.innerHTML = ""; });
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
 
   it("renders message", () => {
     renderWithVsCode(<Welcome message="Hello World" />);
@@ -639,7 +697,9 @@ describe("Welcome", () => {
 });
 
 describe("FindBox", () => {
-  beforeEach(() => { document.body.innerHTML = ""; });
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
 
   it("renders search input", () => {
     renderWithVsCode(<FindBox />);
@@ -659,29 +719,38 @@ describe("FindBox", () => {
 
   it("dispatches search event on Enter", () => {
     renderWithVsCode(<FindBox />);
-    const input = screen.getByPlaceholderText("Find in terminal") as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      "Find in terminal",
+    ) as HTMLInputElement;
     input.value = "test query";
     fireEvent.keyDown(input, { key: "Enter", shiftKey: false });
   });
 
   it("dispatches reverse search on Shift+Enter", () => {
     renderWithVsCode(<FindBox />);
-    const input = screen.getByPlaceholderText("Find in terminal") as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      "Find in terminal",
+    ) as HTMLInputElement;
     input.value = "test query";
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
   });
 
   it("hides find box on Escape", () => {
-    document.body.innerHTML = '<div id="findBox" class="findBox visible"></div>';
+    document.body.innerHTML =
+      '<div id="findBox" class="findBox visible"></div>';
     renderWithVsCode(<FindBox />);
     const input = screen.getByPlaceholderText("Find in terminal");
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(document.getElementById("findBox")?.classList.contains("visible")).toBe(false);
+    expect(
+      document.getElementById("findBox")?.classList.contains("visible"),
+    ).toBe(false);
   });
 
   it("dispatches search on input", () => {
     renderWithVsCode(<FindBox />);
-    const input = screen.getByPlaceholderText("Find in terminal") as HTMLInputElement;
+    const input = screen.getByPlaceholderText(
+      "Find in terminal",
+    ) as HTMLInputElement;
     input.value = "new query";
     fireEvent.input(input);
   });
@@ -697,15 +766,20 @@ describe("FindBox", () => {
   });
 
   it("close button hides find box", () => {
-    document.body.innerHTML = '<div id="findBox" class="findBox visible"></div>';
+    document.body.innerHTML =
+      '<div id="findBox" class="findBox visible"></div>';
     renderWithVsCode(<FindBox />);
     fireEvent.click(screen.getByTitle("Close find"));
-    expect(document.getElementById("findBox")?.classList.contains("visible")).toBe(false);
+    expect(
+      document.getElementById("findBox")?.classList.contains("visible"),
+    ).toBe(false);
   });
 });
 
 describe("TerminalEmbed", () => {
-  beforeEach(() => { document.body.innerHTML = ""; });
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
 
   it("renders null when no active session", () => {
     const { container } = renderWithVsCode(
@@ -714,7 +788,7 @@ describe("TerminalEmbed", () => {
         activeOutput=""
         containerRef={{ current: null }}
         terminalApi={null}
-      />
+      />,
     );
     expect(container.innerHTML).toBe("");
   });
@@ -734,7 +808,7 @@ describe("TerminalEmbed", () => {
         activeOutput=""
         containerRef={containerRef}
         terminalApi={terminalApi}
-      />
+      />,
     );
     expect(screen.getByText("", { selector: ".terminalInline" })).toBeTruthy();
   });
@@ -759,7 +833,7 @@ describe("TerminalEmbed", () => {
         activeOutput=""
         containerRef={containerRef}
         terminalApi={terminalApi}
-      />
+      />,
     );
     fireEvent.keyDown(window, { key: "Escape" });
     expect(findBox.classList.contains("visible")).toBe(false);
@@ -785,7 +859,7 @@ describe("TerminalEmbed", () => {
         activeOutput=""
         containerRef={containerRef}
         terminalApi={terminalApi}
-      />
+      />,
     );
     fireEvent.keyDown(window, { key: "Escape" });
     expect(terminalApi.focus).not.toHaveBeenCalled();

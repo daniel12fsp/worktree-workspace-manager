@@ -39,22 +39,38 @@ vi.mock("node:fs", () => ({
   existsSync: (...args: any[]) => mockExistsSync(...args),
   statSync: (...args: any[]) => mockStatSync(...args),
   readFileSync: (...args: any[]) => mockReadFileSync(...args),
-  default: { existsSync: (...args: any[]) => mockExistsSync(...args), statSync: (...args: any[]) => mockStatSync(...args), readFileSync: (...args: any[]) => mockReadFileSync(...args) },
+  default: {
+    existsSync: (...args: any[]) => mockExistsSync(...args),
+    statSync: (...args: any[]) => mockStatSync(...args),
+    readFileSync: (...args: any[]) => mockReadFileSync(...args),
+  },
 }));
 
 vi.mock("node:child_process", () => ({
-  execFile: vi.fn((_cmd: string, _args: unknown, cb: (err: Error | null, stdout: string, stderr: string) => void) => {
-    cb(null, "worktree /tmp/feat-login\nHEAD abc123\nbranch refs/heads/feat/login\n\n", "");
-  }),
+  execFile: vi.fn(
+    (
+      _cmd: string,
+      _args: unknown,
+      cb: (err: Error | null, stdout: string, stderr: string) => void,
+    ) => {
+      cb(
+        null,
+        "worktree /tmp/feat-login\nHEAD abc123\nbranch refs/heads/feat/login\n\n",
+        "",
+      );
+    },
+  ),
 }));
 vi.mock("node:util", () => ({
-  promisify: (fn: (...args: unknown[]) => void) => (...args: unknown[]) =>
-    new Promise((resolve, reject) => {
-      fn(...args, (err: Error | null, stdout: string, stderr: string) => {
-        if (err) reject(err);
-        else resolve({ stdout, stderr });
-      });
-    }),
+  promisify:
+    (fn: (...args: unknown[]) => void) =>
+    (...args: unknown[]) =>
+      new Promise((resolve, reject) => {
+        fn(...args, (err: Error | null, stdout: string, stderr: string) => {
+          if (err) reject(err);
+          else resolve({ stdout, stderr });
+        });
+      }),
 }));
 
 const makeRepo = (overrides: Partial<BareRepository> = {}): BareRepository => ({
@@ -151,7 +167,9 @@ describe("colorForName", () => {
 
 describe("colorKeyForWorktree", () => {
   it("returns repo/name format", () => {
-    expect(colorKeyForWorktree(makeRepo(), "feat-login")).toBe("project.git/feat-login");
+    expect(colorKeyForWorktree(makeRepo(), "feat-login")).toBe(
+      "project.git/feat-login",
+    );
   });
 });
 
@@ -264,11 +282,7 @@ describe("parseWorktreePorcelain", () => {
   });
 
   it("handles detached HEAD (no branch)", () => {
-    const output = [
-      "worktree /tmp/detached",
-      "HEAD abc123",
-      "",
-    ].join("\n");
+    const output = ["worktree /tmp/detached", "HEAD abc123", ""].join("\n");
     const result = parseWorktreePorcelain(output, repo);
     expect(result[0].branch).toBeUndefined();
     expect(result[0].head).toBe("abc123");
@@ -294,23 +308,35 @@ describe("normalizeConfiguredRepositoryPath", () => {
   });
 
   it("returns path unchanged when .bare exists", () => {
-    mockExistsSync.mockImplementation((p: string) => p === "/repos/project/.bare");
-    expect(normalizeConfiguredRepositoryPath("/repos/project")).toBe("/repos/project");
+    mockExistsSync.mockImplementation(
+      (p: string) => p === "/repos/project/.bare",
+    );
+    expect(normalizeConfiguredRepositoryPath("/repos/project")).toBe(
+      "/repos/project",
+    );
   });
 
   it("strips .git suffix when root has .bare", () => {
-    mockExistsSync.mockImplementation((p: string) => p === "/repos/project/.bare");
-    expect(normalizeConfiguredRepositoryPath("/repos/project.git")).toBe("/repos/project");
+    mockExistsSync.mockImplementation(
+      (p: string) => p === "/repos/project/.bare",
+    );
+    expect(normalizeConfiguredRepositoryPath("/repos/project.git")).toBe(
+      "/repos/project",
+    );
   });
 
   it("returns path unchanged when neither .bare nor .git", () => {
     mockExistsSync.mockReturnValue(false);
-    expect(normalizeConfiguredRepositoryPath("/repos/project")).toBe("/repos/project");
+    expect(normalizeConfiguredRepositoryPath("/repos/project")).toBe(
+      "/repos/project",
+    );
   });
 
   it("returns .git path when root has no .bare", () => {
     mockExistsSync.mockReturnValue(false);
-    expect(normalizeConfiguredRepositoryPath("/repos/project.git")).toBe("/repos/project.git");
+    expect(normalizeConfiguredRepositoryPath("/repos/project.git")).toBe(
+      "/repos/project.git",
+    );
   });
 });
 
@@ -327,14 +353,18 @@ describe("configuredColors", () => {
   });
 
   it("parses string color values", () => {
-    (vscode as any).__setConfig("worktreeManager.colors", { "repo/wt1": "#ff0000" });
+    (vscode as any).__setConfig("worktreeManager.colors", {
+      "repo/wt1": "#ff0000",
+    });
     const colors = configuredColors();
     expect(colors["repo/wt1"]).toEqual({ color: "#ff0000" });
     (vscode as any).__resetConfig();
   });
 
   it("parses object color values", () => {
-    (vscode as any).__setConfig("worktreeManager.colors", { "repo/wt1": { color: "#00ff00" } });
+    (vscode as any).__setConfig("worktreeManager.colors", {
+      "repo/wt1": { color: "#00ff00" },
+    });
     const colors = configuredColors();
     expect(colors["repo/wt1"]).toEqual({ color: "#00ff00" });
     (vscode as any).__resetConfig();
@@ -354,14 +384,18 @@ describe("configurationTarget", () => {
   });
 
   it("returns Workspace when workspaceFile exists", () => {
-    (vscode.workspace as any).workspaceFile = { fsPath: "/workspace.code-workspace" };
+    (vscode.workspace as any).workspaceFile = {
+      fsPath: "/workspace.code-workspace",
+    };
     expect(configurationTarget()).toBe(vscode.ConfigurationTarget.Workspace);
     (vscode.workspace as any).workspaceFile = null;
   });
 
   it("returns Workspace when workspaceFolders exist", () => {
     (vscode.workspace as any).workspaceFile = null;
-    (vscode.workspace as any).workspaceFolders = [{ uri: { fsPath: "/folder" } }];
+    (vscode.workspace as any).workspaceFolders = [
+      { uri: { fsPath: "/folder" } },
+    ];
     expect(configurationTarget()).toBe(vscode.ConfigurationTarget.Workspace);
     (vscode.workspace as any).workspaceFolders = null;
   });
@@ -386,8 +420,12 @@ describe("getConfiguredRepositories", () => {
   });
 
   it("returns repos when configured", () => {
-    (vscode as any).__setConfig("worktreeManager.repositories", ["/repos/project.git"]);
-    mockExistsSync.mockImplementation((p: string) => p === "/repos/project/.bare");
+    (vscode as any).__setConfig("worktreeManager.repositories", [
+      "/repos/project.git",
+    ]);
+    mockExistsSync.mockImplementation(
+      (p: string) => p === "/repos/project/.bare",
+    );
     mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
     const repos = getConfiguredRepositories();
     expect(repos).toHaveLength(1);
@@ -453,8 +491,12 @@ describe("listAllWorktrees", () => {
   });
 
   it("handles error from listWorktrees gracefully", async () => {
-    (vscode as any).__setConfig("worktreeManager.repositories", ["/repos/project.git"]);
-    mockExistsSync.mockImplementation((p: string) => p === "/repos/project/.bare");
+    (vscode as any).__setConfig("worktreeManager.repositories", [
+      "/repos/project.git",
+    ]);
+    mockExistsSync.mockImplementation(
+      (p: string) => p === "/repos/project/.bare",
+    );
     mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
     vi.mocked(vscode.window.showWarningMessage).mockClear();
     const result = await listAllWorktrees();
@@ -475,7 +517,9 @@ describe("ensureConfiguredColorsForWorktrees", () => {
 describe("updateWorktreeColor", () => {
   it("rejects invalid hex color", async () => {
     const wt = makeWorktree();
-    await expect(updateWorktreeColor(wt, "invalid")).rejects.toThrow("Color must be a hex value");
+    await expect(updateWorktreeColor(wt, "invalid")).rejects.toThrow(
+      "Color must be a hex value",
+    );
   });
 
   it("accepts valid hex color", async () => {

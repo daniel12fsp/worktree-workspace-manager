@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { WorktreeProvider, RepoNode, WorktreeNode } from "../worktreeView";
-import { TreeItemCollapsibleState, TreeItemCheckboxState, EventEmitter } from "vscode";
+import {
+  TreeItemCollapsibleState,
+  TreeItemCheckboxState,
+  EventEmitter,
+} from "vscode";
 
 vi.mock("vscode", () => import("../__mocks__/vscode"));
 
 const mockListAllWorktrees = vi.fn();
-const mockDotIcon = vi.fn((color: string) => ({ toString: () => `data:image/svg+xml;${color}` }));
+const mockDotIcon = vi.fn((color: string) => ({
+  toString: () => `data:image/svg+xml;${color}`,
+}));
 const mockGetCheckedWorktreePaths = vi.fn(async () => new Set<string>());
 const mockNormalizePath = vi.fn((p: string) => p);
 
@@ -14,7 +20,8 @@ vi.mock("../model", () => ({
   dotIcon: (...args: any[]) => mockDotIcon(...args),
 }));
 vi.mock("../workspaceFile", () => ({
-  getCheckedWorktreePaths: (...args: any[]) => mockGetCheckedWorktreePaths(...args),
+  getCheckedWorktreePaths: (...args: any[]) =>
+    mockGetCheckedWorktreePaths(...args),
   normalizePath: (...args: any[]) => mockNormalizePath(...args),
 }));
 vi.mock("../logger", () => ({

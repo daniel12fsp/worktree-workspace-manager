@@ -1,10 +1,5 @@
 import * as vscode from "vscode";
-import {
-  BareRepository,
-  Worktree,
-  dotIcon,
-  listAllWorktrees,
-} from "./model";
+import { BareRepository, Worktree, dotIcon, listAllWorktrees } from "./model";
 import { getCheckedWorktreePaths, normalizePath } from "./workspaceFile";
 import { logError } from "./logger";
 
@@ -20,7 +15,10 @@ export class RepoNode extends vscode.TreeItem {
 }
 
 export class WorktreeNode extends vscode.TreeItem {
-  constructor(readonly worktree: Worktree, checked: boolean) {
+  constructor(
+    readonly worktree: Worktree,
+    checked: boolean,
+  ) {
     super(
       `${worktree.name} (${worktree.branch ?? "detached"})`,
       vscode.TreeItemCollapsibleState.None,
@@ -112,23 +110,19 @@ export class WorktreeProvider
     }
   }
 
-  private async getChildrenForRepo(
-    repo: BareRepository,
-  ): Promise<Node[]> {
+  private async getChildrenForRepo(repo: BareRepository): Promise<Node[]> {
     try {
       const all = await listAllWorktrees();
-      const entry = [...all].find(([candidate]) => candidate.fsPath === repo.fsPath);
+      const entry = [...all].find(
+        ([candidate]) => candidate.fsPath === repo.fsPath,
+      );
       const worktrees = entry?.[1] ?? [];
       const checkedPaths = await getCheckedWorktreePaths();
       if (worktrees.length === 0) {
         return [new EmptyNode()];
       }
       return worktrees.map(
-        (wt) =>
-          new WorktreeNode(
-            wt,
-            checkedPaths.has(normalizePath(wt.path)),
-          ),
+        (wt) => new WorktreeNode(wt, checkedPaths.has(normalizePath(wt.path))),
       );
     } catch (error) {
       logError("failed to list worktrees for repo", {

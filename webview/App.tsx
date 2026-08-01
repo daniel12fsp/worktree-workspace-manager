@@ -35,16 +35,21 @@ export function App({ initialState }: Props) {
         vscode.postMessage({ type: "input", id: state.activeSessionId, data });
       }
     },
-    [state.activeSessionId, vscode]
+    [state.activeSessionId, vscode],
   );
 
   const handleTerminalResize = useCallback(
     (cols: number, rows: number) => {
       if (state.activeSessionId) {
-        vscode.postMessage({ type: "resize", id: state.activeSessionId, cols, rows });
+        vscode.postMessage({
+          type: "resize",
+          id: state.activeSessionId,
+          cols,
+          rows,
+        });
       }
     },
-    [state.activeSessionId, vscode]
+    [state.activeSessionId, vscode],
   );
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
@@ -52,7 +57,7 @@ export function App({ initialState }: Props) {
     terminalContainerRef,
     state.activeSessionId,
     handleTerminalData,
-    handleTerminalResize
+    handleTerminalResize,
   );
 
   const handleSelect = useCallback(
@@ -61,7 +66,7 @@ export function App({ initialState }: Props) {
       setState((prev) => ({ ...prev, activeSessionId: id }));
       requestAnimationFrame(() => terminalApi?.focus());
     },
-    [vscode, terminalApi]
+    [vscode, terminalApi],
   );
 
   const handleCollapse = useCallback(
@@ -69,10 +74,11 @@ export function App({ initialState }: Props) {
       vscode.postMessage({ type: "collapse", id });
       setState((prev) => ({
         ...prev,
-        activeSessionId: prev.activeSessionId === id ? undefined : prev.activeSessionId,
+        activeSessionId:
+          prev.activeSessionId === id ? undefined : prev.activeSessionId,
       }));
     },
-    [vscode]
+    [vscode],
   );
 
   const handleCollapseAll = useCallback(() => {
@@ -84,14 +90,17 @@ export function App({ initialState }: Props) {
     (draggedId: string, targetId: string) => {
       vscode.postMessage({ type: "reorderSession", draggedId, targetId });
     },
-    [vscode]
+    [vscode],
   );
 
   const handleDragStartSession = useCallback((id: string) => {
     draggedSessionIdRef.current = id;
   }, []);
 
-  const getDraggedSessionId = useCallback(() => draggedSessionIdRef.current, []);
+  const getDraggedSessionId = useCallback(
+    () => draggedSessionIdRef.current,
+    [],
+  );
 
   const clearDraggedSession = useCallback(() => {
     draggedSessionIdRef.current = undefined;
@@ -102,7 +111,7 @@ export function App({ initialState }: Props) {
       vscode.postMessage({ type: "create", path });
       requestAnimationFrame(() => terminalApi?.focus());
     },
-    [vscode, terminalApi]
+    [vscode, terminalApi],
   );
 
   const toggleRepo = useCallback(
@@ -129,22 +138,19 @@ export function App({ initialState }: Props) {
       }
       forceRender((n) => n + 1);
     },
-    [state.repos]
+    [state.repos],
   );
 
-  const toggleWorktree = useCallback(
-    (repoLabel: string, path: string) => {
-      const key = `${repoLabel}:${path}`;
-      const collapsed = collapsedWorktreesRef.current;
-      if (collapsed.has(key)) {
-        collapsed.delete(key);
-      } else {
-        collapsed.add(key);
-      }
-      forceRender((n) => n + 1);
-    },
-    []
-  );
+  const toggleWorktree = useCallback((repoLabel: string, path: string) => {
+    const key = `${repoLabel}:${path}`;
+    const collapsed = collapsedWorktreesRef.current;
+    if (collapsed.has(key)) {
+      collapsed.delete(key);
+    } else {
+      collapsed.add(key);
+    }
+    forceRender((n) => n + 1);
+  }, []);
 
   React.useEffect(() => {
     if (!state.activeSessionId) return;
@@ -169,9 +175,15 @@ export function App({ initialState }: Props) {
           hasWorkspace: Boolean(message.hasWorkspace),
           home: message.home || "",
         });
-      } else if (message.type === "output" && message.id === state.activeSessionId) {
+      } else if (
+        message.type === "output" &&
+        message.id === state.activeSessionId
+      ) {
         terminalApi?.write(message.data);
-      } else if (message.type === "clear" && message.id === state.activeSessionId) {
+      } else if (
+        message.type === "clear" &&
+        message.id === state.activeSessionId
+      ) {
         terminalApi?.clear();
       } else if (message.type === "loadingDone") {
         forceRender((n) => n + 1);
@@ -186,7 +198,7 @@ export function App({ initialState }: Props) {
     worktreeCount: state.repos.reduce((c, r) => c + r.worktrees.length, 0),
     sessionCount: state.repos.reduce(
       (c, r) => c + r.worktrees.reduce((ic, wt) => ic + wt.sessions.length, 0),
-      0
+      0,
     ),
   };
 
@@ -232,7 +244,8 @@ export function App({ initialState }: Props) {
               {!isRepoCollapsed &&
                 repo.worktrees.map((wt) => {
                   const worktreeKey = `${repo.label}:${wt.path}`;
-                  const isWtCollapsed = collapsedWorktreesRef.current.has(worktreeKey);
+                  const isWtCollapsed =
+                    collapsedWorktreesRef.current.has(worktreeKey);
                   return (
                     <div key={wt.path}>
                       <WorktreeNode

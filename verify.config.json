@@ -1,0 +1,30 @@
+{
+  "env": {
+    "TIMEOUT": "5m"
+  },
+  "steps": {
+    "prettier": {
+      "command": "npx --yes prettier --write package.json tsconfig.json tsconfig.webview.json vite.config.mts vitest.config.mts test-setup.ts 'src/**/*.ts' 'webview/**/*.{ts,tsx,css,html}'",
+      "category": "format",
+      "hint": "(Code style issues found|Forgot to run Prettier|\\[warn\\])"
+    },
+    "tsc": {
+      "command": "npx tsc -p ./ --noEmit && npx tsc -p ./tsconfig.webview.json --noEmit",
+      "category": "typescript",
+      "hint": "(error TS[0-9]+|^(src|webview)/.*:[0-9]+:[0-9]+)"
+    },
+    "unit_test": {
+      "command": "npm test",
+      "category": "test",
+      "timeout": "5m",
+      "hint": "(FAIL|failed|Error:|AssertionError|Test Files|Tests)"
+    },
+    "compile": {
+      "command": "npm run compile",
+      "category": "build",
+      "timeout": "5m",
+      "hint": "(error TS[0-9]+|ERROR|failed|Error:)"
+    }
+  },
+  "order": [["prettier", "tsc"], "unit_test", "compile"]
+}

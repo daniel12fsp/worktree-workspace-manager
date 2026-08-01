@@ -68,7 +68,9 @@ describe("showContextMenu", () => {
 
     showContextMenu(event, items, onAction);
 
-    const button = document.querySelector(".contextMenu button") as HTMLButtonElement;
+    const button = document.querySelector(
+      ".contextMenu button",
+    ) as HTMLButtonElement;
     button.click();
 
     expect(onAction).toHaveBeenCalledWith({ type: "doThing" });

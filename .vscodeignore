@@ -37,3 +37,5 @@ node_modules/node-pty/build/Makefile
 node_modules/node-pty/build/*.Makefile
 node_modules/node-pty/build/*.mk
 node_modules/node-pty/build/*.gypi
+verify.config.json
+verify.js

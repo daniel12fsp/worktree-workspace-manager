@@ -8,7 +8,13 @@ class MockUri {
   query = "";
   fragment = "";
 
-  constructor(scheme: string, authority: string, path: string, query: string, fragment: string) {
+  constructor(
+    scheme: string,
+    authority: string,
+    path: string,
+    query: string,
+    fragment: string,
+  ) {
     this.scheme = scheme;
     this.authority = authority;
     this.path = path;

@@ -34,20 +34,32 @@ export function TerminalLeaf({
         onSelect(session.id);
       }
     },
-    [session.id, isActive, onSelect, onCollapse]
+    [session.id, isActive, onSelect, onCollapse],
   );
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       const items: ContextMenuItem[] = [
-        { label: "Open Output in Editor", message: { type: "openSessionOutput", id: session.id } },
-        { label: "Reset Terminal Output", message: { type: "resetSessionOutput", id: session.id } },
-        { label: "Set Alias\u2026", message: { type: "setTerminalAlias", id: session.id } },
-        { label: "Close Terminal", message: { type: "closeSession", id: session.id } },
+        {
+          label: "Open Output in Editor",
+          message: { type: "openSessionOutput", id: session.id },
+        },
+        {
+          label: "Reset Terminal Output",
+          message: { type: "resetSessionOutput", id: session.id },
+        },
+        {
+          label: "Set Alias\u2026",
+          message: { type: "setTerminalAlias", id: session.id },
+        },
+        {
+          label: "Close Terminal",
+          message: { type: "closeSession", id: session.id },
+        },
       ];
       showContextMenu(e, items, (msg) => vscode.postMessage(msg));
     },
-    [session.id, vscode]
+    [session.id, vscode],
   );
 
   const handleDragStart = useCallback(
@@ -56,7 +68,7 @@ export function TerminalLeaf({
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", session.id);
     },
-    [session.id, onDragStartSession]
+    [session.id, onDragStartSession],
   );
 
   const handleDragOver = useCallback(
@@ -66,7 +78,7 @@ export function TerminalLeaf({
       e.preventDefault();
       (e.currentTarget as HTMLElement).classList.add("dragOver");
     },
-    [session.id, getDraggedSessionId]
+    [session.id, getDraggedSessionId],
   );
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
@@ -78,25 +90,31 @@ export function TerminalLeaf({
       e.preventDefault();
       e.stopPropagation();
       (e.currentTarget as HTMLElement).classList.remove("dragOver");
-      const draggedId = e.dataTransfer.getData("text/plain") || getDraggedSessionId();
+      const draggedId =
+        e.dataTransfer.getData("text/plain") || getDraggedSessionId();
       clearDraggedSession();
       if (draggedId && draggedId !== session.id) {
         onReorder(draggedId, session.id);
       }
     },
-    [session.id, onReorder, getDraggedSessionId, clearDraggedSession]
+    [session.id, onReorder, getDraggedSessionId, clearDraggedSession],
   );
 
-  const handleDragEnd = useCallback((e: React.DragEvent) => {
-    clearDraggedSession();
-    (e.currentTarget as HTMLElement).classList.remove("dragOver");
-  }, [clearDraggedSession]);
+  const handleDragEnd = useCallback(
+    (e: React.DragEvent) => {
+      clearDraggedSession();
+      (e.currentTarget as HTMLElement).classList.remove("dragOver");
+    },
+    [clearDraggedSession],
+  );
 
   return (
     <div
       className={`terminalLeaf${isActive ? " active" : ""}`}
       draggable
-      title={(session.state === "running" ? "Running: " : "Idle: ") + session.label}
+      title={
+        (session.state === "running" ? "Running: " : "Idle: ") + session.label
+      }
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onDragStart={handleDragStart}
@@ -106,7 +124,10 @@ export function TerminalLeaf({
       onDragEnd={handleDragEnd}
     >
       <span className="terminalIcon">{isActive ? "\u25be" : "\u25b8"}</span>
-      <span className={`terminalStatus ${session.state}`} title={session.state === "running" ? "Working" : "Idle"} />
+      <span
+        className={`terminalStatus ${session.state}`}
+        title={session.state === "running" ? "Working" : "Idle"}
+      />
       <span className={`terminalLabel ${session.state}`}>{session.label}</span>
       <span className="terminalStateText">{session.statusText || "idle"}</span>
       <span className="terminalActions">

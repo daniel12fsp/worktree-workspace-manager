@@ -163,7 +163,7 @@ describe("chooseActiveWorktree", () => {
       [wt1, wt2],
       [],
       "/repos/project/.bare",
-      "/tmp/wt2"
+      "/tmp/wt2",
     );
     expect(result?.path).toBe("/tmp/wt2");
   });
@@ -174,15 +174,24 @@ describe("chooseActiveWorktree", () => {
       [wt1],
       ["/tmp/wt1"],
       "other/.bare",
-      "/tmp/target"
+      "/tmp/target",
     );
     expect(result?.path).toBe("/tmp/wt1");
   });
 
   it("falls back to first non-prunable worktree", () => {
-    const wt1 = makeWorktree({ path: "/tmp/wt1", name: "wt1", prunable: "reason" });
+    const wt1 = makeWorktree({
+      path: "/tmp/wt1",
+      name: "wt1",
+      prunable: "reason",
+    });
     const wt2 = makeWorktree({ path: "/tmp/wt2", name: "wt2" });
-    const result = chooseActiveWorktree([wt1, wt2], [], "other/.bare", "/tmp/target");
+    const result = chooseActiveWorktree(
+      [wt1, wt2],
+      [],
+      "other/.bare",
+      "/tmp/target",
+    );
     expect(result?.path).toBe("/tmp/wt2");
   });
 });
@@ -246,8 +255,14 @@ describe("buildManagedBlock", () => {
 describe("patchManagedBlock", () => {
   it("inserts block into empty array", () => {
     const text = '{ "folders": [] }';
-    const foldersNode = { offset: 13, length: 2, children: [], type: "array" } as any;
-    const block = "// BEGIN worktreeManager\n{ \"name\": \"repo: wt\", \"path\": \"/tmp/wt\" },\n// END worktreeManager";
+    const foldersNode = {
+      offset: 13,
+      length: 2,
+      children: [],
+      type: "array",
+    } as any;
+    const block =
+      '// BEGIN worktreeManager\n{ "name": "repo: wt", "path": "/tmp/wt" },\n// END worktreeManager';
     const result = patchManagedBlock(text, foldersNode, block);
     expect(result).toContain("BEGIN worktreeManager");
   });
@@ -261,8 +276,14 @@ describe("patchManagedBlock", () => {
   ]
 }`;
     // The folders array starts at position 14 (after `"folders": `) and the markers are within that range
-    const foldersNode = { offset: 14, length: text.length - 14, children: [], type: "array" } as any;
-    const block = "// BEGIN worktreeManager\n  { \"name\": \"new\", \"path\": \"/new\" },\n// END worktreeManager";
+    const foldersNode = {
+      offset: 14,
+      length: text.length - 14,
+      children: [],
+      type: "array",
+    } as any;
+    const block =
+      '// BEGIN worktreeManager\n  { "name": "new", "path": "/new" },\n// END worktreeManager';
     const result = patchManagedBlock(text, foldersNode, block);
     // The function replaces the block content and re-applies indentation
     expect(result).toContain("BEGIN worktreeManager");
@@ -315,7 +336,7 @@ describe("excludePatterns", () => {
   it("includes path-based patterns", () => {
     const wt = makeWorktree({ path: "/workspace/feat-login" });
     const patterns = excludePatterns(wt);
-    expect(patterns.some(p => p.includes("feat-login"))).toBe(true);
+    expect(patterns.some((p) => p.includes("feat-login"))).toBe(true);
   });
 });
 
@@ -323,7 +344,7 @@ describe("pathExcludePatterns", () => {
   it("returns path-based exclude patterns", () => {
     const patterns = pathExcludePatterns("/workspace/feat-login");
     expect(patterns.length).toBeGreaterThan(0);
-    expect(patterns.some(p => p.includes("feat-login"))).toBe(true);
+    expect(patterns.some((p) => p.includes("feat-login"))).toBe(true);
   });
 });
 
@@ -338,11 +359,22 @@ describe("buildManagedBlock", () => {
   });
 
   it("handles multiple repos", () => {
-    const repo1 = makeRepo({ label: "repo1.git", fsPath: "/repos/repo1", gitDir: "/repos/repo1/.bare" });
-    const repo2 = makeRepo({ label: "repo2.git", fsPath: "/repos/repo2", gitDir: "/repos/repo2/.bare" });
+    const repo1 = makeRepo({
+      label: "repo1.git",
+      fsPath: "/repos/repo1",
+      gitDir: "/repos/repo1/.bare",
+    });
+    const repo2 = makeRepo({
+      label: "repo2.git",
+      fsPath: "/repos/repo2",
+      gitDir: "/repos/repo2/.bare",
+    });
     const wt1 = makeWorktree({ repo: repo1, path: "/tmp/wt1", name: "wt1" });
     const wt2 = makeWorktree({ repo: repo2, path: "/tmp/wt2", name: "wt2" });
-    const all = new Map([[repo1, [wt1]], [repo2, [wt2]]]);
+    const all = new Map([
+      [repo1, [wt1]],
+      [repo2, [wt2]],
+    ]);
     const block = buildManagedBlock(all, ["/tmp/wt1"], wt1);
     expect(block).toContain("repo1.git");
     expect(block).toContain("repo2.git");
@@ -352,13 +384,27 @@ describe("buildManagedBlock", () => {
 describe("chooseActiveWorktree", () => {
   it("returns first non-prunable when no previous active and different repo", () => {
     const wt1 = makeWorktree({ path: "/tmp/wt1", name: "wt1" });
-    const result = chooseActiveWorktree([wt1], [], "other/.bare", "/tmp/target");
+    const result = chooseActiveWorktree(
+      [wt1],
+      [],
+      "other/.bare",
+      "/tmp/target",
+    );
     expect(result?.path).toBe("/tmp/wt1");
   });
 
   it("returns first worktree when all are prunable and different repo", () => {
-    const wt1 = makeWorktree({ path: "/tmp/wt1", name: "wt1", prunable: "yes" });
-    const result = chooseActiveWorktree([wt1], [], "other/.bare", "/tmp/target");
+    const wt1 = makeWorktree({
+      path: "/tmp/wt1",
+      name: "wt1",
+      prunable: "yes",
+    });
+    const result = chooseActiveWorktree(
+      [wt1],
+      [],
+      "other/.bare",
+      "/tmp/target",
+    );
     expect(result?.path).toBe("/tmp/wt1");
   });
 });
@@ -436,7 +482,12 @@ describe("getCheckedWorktreePaths", () => {
 describe("findExistingBlockRange", () => {
   it("returns undefined for text without markers", () => {
     const text = '{ "folders": [] }';
-    const result = findExistingBlockRange(text, { offset: 0, length: text.length, children: [], type: "object" } as any);
+    const result = findExistingBlockRange(text, {
+      offset: 0,
+      length: text.length,
+      children: [],
+      type: "object",
+    } as any);
     expect(result).toBeUndefined();
   });
 
@@ -448,7 +499,12 @@ describe("findExistingBlockRange", () => {
     // END worktreeManager
   ]
 }`;
-    const foldersNode = { offset: 14, length: 100, children: [], type: "array" } as any;
+    const foldersNode = {
+      offset: 14,
+      length: 100,
+      children: [],
+      type: "array",
+    } as any;
     const result = findExistingBlockRange(text, foldersNode);
     expect(result).toBeDefined();
     expect(result!.beginLineStart).toBeGreaterThanOrEqual(0);
@@ -461,7 +517,12 @@ describe("findExistingBlockRange", () => {
     { "name": "repo: wt1", "path": "/tmp/wt1" },
   ]
 }`;
-    const foldersNode = { offset: 14, length: 100, children: [], type: "array" } as any;
+    const foldersNode = {
+      offset: 14,
+      length: 100,
+      children: [],
+      type: "array",
+    } as any;
     const result = findExistingBlockRange(text, foldersNode);
     expect(result).toBeUndefined();
   });
@@ -471,7 +532,12 @@ describe("findExistingBlockRange", () => {
   "folders": [],
   "other": "BEGIN worktreeManager END worktreeManager"
 }`;
-    const foldersNode = { offset: 14, length: 2, children: [], type: "array" } as any;
+    const foldersNode = {
+      offset: 14,
+      length: 2,
+      children: [],
+      type: "array",
+    } as any;
     const result = findExistingBlockRange(text, foldersNode);
     expect(result).toBeUndefined();
   });

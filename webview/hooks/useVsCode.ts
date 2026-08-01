@@ -22,7 +22,7 @@ export function postMessage(api: VsCodeApi, message: Record<string, unknown>) {
 export function showContextMenu(
   event: React.MouseEvent,
   items: ContextMenuItem[],
-  onAction: (message: Record<string, unknown>) => void
+  onAction: (message: Record<string, unknown>) => void,
 ) {
   event.preventDefault();
   event.stopPropagation();

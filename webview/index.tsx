@@ -48,7 +48,7 @@ if (container) {
   root.render(
     <VsCodeContext.Provider value={vscode}>
       <App initialState={initialState} />
-    </VsCodeContext.Provider>
+    </VsCodeContext.Provider>,
   );
 }
 
