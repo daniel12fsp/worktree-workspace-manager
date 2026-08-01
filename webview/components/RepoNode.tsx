@@ -28,6 +28,10 @@ export function RepoNode({ repo, collapsed, onToggle }: Props) {
           message: { type: "copyRepoPath", path: repo.path },
         },
         {
+          label: "Remove Bare Repository",
+          message: { type: "removeBareRepository", path: repo.path },
+        },
+        {
           label: "Close All Terminals",
           message: { type: "killRepo", path: repo.path },
         },

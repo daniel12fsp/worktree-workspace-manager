@@ -8,6 +8,8 @@ import {
   gitErrorMessage,
   expandMaybeHome,
   menuItems,
+  removeRepositoryFromConfigValues,
+  workspaceFolderMatchesRepository,
   type BareRepository,
 } from "../extension";
 
@@ -21,6 +23,7 @@ vi.mock("../model", () => ({
   getConfiguredRepositories: vi.fn(() => []),
   listAllWorktrees: vi.fn(async () => new Map()),
   updateWorktreeColor: vi.fn(async () => {}),
+  normalizeConfiguredRepositoryPath: vi.fn((p: string) => p),
   resolveGitDir: vi.fn((p: string) => p),
 }));
 vi.mock("../embeddedTerminalView", () => ({
@@ -46,6 +49,7 @@ vi.mock("../worktreeView", () => ({
   })),
 }));
 vi.mock("../editorTabs", () => ({
+  closeEditorsForRepository: vi.fn(async () => {}),
   closeEditorsOutsideWorktree: vi.fn(async () => {}),
 }));
 vi.mock("../workspaceFile", () => ({
@@ -202,6 +206,62 @@ describe("expandMaybeHome", () => {
   });
 });
 
+describe("workspaceFolderMatchesRepository", () => {
+  const repo: BareRepository = {
+    configPath: "/repos/project",
+    fsPath: "/repos/project",
+    gitDir: "/repos/project/.bare",
+    label: "project",
+  };
+
+  it("matches repository root workspace folder", () => {
+    expect(workspaceFolderMatchesRepository("/repos/project", repo)).toBe(true);
+  });
+
+  it("matches legacy .git workspace folder", () => {
+    expect(workspaceFolderMatchesRepository("/repos/project.git", repo)).toBe(
+      true,
+    );
+  });
+
+  it("does not match another workspace folder", () => {
+    expect(workspaceFolderMatchesRepository("/repos/other", repo)).toBe(false);
+  });
+});
+
+describe("removeRepositoryFromConfigValues", () => {
+  const repo: BareRepository = {
+    configPath: "/repos/project",
+    fsPath: "/repos/project",
+    gitDir: "/repos/project/.bare",
+    label: "project",
+  };
+
+  it("removes matching configured repository path", () => {
+    expect(
+      removeRepositoryFromConfigValues(
+        ["/repos/project", "/repos/other"],
+        repo,
+      ),
+    ).toEqual(["/repos/other"]);
+  });
+
+  it("removes legacy .git config path for the repository", () => {
+    expect(
+      removeRepositoryFromConfigValues(
+        ["/repos/project.git", "/repos/other"],
+        repo,
+      ),
+    ).toEqual(["/repos/other"]);
+  });
+
+  it("keeps non-matching repositories", () => {
+    expect(removeRepositoryFromConfigValues(["/repos/other"], repo)).toEqual([
+      "/repos/other",
+    ]);
+  });
+});
+
 describe("menuItems", () => {
   it("returns worktree-first order when worktree selected", () => {
     const items = menuItems(true);
@@ -219,6 +279,7 @@ describe("menuItems", () => {
     const items = menuItems(true);
     const labels = items.map((i) => i.label);
     expect(labels).toContain("Add Worktree…");
+    expect(labels).toContain("Remove Bare Repository");
     expect(labels).toContain("Fetch");
     expect(labels).toContain("Prune Stale");
     expect(labels).toContain("Refresh");

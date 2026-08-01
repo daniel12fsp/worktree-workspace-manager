@@ -16,10 +16,21 @@ vi.mock("../logger", () => ({
   logError: vi.fn(),
 }));
 
+const mockListWorktrees = vi.hoisted(() => vi.fn(async () => []));
+vi.mock("../model", () => ({
+  listWorktrees: (...args: any[]) => mockListWorktrees(...args),
+}));
+
 const mockNormalizePath = vi.fn((p: string) => p);
 vi.mock("../workspaceFile", () => ({
   normalizePath: (...args: any[]) => mockNormalizePath(...args),
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockListWorktrees.mockResolvedValue([]);
+  mockNormalizePath.mockImplementation((p: string) => p);
+});
 
 describe("isUnderAnyPath", () => {
   it("returns true when path is under root", () => {
@@ -320,6 +331,105 @@ describe("closeEditorsOutsideWorktree", () => {
 
     await closeEditorsOutsideWorktree(worktree);
     expect(vscode.window.tabGroups.close).not.toHaveBeenCalled();
+  });
+});
+
+describe("closeEditorsForRepository", () => {
+  it("closes tabs under repo root, git dir, and worktrees", async () => {
+    const { closeEditorsForRepository } = await import("../editorTabs");
+    const repo = {
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      label: "project.git",
+      configPath: "/repos/project.git",
+    } as any;
+    mockListWorktrees.mockResolvedValue([
+      {
+        repo,
+        path: "/tmp/feat-login",
+        name: "feat-login",
+        color: "#ff0000",
+        colorKey: "project.git/feat-login",
+      },
+    ]);
+    const repoTab = {
+      input: new TabInputText({
+        fsPath: "/repos/project/README.md",
+        scheme: "file",
+      } as any),
+      label: "README.md",
+      isActive: false,
+      isDirty: false,
+    };
+    const bareTab = {
+      input: new TabInputText({
+        fsPath: "/repos/project/.bare/config",
+        scheme: "file",
+      } as any),
+      label: "config",
+      isActive: false,
+      isDirty: false,
+    };
+    const worktreeTab = {
+      input: new TabInputText({
+        fsPath: "/tmp/feat-login/src/index.ts",
+        scheme: "file",
+      } as any),
+      label: "index.ts",
+      isActive: false,
+      isDirty: false,
+    };
+    const otherTab = {
+      input: new TabInputText({
+        fsPath: "/tmp/other/file.ts",
+        scheme: "file",
+      } as any),
+      label: "file.ts",
+      isActive: false,
+      isDirty: false,
+    };
+    Object.defineProperty(vscode.window.tabGroups, "all", {
+      value: [{ tabs: [repoTab, bareTab, worktreeTab, otherTab] }],
+      configurable: true,
+    });
+
+    await closeEditorsForRepository(repo);
+
+    expect(vscode.window.tabGroups.close).toHaveBeenCalledTimes(3);
+    expect(vscode.window.tabGroups.close).toHaveBeenCalledWith(repoTab, false);
+    expect(vscode.window.tabGroups.close).toHaveBeenCalledWith(bareTab, false);
+    expect(vscode.window.tabGroups.close).toHaveBeenCalledWith(
+      worktreeTab,
+      false,
+    );
+  });
+
+  it("still closes repo tabs when listing worktrees fails", async () => {
+    const { closeEditorsForRepository } = await import("../editorTabs");
+    const repo = {
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      label: "project.git",
+      configPath: "/repos/project.git",
+    } as any;
+    mockListWorktrees.mockRejectedValue(new Error("git failed"));
+    const repoTab = {
+      input: new TabInputText({
+        fsPath: "/repos/project/README.md",
+        scheme: "file",
+      } as any),
+      label: "README.md",
+      isActive: false,
+      isDirty: false,
+    };
+    Object.defineProperty(vscode.window.tabGroups, "all", {
+      value: [{ tabs: [repoTab] }],
+      configurable: true,
+    });
+
+    await closeEditorsForRepository(repo);
+
+    expect(vscode.window.tabGroups.close).toHaveBeenCalledWith(repoTab, false);
   });
 });
 

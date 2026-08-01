@@ -1373,6 +1373,41 @@ describe("EmbeddedTerminalViewProvider", () => {
     );
   });
 
+  it("handleWebviewMessage removeBareRepository with matching repo", async () => {
+    let messageHandler: ((msg: any) => void) | undefined;
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    const mockView = {
+      visible: true,
+      webview: mockWebview,
+    } as any;
+    provider.resolveWebviewView(mockView);
+    const repo = {
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      label: "project.git",
+      configPath: "/repos/project.git",
+    };
+    mockListAllWorktrees.mockResolvedValueOnce(new Map([[repo, []]]));
+    await messageHandler!({
+      type: "removeBareRepository",
+      path: "/repos/project",
+    });
+    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
+      "worktreeManager.removeBareRepository",
+      { repo },
+    );
+  });
+
   it("handleWebviewMessage removeWorktree with matching worktree", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {

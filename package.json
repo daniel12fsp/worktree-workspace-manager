@@ -45,6 +45,7 @@
     "onCommand:worktreeManager.cloneBareRepository",
     "onCommand:worktreeManager.addExistingBareRepository",
     "onCommand:worktreeManager.addWorktree",
+    "onCommand:worktreeManager.removeBareRepository",
     "onCommand:worktreeManager.copyRepositoryPath",
     "onCommand:worktreeManager.copyWorktreePath",
     "onCommand:worktreeManager.copyWorktreeBranch",
@@ -203,6 +204,10 @@
         "title": "Remove Worktree"
       },
       {
+        "command": "worktreeManager.removeBareRepository",
+        "title": "Remove Bare Repository"
+      },
+      {
         "command": "worktreeManager.fetch",
         "title": "Fetch"
       },
@@ -244,6 +249,11 @@
         },
         {
           "command": "worktreeManager.copyRepositoryPath",
+          "when": "viewItem == repo",
+          "group": "navigation"
+        },
+        {
+          "command": "worktreeManager.removeBareRepository",
           "when": "viewItem == repo",
           "group": "navigation"
         },

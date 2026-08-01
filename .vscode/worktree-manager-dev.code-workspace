@@ -103,8 +103,7 @@
     },
     "worktreeManager.repositories": [
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git",
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git",
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/test",
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git"
     ],
     "worktreeManager.colors": {
       "fe-project.git/fe-1": {

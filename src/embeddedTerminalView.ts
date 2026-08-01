@@ -251,6 +251,15 @@ export class EmbeddedTerminalViewProvider
           { repo },
         );
       }
+    } else if (message?.type === "removeBareRepository") {
+      const repo = await this.findRepo(String(message.path));
+      if (repo) {
+        await vscode.commands.executeCommand(
+          "worktreeManager.removeBareRepository",
+          { repo },
+        );
+        await this.renderSessions();
+      }
     } else if (message?.type === "removeWorktree") {
       const worktree = await this.findWorktree(String(message.path));
       if (worktree) {

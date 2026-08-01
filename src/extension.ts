@@ -11,10 +11,14 @@ import {
   Worktree,
   getConfiguredRepositories,
   listAllWorktrees,
+  normalizeConfiguredRepositoryPath,
   resolveGitDir,
   updateWorktreeColor,
 } from "./model";
-import { closeEditorsOutsideWorktree } from "./editorTabs";
+import {
+  closeEditorsForRepository,
+  closeEditorsOutsideWorktree,
+} from "./editorTabs";
 import {
   checkWorktreeInLiveWorkspace,
   hideBareRepositoryFolders,
@@ -137,6 +141,13 @@ export function activate(context: vscode.ExtensionContext): void {
       "worktreeManager.copyRepositoryPath",
       async (node?: RepoNode | { repo?: BareRepository }) => {
         await copyRepositoryPath(node?.repo ?? selectedRepo);
+      },
+    ),
+    vscode.commands.registerCommand(
+      "worktreeManager.removeBareRepository",
+      async (node?: RepoNode | { repo?: BareRepository }) => {
+        await removeBareRepository(node?.repo ?? selectedRepo);
+        refreshAll();
       },
     ),
     vscode.commands.registerCommand(
@@ -705,6 +716,92 @@ async function addRepositoryToConfig(repoPath: string): Promise<void> {
   }
 }
 
+async function removeBareRepository(repo?: BareRepository): Promise<void> {
+  repo = repo ?? (await pickRepo());
+  if (!repo) return;
+
+  const confirmed = await vscode.window.showWarningMessage(
+    `Remove bare repository ${repo.label} from Worktree Manager?`,
+    {
+      modal: true,
+      detail: `This removes it from configuration and the Explorer workspace folders. It does not delete files.\n${repo.fsPath}`,
+    },
+    "Remove",
+  );
+  if (confirmed !== "Remove") return;
+
+  const config = vscode.workspace.getConfiguration("worktreeManager");
+  const target = configurationTarget();
+  const repositories = config.get<string[]>("repositories", []);
+  const next = removeRepositoryFromConfigValues(repositories, repo);
+  await closeEditorsForRepository(repo);
+  const removedFromExplorer = removeBareRepositoryFromExplorer(repo);
+  if (next.length === repositories.length && !removedFromExplorer) {
+    void vscode.window.showInformationMessage(
+      `${repo.label} was not configured`,
+    );
+    return;
+  }
+
+  if (next.length !== repositories.length) {
+    await config.update("repositories", next, target);
+  }
+  void vscode.window.showInformationMessage(
+    `Removed ${repo.label} from Worktree Manager`,
+  );
+}
+
+function removeBareRepositoryFromExplorer(repo: BareRepository): boolean {
+  const folders = vscode.workspace.workspaceFolders;
+  const index = folders?.findIndex((folder) =>
+    workspaceFolderMatchesRepository(folder.uri.fsPath, repo),
+  );
+  if (index === undefined || index < 0) return false;
+
+  const removed = vscode.workspace.updateWorkspaceFolders(index, 1);
+  if (!removed) {
+    void vscode.window.showWarningMessage(
+      `Removed settings, but VS Code did not remove ${repo.fsPath} from Explorer.`,
+    );
+  }
+  return removed;
+}
+
+export function workspaceFolderMatchesRepository(
+  folderPath: string,
+  repo: BareRepository,
+): boolean {
+  const expanded = path.resolve(expandMaybeHome(folderPath));
+  const targets = repositoryPathTargets(repo);
+  return (
+    targets.has(expanded) ||
+    normalizeConfiguredRepositoryPath(expanded) === repo.fsPath
+  );
+}
+
+export function removeRepositoryFromConfigValues(
+  repositories: readonly string[],
+  repo: BareRepository,
+): string[] {
+  const targets = repositoryPathTargets(repo);
+
+  return repositories.filter((value) => {
+    const expanded = path.resolve(expandMaybeHome(value));
+    return (
+      !targets.has(expanded) &&
+      normalizeConfiguredRepositoryPath(expanded) !== repo.fsPath
+    );
+  });
+}
+
+function repositoryPathTargets(repo: BareRepository): Set<string> {
+  return new Set(
+    [repo.configPath, repo.fsPath, repo.gitDir, `${repo.fsPath}.git`]
+      .filter(Boolean)
+      .map((value) => path.resolve(expandMaybeHome(value))),
+  );
+}
+
 export function expandMaybeHome(input: string): string {
   if (input === "~") return os.homedir();
   if (input.startsWith("~/") || input.startsWith("~\\"))
@@ -867,6 +964,10 @@ export function menuItems(
       command: "worktreeManager.addExistingBareRepository",
     },
     { label: "Add Worktree…", command: "worktreeManager.addWorktree" },
+    {
+      label: "Remove Bare Repository",
+      command: "worktreeManager.removeBareRepository",
+    },
     { label: "Fetch", command: "worktreeManager.fetch" },
     { label: "Prune Stale", command: "worktreeManager.pruneStale" },
     { label: "Refresh", command: "worktreeManager.refresh" },

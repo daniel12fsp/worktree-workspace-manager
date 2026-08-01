@@ -110,6 +110,27 @@ describe("RepoNode", () => {
       value: vi.fn(),
     });
     el.dispatchEvent(contextMenuEvent);
+
+    expect(screen.getByText("Add Worktree…")).toBeTruthy();
+    expect(screen.getByText("Copy Bare Repository Path")).toBeTruthy();
+    expect(screen.getByText("Remove Bare Repository")).toBeTruthy();
+    expect(screen.getByText("Close All Terminals")).toBeTruthy();
+  });
+
+  it("posts remove bare repository from context menu", () => {
+    const mockVsCode = createMockVsCode();
+    renderWithVsCode(
+      <RepoNode repo={repo} collapsed={true} onToggle={vi.fn()} />,
+      mockVsCode,
+    );
+
+    fireEvent.contextMenu(screen.getByText(/project\.git/));
+    fireEvent.click(screen.getByText("Remove Bare Repository"));
+
+    expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+      type: "removeBareRepository",
+      path: "/repos/project",
+    });
   });
 });
 
