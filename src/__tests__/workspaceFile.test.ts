@@ -19,6 +19,7 @@ import {
   hideBareRepositoryFolders,
   checkWorktreeInLiveWorkspace,
   getCheckedWorktreePaths,
+  removeWorktreeExcludePatterns,
 } from "../workspaceFile";
 import type { Worktree, BareRepository } from "../model";
 import * as vscode from "vscode";
@@ -554,5 +555,61 @@ describe("getCheckedWorktreePaths", () => {
   it("returns a set", async () => {
     const result = await getCheckedWorktreePaths();
     expect(result).toBeInstanceOf(Set);
+  });
+});
+
+describe("removeWorktreeExcludePatterns", () => {
+  beforeEach(() => {
+    (vscode as any).__resetConfig();
+    vscode.workspace.workspaceFile = null;
+  });
+
+  it("returns early when no workspace file", async () => {
+    await removeWorktreeExcludePatterns(makeWorktree());
+    expect(
+      vscode.workspace.getConfiguration("files.exclude").get("files.exclude"),
+    ).toBeUndefined();
+  });
+
+  it("removes exclude patterns for the worktree", async () => {
+    vscode.workspace.workspaceFile = vscode.Uri.file(
+      "/tmp/test.code-workspace",
+    );
+    const patterns = excludePatterns(makeWorktree());
+    const filesExclude: Record<string, boolean> = {};
+    for (const p of patterns) filesExclude[p] = true;
+    filesExclude["other-pattern"] = true;
+    (vscode as any).__setConfig("files.exclude", filesExclude);
+    (vscode as any).__setConfig("search.exclude", { ...filesExclude });
+
+    await removeWorktreeExcludePatterns(makeWorktree());
+
+    const updatedFiles = vscode.workspace
+      .getConfiguration(undefined, null)
+      .get<Record<string, boolean>>("files.exclude", {});
+    const updatedSearch = vscode.workspace
+      .getConfiguration(undefined, null)
+      .get<Record<string, boolean>>("search.exclude", {});
+    expect(updatedFiles["other-pattern"]).toBe(true);
+    expect(updatedSearch["other-pattern"]).toBe(true);
+    for (const p of patterns) {
+      expect(updatedFiles[p]).toBeUndefined();
+      expect(updatedSearch[p]).toBeUndefined();
+    }
+  });
+
+  it("does not write when no patterns match", async () => {
+    vscode.workspace.workspaceFile = vscode.Uri.file(
+      "/tmp/test.code-workspace",
+    );
+    (vscode as any).__setConfig("files.exclude", { unrelated: true });
+    (vscode as any).__setConfig("search.exclude", { unrelated: true });
+
+    await removeWorktreeExcludePatterns(makeWorktree());
+
+    const updatedFiles = vscode.workspace
+      .getConfiguration(undefined, null)
+      .get<Record<string, boolean>>("files.exclude", {});
+    expect(updatedFiles["unrelated"]).toBe(true);
   });
 });

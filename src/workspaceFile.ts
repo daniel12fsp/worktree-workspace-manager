@@ -408,6 +408,28 @@ export function excludePatterns(worktree: Worktree): string[] {
   ]);
 }
 
+export async function removeWorktreeExcludePatterns(
+  worktree: Worktree,
+): Promise<void> {
+  if (!hasWorkspaceFile()) return;
+  const patternSet = new Set(excludePatterns(worktree));
+
+  const clean = async (
+    section: "files.exclude" | "search.exclude",
+  ): Promise<void> => {
+    const current = getWorkspaceExclude(section);
+    const next: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(current)) {
+      if (!patternSet.has(key)) next[key] = value;
+    }
+    if (!excludeObjectsEqual(current, next)) {
+      await writeWorkspaceExclude(section, next);
+    }
+  };
+
+  await Promise.all([clean("files.exclude"), clean("search.exclude")]);
+}
+
 export function pathExcludePatterns(fsPath: string): string[] {
   const absolute = toAbsolutePath(fsPath);
   const patterns = [absolute, `${absolute}/**`];

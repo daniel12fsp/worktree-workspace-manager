@@ -18,6 +18,7 @@ import { closeEditorsOutsideWorktree } from "./editorTabs";
 import {
   checkWorktreeInLiveWorkspace,
   hideBareRepositoryFolders,
+  removeWorktreeExcludePatterns,
 } from "./workspaceFile";
 import { RepoNode, WorktreeNode, WorktreeProvider } from "./worktreeView";
 const execFileAsync = promisify(execFile);
@@ -167,7 +168,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "worktreeManager.removeWorktree",
       async (node?: WorktreeNode | { worktree?: Worktree }) => {
-        await removeWorktree(node?.worktree ?? selectedWorktree);
+        await removeWorktree(
+          node?.worktree ?? selectedWorktree,
+          terminalProvider,
+        );
         refreshAll();
       },
     ),
@@ -737,7 +741,10 @@ async function copyWorktreeBranch(worktree?: Worktree): Promise<void> {
   void vscode.window.showInformationMessage(`Copied ${worktree.name} branch`);
 }
 
-async function removeWorktree(worktree?: Worktree): Promise<void> {
+async function removeWorktree(
+  worktree: Worktree | undefined,
+  terminalProvider: EmbeddedTerminalViewProvider,
+): Promise<void> {
   worktree = worktree ?? (await pickWorktree());
   if (!worktree) return;
   const confirmed = await vscode.window.showWarningMessage(
@@ -746,10 +753,12 @@ async function removeWorktree(worktree?: Worktree): Promise<void> {
     "Remove",
   );
   if (confirmed !== "Remove") return;
+  terminalProvider.killWorktreeTerminals(worktree);
   await runGit(
     ["--git-dir", worktree.repo.gitDir, "worktree", "remove", worktree.path],
     `Removed ${worktree.name}`,
   );
+  await removeWorktreeExcludePatterns(worktree);
 }
 
 async function changeWorktreeColor(worktree?: Worktree): Promise<void> {
