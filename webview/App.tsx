@@ -108,7 +108,9 @@ export function App({ initialState }: Props) {
   }, []);
 
   const handleCreateTerminal = useCallback(
-    (path: string) => {
+    (repoLabel: string, path: string) => {
+      collapsedWorktreesRef.current.delete(`${repoLabel}:${path}`);
+      forceRender((n) => n + 1);
       vscode.postMessage({ type: "create", path });
       requestAnimationFrame(() => terminalApi?.focus());
     },
@@ -271,7 +273,9 @@ export function App({ initialState }: Props) {
                         worktree={wt}
                         collapsed={isWtCollapsed}
                         onToggle={() => toggleWorktree(repo.label, wt.path)}
-                        onCreateTerminal={handleCreateTerminal}
+                        onCreateTerminal={(path) =>
+                          handleCreateTerminal(repo.label, path)
+                        }
                         loading={state.loadingWorktrees.has(wt.path)}
                         onSetExplorerWorktree={handleSetExplorerWorktree}
                       />
@@ -291,7 +295,6 @@ export function App({ initialState }: Props) {
                             {session.id === state.activeSessionId && (
                               <TerminalEmbed
                                 activeSessionId={state.activeSessionId}
-                                activeOutput={state.activeOutput}
                                 containerRef={terminalContainerRef}
                                 terminalApi={terminalApi}
                               />

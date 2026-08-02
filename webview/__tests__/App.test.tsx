@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { Terminal } from "@xterm/xterm";
 import { App, AppState } from "../App";
 import { VsCodeContext, VsCodeApi } from "../hooks/useVsCode";
 
@@ -58,6 +59,7 @@ const renderWithVsCode = (state: AppState, mockVsCode?: VsCodeApi) => {
 
 describe("App", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     document.body.innerHTML = "";
   });
 
@@ -255,6 +257,58 @@ describe("App", () => {
     };
     renderWithVsCode(state);
     expect(screen.getByText("terminal 1")).toBeTruthy();
+  });
+
+  it("hydrates active terminal output only once", async () => {
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "idle",
+                  displayName: "terminal 1",
+                  statusText: "idle",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: "s1",
+      activeOutput: "prompt > ",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+    (globalThis as any).ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+
+    renderWithVsCode(state);
+
+    await waitFor(() => {
+      const term = vi.mocked(Terminal).mock.results[0]?.value as {
+        clear: ReturnType<typeof vi.fn>;
+        write: ReturnType<typeof vi.fn>;
+      };
+      expect(term.clear).toHaveBeenCalledTimes(1);
+      expect(term.write).toHaveBeenCalledTimes(1);
+      expect(term.write).toHaveBeenCalledWith("prompt > ");
+    });
   });
 
   it("renders app root", () => {
@@ -626,6 +680,53 @@ describe("App", () => {
     renderWithVsCode(state, mockVsCode);
     // Click add button
     fireEvent.click(screen.getByText("+"));
+    expect(mockVsCode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "create", path: "/tmp/feat-login" }),
+    );
+  });
+
+  it("expands collapsed worktree when creating terminal", () => {
+    const mockVsCode = createMockVsCode();
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "idle",
+                  displayName: "terminal 1",
+                  statusText: "idle",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: undefined,
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+    renderWithVsCode(state, mockVsCode);
+
+    fireEvent.click(screen.getByText(/feat-login/));
+    expect(screen.queryByText("terminal 1")).toBeNull();
+
+    fireEvent.click(screen.getByText("+"));
+
+    expect(screen.getByText("terminal 1")).toBeTruthy();
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "create", path: "/tmp/feat-login" }),
     );

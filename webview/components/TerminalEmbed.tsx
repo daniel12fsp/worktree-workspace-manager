@@ -2,7 +2,6 @@ import React, { useEffect } from "react";
 
 interface Props {
   activeSessionId: string | undefined;
-  activeOutput: string;
   containerRef: React.RefObject<HTMLDivElement | null>;
   terminalApi: {
     focus: () => void;
@@ -15,17 +14,14 @@ interface Props {
 
 export function TerminalEmbed({
   activeSessionId,
-  activeOutput,
   containerRef,
   terminalApi,
 }: Props) {
   useEffect(() => {
     if (activeSessionId && terminalApi) {
-      terminalApi.clearAndWrite(activeOutput);
-      terminalApi.resize();
       requestAnimationFrame(() => terminalApi.focus());
     }
-  }, [activeSessionId, activeOutput, terminalApi]);
+  }, [activeSessionId, terminalApi]);
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {

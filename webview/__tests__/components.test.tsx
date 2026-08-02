@@ -858,7 +858,6 @@ describe("TerminalEmbed", () => {
     const { container } = renderWithVsCode(
       <TerminalEmbed
         activeSessionId={undefined}
-        activeOutput=""
         containerRef={{ current: null }}
         terminalApi={null}
       />,
@@ -878,7 +877,6 @@ describe("TerminalEmbed", () => {
     renderWithVsCode(
       <TerminalEmbed
         activeSessionId="s1"
-        activeOutput=""
         containerRef={containerRef}
         terminalApi={terminalApi}
       />,
@@ -903,7 +901,6 @@ describe("TerminalEmbed", () => {
     renderWithVsCode(
       <TerminalEmbed
         activeSessionId="s1"
-        activeOutput=""
         containerRef={containerRef}
         terminalApi={terminalApi}
       />,
@@ -929,7 +926,6 @@ describe("TerminalEmbed", () => {
     renderWithVsCode(
       <TerminalEmbed
         activeSessionId="s1"
-        activeOutput=""
         containerRef={containerRef}
         terminalApi={terminalApi}
       />,
