@@ -208,6 +208,12 @@ describe("zshActivityRc", () => {
     expect(rc).toContain("preexec");
     expect(rc).toContain("777;wtwm");
   });
+
+  it("restores the normal user history file when ZDOTDIR is temporary", () => {
+    const rc = zshActivityRc();
+    expect(rc).toContain('"$HISTFILE" == "$ZDOTDIR"/*');
+    expect(rc).toContain('HISTFILE="$HOME/.zsh_history"');
+  });
 });
 
 describe("bashActivityRc", () => {

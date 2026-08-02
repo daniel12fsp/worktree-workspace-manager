@@ -968,6 +968,15 @@ if [[ -r "$HOME/.zshrc" ]]; then
   source "$HOME/.zshrc"
 fi
 
+# macOS /etc/zshrc initializes HISTFILE from ZDOTDIR. Because this wrapper uses
+# a temporary ZDOTDIR for the generated .zshrc, that default would point at the
+# temporary directory and hide the user's normal command history. Keep any
+# user-configured HISTFILE, but restore the standard user history file when the
+# inherited value still points at the wrapper directory.
+if [[ -z "$HISTFILE" || "$HISTFILE" == "$ZDOTDIR"/* ]]; then
+  HISTFILE="$HOME/.zsh_history"
+fi
+
 __wtwm_preexec() {
   print -rn -- $'\e]777;wtwm;start;' "$1" $'\a'
 }
