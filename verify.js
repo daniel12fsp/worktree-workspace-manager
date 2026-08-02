@@ -50,8 +50,8 @@ function fileExists(name) {
   return fs.existsSync(path.join(rootDir, name));
 }
 
-function readJson(name) {
-  return JSON.parse(fs.readFileSync(path.join(rootDir, name), 'utf8'));
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
 }
 
 function findFiles(dir, predicate, out = []) {
@@ -192,11 +192,31 @@ function evalWhen(cond) {
   return true;
 }
 
-function loadConfig() {
-  for (const name of ['verify.config.json', '.verify.json']) {
-    if (fileExists(name)) return readJson(name);
+function cliConfigPath() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--config') {
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) throw new Error('--config requires a path');
+      return value;
+    }
+    if (arg.startsWith('--config=')) {
+      const value = arg.slice('--config='.length);
+      if (!value) throw new Error('--config requires a path');
+      return value;
+    }
   }
-  throw new Error('No verify.config.json or .verify.json found in project root');
+  return null;
+}
+
+function loadConfig() {
+  const configPath = cliConfigPath();
+  if (!configPath) throw new Error('Missing required --config path');
+
+  const resolved = path.isAbsolute(configPath) ? configPath : path.join(rootDir, configPath);
+  if (!fs.existsSync(resolved)) throw new Error(`Config file not found: ${configPath}`);
+  return readJson(resolved);
 }
 
 function resolveSteps(config) {
