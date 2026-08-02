@@ -123,7 +123,7 @@ export function useTerminal(
       term.onData((data: string) => {
         const sid = activeSessionIdRef.current;
         if (!sid) return;
-        const sanitized = data.replace(/\x1b\[\d+;\d+R/g, "");
+        const sanitized = stripTerminalQueryResponses(data);
         if (sanitized) onDataRef.current(sanitized);
       });
 
@@ -235,6 +235,13 @@ export function useTerminal(
     }),
     [focus, clearAndWrite, write, clear, resize, runSearch],
   );
+}
+
+export function stripTerminalQueryResponses(data: string): string {
+  return data
+    .replace(/\x1b\[\d+;\d+R/g, "")
+    .replace(/\x1b\[\?\d+(?:;\d+)*c/g, "")
+    .replace(/\x1b\](?:10|11);[^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
 }
 
 export function updateFocusClasses(focused: boolean) {

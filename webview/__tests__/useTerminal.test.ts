@@ -5,6 +5,7 @@ import {
   detectTerminalLinks,
   collectMatches,
   updateFocusClasses,
+  stripTerminalQueryResponses,
 } from "../hooks/useTerminal";
 
 describe("trimTerminalLink", () => {
@@ -180,6 +181,20 @@ describe("detectTerminalLinks", () => {
   it("handles empty text", () => {
     const links = detectTerminalLinks("", 1);
     expect(links).toBeUndefined();
+  });
+});
+
+describe("stripTerminalQueryResponses", () => {
+  it("removes terminal capability and color query responses", () => {
+    const input =
+      "\x1b[?0;276;0c\x1b]10;rgb:ffff/ffff/ffff\x1b\\\x1b]11;rgb:0000/0000/0000\x1b\\";
+    expect(stripTerminalQueryResponses(input)).toBe("");
+  });
+
+  it("preserves normal input around query responses", () => {
+    expect(stripTerminalQueryResponses("echo hi\x1b[?0;276;0c\r")).toBe(
+      "echo hi\r",
+    );
   });
 });
 
