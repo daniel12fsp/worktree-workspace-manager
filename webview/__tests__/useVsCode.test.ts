@@ -93,4 +93,44 @@ describe("showContextMenu", () => {
 
     expect(document.querySelector(".contextMenu")).toBeFalsy();
   });
+
+  it("removes menu on outside right click", () => {
+    const event = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      clientX: 100,
+      clientY: 200,
+    } as unknown as React.MouseEvent;
+
+    showContextMenu(event, [{ label: "X", message: {} }], vi.fn());
+
+    vi.advanceTimersByTime(10);
+    document.body.dispatchEvent(
+      new MouseEvent("contextmenu", { bubbles: true }),
+    );
+
+    expect(document.querySelector(".contextMenu")).toBeFalsy();
+  });
+
+  it("replaces an existing menu when opening another menu", () => {
+    const firstEvent = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      clientX: 100,
+      clientY: 200,
+    } as unknown as React.MouseEvent;
+    const secondEvent = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+      clientX: 300,
+      clientY: 400,
+    } as unknown as React.MouseEvent;
+
+    showContextMenu(firstEvent, [{ label: "First", message: {} }], vi.fn());
+    showContextMenu(secondEvent, [{ label: "Second", message: {} }], vi.fn());
+
+    const menus = document.querySelectorAll(".contextMenu");
+    expect(menus).toHaveLength(1);
+    expect(menus[0].querySelector("button")?.textContent).toBe("Second");
+  });
 });

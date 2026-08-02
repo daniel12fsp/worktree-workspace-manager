@@ -19,6 +19,8 @@ export function postMessage(api: VsCodeApi, message: Record<string, unknown>) {
   api.postMessage(message);
 }
 
+let closeCurrentContextMenu: (() => void) | undefined;
+
 export function showContextMenu(
   event: React.MouseEvent,
   items: ContextMenuItem[],
@@ -26,30 +28,46 @@ export function showContextMenu(
 ) {
   event.preventDefault();
   event.stopPropagation();
+  closeCurrentContextMenu?.();
 
   const menu = document.createElement("div");
   menu.className = "contextMenu";
   menu.style.left = event.clientX + "px";
   menu.style.top = event.clientY + "px";
 
+  const close = () => {
+    menu.remove();
+    document.removeEventListener("click", handleOutsideMouse);
+    document.removeEventListener("contextmenu", handleOutsideMouse);
+    if (closeCurrentContextMenu === close) {
+      closeCurrentContextMenu = undefined;
+    }
+  };
+
+  const handleOutsideMouse = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      close();
+    }
+  };
+
   for (const item of items) {
     const btn = document.createElement("button");
     btn.textContent = item.label;
     btn.onclick = (e) => {
       e.stopPropagation();
-      menu.remove();
+      close();
       onAction(item.message);
     };
     menu.appendChild(btn);
   }
 
   document.body.appendChild(menu);
+  closeCurrentContextMenu = close;
 
-  const close = (e: MouseEvent) => {
-    if (!menu.contains(e.target as Node)) {
-      menu.remove();
-      document.removeEventListener("click", close);
+  setTimeout(() => {
+    if (closeCurrentContextMenu === close) {
+      document.addEventListener("click", handleOutsideMouse);
+      document.addEventListener("contextmenu", handleOutsideMouse);
     }
-  };
-  setTimeout(() => document.addEventListener("click", close), 0);
+  }, 0);
 }
