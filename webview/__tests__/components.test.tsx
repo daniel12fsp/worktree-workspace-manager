@@ -884,6 +884,66 @@ describe("TerminalEmbed", () => {
     expect(screen.getByText("", { selector: ".terminalInline" })).toBeTruthy();
   });
 
+  it("sizes terminal container to available viewport height", () => {
+    const originalInnerHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 600,
+    });
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        bottom: 120,
+        height: 20,
+        left: 0,
+        right: 0,
+        top: 100,
+        width: 0,
+        x: 0,
+        y: 100,
+        toJSON: () => ({}),
+      });
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 1;
+      });
+    const cancelSpy = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => {});
+    const containerRef = { current: document.createElement("div") };
+    const terminalApi = {
+      focus: vi.fn(),
+      clearAndWrite: vi.fn(),
+      write: vi.fn(),
+      clear: vi.fn(),
+      resize: vi.fn(),
+    };
+
+    renderWithVsCode(
+      <TerminalEmbed
+        activeSessionId="s1"
+        containerRef={containerRef}
+        terminalApi={terminalApi}
+      />,
+    );
+
+    const inline = document.querySelector(".terminalInline") as HTMLElement;
+    expect(inline.style.getPropertyValue("--terminal-inline-height")).toBe(
+      "492px",
+    );
+    expect(terminalApi.resize).toHaveBeenCalled();
+
+    rectSpy.mockRestore();
+    rafSpy.mockRestore();
+    cancelSpy.mockRestore();
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: originalInnerHeight,
+    });
+  });
+
   it("Escape key hides visible findBox and focuses terminal", () => {
     const findBox = document.createElement("div");
     findBox.id = "findBox";

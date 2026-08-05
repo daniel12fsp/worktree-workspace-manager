@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 
 interface Props {
   activeSessionId: string | undefined;
@@ -23,6 +23,41 @@ export function TerminalEmbed({
     }
   }, [activeSessionId, terminalApi]);
 
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!activeSessionId) return;
+
+    let frame = 0;
+    const updateHeight = () => {
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
+
+      const availableHeight = Math.max(
+        160,
+        Math.floor(
+          window.innerHeight - wrapper.getBoundingClientRect().top - 8,
+        ),
+      );
+      wrapper.style.setProperty(
+        "--terminal-inline-height",
+        `${availableHeight}px`,
+      );
+      terminalApi?.resize();
+    };
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(updateHeight);
+    };
+
+    scheduleUpdate();
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, [activeSessionId, terminalApi]);
+
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -42,7 +77,7 @@ export function TerminalEmbed({
   if (!activeSessionId) return null;
 
   return (
-    <div className="terminalInline active">
+    <div ref={wrapperRef} className="terminalInline active">
       <div ref={containerRef} id="terminal" style={{ height: "100%" }} />
     </div>
   );

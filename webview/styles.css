@@ -128,7 +128,8 @@ body {
 .terminalInline {
   margin: 4px 0 8px 0;
   width: 100%;
-  height: min(420px, 65vh);
+  height: var(--terminal-inline-height, calc(100vh - 16px));
+  min-height: 160px;
   border: 1px solid var(--vscode-panel-border);
   padding: 4px;
   background: #000;
