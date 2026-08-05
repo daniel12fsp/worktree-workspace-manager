@@ -7,6 +7,7 @@ import { FitAddon } from "@xterm/addon-fit";
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   activeSessionId: string | undefined,
+  activeSessionState: "idle" | "running" | undefined,
   onData: (data: string) => void,
   onResize: (cols: number, rows: number) => void,
 ) {
@@ -17,6 +18,9 @@ export function useTerminal(
 
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
+
+  const activeSessionStateRef = useRef(activeSessionState);
+  activeSessionStateRef.current = activeSessionState;
 
   const onDataRef = useRef(onData);
   onDataRef.current = onData;
@@ -123,7 +127,10 @@ export function useTerminal(
       term.onData((data: string) => {
         const sid = activeSessionIdRef.current;
         if (!sid) return;
-        const sanitized = stripTerminalQueryResponses(data);
+        const sanitized = stripTerminalGeneratedInput(
+          data,
+          activeSessionStateRef.current,
+        );
         if (sanitized) onDataRef.current(sanitized);
       });
 
@@ -176,7 +183,8 @@ export function useTerminal(
   const clearAndWrite = useCallback((data: string) => {
     if (!termRef.current) return;
     termRef.current.clear();
-    if (data) termRef.current.write(data);
+    const replaySafeData = sanitizeReplayedTerminalOutput(data);
+    if (replaySafeData) termRef.current.write(replaySafeData);
   }, []);
 
   const write = useCallback((data: string) => {
@@ -241,7 +249,37 @@ export function stripTerminalQueryResponses(data: string): string {
   return data
     .replace(/\x1b\[\d+;\d+R/g, "")
     .replace(/\x1b\[\?\d+(?:;\d+)*c/g, "")
+    .replace(/\x1b\[>\d+(?:;\d+)*c/g, "")
     .replace(/\x1b\](?:10|11);[^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
+}
+
+export function stripTerminalGeneratedInput(
+  data: string,
+  activeSessionState: "idle" | "running" | undefined,
+): string {
+  const withoutQueries = stripTerminalQueryResponses(data);
+  if (activeSessionState === "running") return withoutQueries;
+  return stripMouseReports(withoutQueries);
+}
+
+export function stripMouseReports(data: string): string {
+  return data
+    .replace(/\x1b\[<\d+;\d+;\d+[Mm]/g, "")
+    .replace(/\x1b\[M[\s\S]{3}/g, "");
+}
+
+export function sanitizeReplayedTerminalOutput(data: string): string {
+  return data
+    .replace(/\x1b\[(?:>|\?)?\d*(?:;\d+)*[cn]/g, "")
+    .replace(/\x1b\[\?\d+(?:;\d+)*h/g, (sequence) =>
+      containsTerminalInputMode(sequence) ? "" : sequence,
+    );
+}
+
+function containsTerminalInputMode(sequence: string): boolean {
+  return /(?:^|[?;])(?:1000|1002|1003|1004|1005|1006|1015)(?:[;h]|$)/.test(
+    sequence,
+  );
 }
 
 export function updateFocusClasses(focused: boolean) {

@@ -54,9 +54,14 @@ export function App({ initialState }: Props) {
   );
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
+  const activeSessionState = findSessionState(
+    state.repos,
+    state.activeSessionId,
+  );
   const terminalApi = useTerminal(
     terminalContainerRef,
     state.activeSessionId,
+    activeSessionState,
     handleTerminalData,
     handleTerminalResize,
   );
@@ -310,4 +315,20 @@ export function App({ initialState }: Props) {
       </div>
     </div>
   );
+}
+
+function findSessionState(
+  repos: RepoData[],
+  activeSessionId: string | undefined,
+): SessionData["state"] | undefined {
+  if (!activeSessionId) return undefined;
+  for (const repo of repos) {
+    for (const worktree of repo.worktrees) {
+      const session = worktree.sessions.find(
+        ({ id }) => id === activeSessionId,
+      );
+      if (session) return session.state;
+    }
+  }
+  return undefined;
 }
