@@ -26,10 +26,11 @@ export function WorktreeNode({
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
+      onSetExplorerWorktree(worktree.path);
       onToggle();
       vscode.postMessage({ type: "collapseAll" });
     },
-    [onToggle, vscode],
+    [onSetExplorerWorktree, onToggle, vscode, worktree.path],
   );
 
   const handleContextMenu = useCallback(
@@ -61,14 +62,6 @@ export function WorktreeNode({
     [worktree.path, vscode],
   );
 
-  const handleCheckboxChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      e.stopPropagation();
-      onSetExplorerWorktree(worktree.path);
-    },
-    [worktree.path, onSetExplorerWorktree],
-  );
-
   const handleAdd = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -78,7 +71,16 @@ export function WorktreeNode({
   );
 
   return (
-    <div className="wt" onClick={handleClick} onContextMenu={handleContextMenu}>
+    <div
+      className={"wt" + (worktree.activeInExplorer ? " workspaceActive" : "")}
+      onClick={handleClick}
+      onContextMenu={handleContextMenu}
+      title={
+        worktree.activeInExplorer
+          ? "Enabled in VSCode Explorer"
+          : "Enable in VSCode Explorer"
+      }
+    >
       <span
         className="expandIcon"
         style={{
@@ -93,32 +95,18 @@ export function WorktreeNode({
           background: worktree.color,
         }}
       />
-      {loading ? (
+      {loading && (
         <span className="loadingCheckbox" title="Loading worktree\u2026" />
-      ) : (
-        <input
-          type="checkbox"
-          className="workspaceState"
-          checked={worktree.activeInExplorer}
-          title={
-            worktree.activeInExplorer
-              ? "Enabled in VSCode Explorer"
-              : "Enable in VSCode Explorer"
-          }
-          onChange={handleCheckboxChange}
-          onClick={(e) => e.stopPropagation()}
-        />
       )}
-      <span style={{ color: worktree.color, fontWeight: 600 }}>
+      <span className="worktreeLabel" style={{ color: worktree.color }}>
         {worktree.name} ({worktree.branch})
       </span>
       <button
         className="addTerminal"
         title="New terminal here"
+        aria-label={`New terminal in ${worktree.name}`}
         onClick={handleAdd}
-      >
-        +
-      </button>
+      />
     </div>
   );
 }

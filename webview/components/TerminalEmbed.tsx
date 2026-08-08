@@ -29,32 +29,16 @@ export function TerminalEmbed({
     if (!activeSessionId) return;
 
     let frame = 0;
-    const updateHeight = () => {
-      const wrapper = wrapperRef.current;
-      if (!wrapper) return;
-
-      const availableHeight = Math.max(
-        160,
-        Math.floor(
-          window.innerHeight - wrapper.getBoundingClientRect().top - 8,
-        ),
-      );
-      wrapper.style.setProperty(
-        "--terminal-inline-height",
-        `${availableHeight}px`,
-      );
-      terminalApi?.resize();
-    };
-    const scheduleUpdate = () => {
+    const scheduleResize = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(updateHeight);
+      frame = requestAnimationFrame(() => terminalApi?.resize());
     };
 
-    scheduleUpdate();
-    window.addEventListener("resize", scheduleUpdate);
+    scheduleResize();
+    window.addEventListener("resize", scheduleResize);
     return () => {
       cancelAnimationFrame(frame);
-      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("resize", scheduleResize);
     };
   }, [activeSessionId, terminalApi]);
 

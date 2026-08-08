@@ -28,6 +28,8 @@ export function App({ initialState }: Props) {
   const collapsedReposRef = useRef(new Set<string>());
   const collapsedWorktreesRef = useRef(new Set<string>());
   const draggedSessionIdRef = useRef<string | undefined>(undefined);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [terminalPanePercent, setTerminalPanePercent] = useState(65);
   const [, forceRender] = useState(0);
 
   const handleTerminalData = useCallback(
@@ -120,6 +122,39 @@ export function App({ initialState }: Props) {
       requestAnimationFrame(() => terminalApi?.focus());
     },
     [vscode, terminalApi],
+  );
+
+  const handleResizeMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const container = splitContainerRef.current;
+      if (!container) return;
+
+      const updateWidth = (clientX: number) => {
+        const rect = container.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const rawPercent = ((clientX - rect.left) / rect.width) * 100;
+        const nextPercent = Math.min(85, Math.max(25, rawPercent));
+        setTerminalPanePercent(nextPercent);
+        requestAnimationFrame(() => terminalApi?.resize());
+      };
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        updateWidth(moveEvent.clientX);
+      };
+      const handleMouseUp = () => {
+        document.body.classList.remove("resizingLayout");
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+        requestAnimationFrame(() => terminalApi?.resize());
+      };
+
+      document.body.classList.add("resizingLayout");
+      updateWidth(event.clientX);
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [terminalApi],
   );
 
   const handleSetExplorerWorktree = useCallback(
@@ -256,38 +291,59 @@ export function App({ initialState }: Props) {
   return (
     <div className="root">
       <FindBox />
-      <div className="sidebar" id="list">
-        {state.repos.map((repo) => {
-          const isRepoCollapsed = collapsedReposRef.current.has(repo.label);
-          return (
-            <div key={repo.label}>
-              <RepoNode
-                repo={repo}
-                collapsed={isRepoCollapsed}
-                onToggle={() => toggleRepo(repo.label)}
-              />
-              {!isRepoCollapsed &&
-                repo.worktrees.map((wt) => {
-                  const worktreeKey = `${repo.label}:${wt.path}`;
-                  const isWtCollapsed =
-                    collapsedWorktreesRef.current.has(worktreeKey);
-                  return (
-                    <div key={wt.path}>
-                      <WorktreeNode
-                        repoLabel={repo.label}
-                        worktree={wt}
-                        collapsed={isWtCollapsed}
-                        onToggle={() => toggleWorktree(repo.label, wt.path)}
-                        onCreateTerminal={(path) =>
-                          handleCreateTerminal(repo.label, path)
-                        }
-                        loading={state.loadingWorktrees.has(wt.path)}
-                        onSetExplorerWorktree={handleSetExplorerWorktree}
-                      />
-                      {!isWtCollapsed &&
-                        wt.sessions.map((session) => (
-                          <React.Fragment key={session.id}>
+      <div
+        ref={splitContainerRef}
+        className="splitLayout"
+        style={{
+          gridTemplateColumns: `${terminalPanePercent}% 6px minmax(220px, 1fr)`,
+        }}
+      >
+        <section className="terminalPane" aria-label="Terminal panel">
+          <TerminalEmbed
+            activeSessionId={state.activeSessionId}
+            containerRef={terminalContainerRef}
+            terminalApi={terminalApi}
+          />
+        </section>
+        <div
+          className="resizeHandle"
+          role="separator"
+          aria-label="Resize terminal and tree panels"
+          aria-orientation="vertical"
+          onMouseDown={handleResizeMouseDown}
+        />
+        <div className="sidebar" id="list">
+          {state.repos.map((repo) => {
+            const isRepoCollapsed = collapsedReposRef.current.has(repo.label);
+            return (
+              <div key={repo.label}>
+                <RepoNode
+                  repo={repo}
+                  collapsed={isRepoCollapsed}
+                  onToggle={() => toggleRepo(repo.label)}
+                />
+                {!isRepoCollapsed &&
+                  repo.worktrees.map((wt) => {
+                    const worktreeKey = `${repo.label}:${wt.path}`;
+                    const isWtCollapsed =
+                      collapsedWorktreesRef.current.has(worktreeKey);
+                    return (
+                      <div key={wt.path}>
+                        <WorktreeNode
+                          repoLabel={repo.label}
+                          worktree={wt}
+                          collapsed={isWtCollapsed}
+                          onToggle={() => toggleWorktree(repo.label, wt.path)}
+                          onCreateTerminal={(path) =>
+                            handleCreateTerminal(repo.label, path)
+                          }
+                          loading={state.loadingWorktrees.has(wt.path)}
+                          onSetExplorerWorktree={handleSetExplorerWorktree}
+                        />
+                        {!isWtCollapsed &&
+                          wt.sessions.map((session) => (
                             <TerminalLeaf
+                              key={session.id}
                               session={session}
                               isActive={session.id === state.activeSessionId}
                               onSelect={handleSelect}
@@ -297,21 +353,14 @@ export function App({ initialState }: Props) {
                               getDraggedSessionId={getDraggedSessionId}
                               clearDraggedSession={clearDraggedSession}
                             />
-                            {session.id === state.activeSessionId && (
-                              <TerminalEmbed
-                                activeSessionId={state.activeSessionId}
-                                containerRef={terminalContainerRef}
-                                terminalApi={terminalApi}
-                              />
-                            )}
-                          </React.Fragment>
-                        ))}
-                    </div>
-                  );
-                })}
-            </div>
-          );
-        })}
+                          ))}
+                      </div>
+                    );
+                  })}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

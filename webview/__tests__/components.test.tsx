@@ -164,7 +164,7 @@ describe("WorktreeNode", () => {
     expect(screen.getByText(/feat\/login/)).toBeTruthy();
   });
 
-  it("renders checkbox", () => {
+  it("marks active explorer worktree with background class and no checkbox", () => {
     renderWithVsCode(
       <WorktreeNode
         repoLabel="project.git"
@@ -176,7 +176,10 @@ describe("WorktreeNode", () => {
         onSetExplorerWorktree={vi.fn()}
       />,
     );
-    expect(screen.getByRole("checkbox")).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.getByText(/feat-login/).closest(".wt")?.className).toContain(
+      "workspaceActive",
+    );
   });
 
   it("renders add button", () => {
@@ -191,7 +194,9 @@ describe("WorktreeNode", () => {
         onSetExplorerWorktree={vi.fn()}
       />,
     );
-    expect(screen.getByText("+")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "New terminal in feat-login" }),
+    ).toBeTruthy();
   });
 
   it("calls onToggle and posts collapseAll when clicked", () => {
@@ -246,7 +251,7 @@ describe("WorktreeNode", () => {
     expect(screen.getByText(/▾/)).toBeTruthy();
   });
 
-  it("checkbox change calls onSetExplorerWorktree", () => {
+  it("row click calls onSetExplorerWorktree", () => {
     const onSetExplorerWorktree = vi.fn();
     renderWithVsCode(
       <WorktreeNode
@@ -259,8 +264,7 @@ describe("WorktreeNode", () => {
         onSetExplorerWorktree={onSetExplorerWorktree}
       />,
     );
-    const checkbox = screen.getByRole("checkbox") as HTMLInputElement;
-    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByText(/feat-login/));
     expect(onSetExplorerWorktree).toHaveBeenCalledWith("/tmp/feat-login");
   });
 
@@ -277,7 +281,9 @@ describe("WorktreeNode", () => {
         onSetExplorerWorktree={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByText("+"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "New terminal in feat-login" }),
+    );
     expect(onCreateTerminal).toHaveBeenCalledWith("/tmp/feat-login");
   });
 
@@ -305,7 +311,7 @@ describe("WorktreeNode", () => {
     wt.dispatchEvent(contextMenuEvent);
   });
 
-  it("checkbox shows loading state when loading prop is true", () => {
+  it("shows loading state when loading prop is true", () => {
     renderWithVsCode(
       <WorktreeNode
         repoLabel="project.git"
@@ -317,7 +323,6 @@ describe("WorktreeNode", () => {
         onSetExplorerWorktree={vi.fn()}
       />,
     );
-    // Loading should be shown, checkbox hidden
     expect(document.querySelector(".loadingCheckbox")).toBeTruthy();
     expect(screen.queryByRole("checkbox")).toBeNull();
   });
@@ -337,7 +342,6 @@ describe("WorktreeNode", () => {
       />,
       mockVsCode,
     );
-    // Loading should be shown
     expect(document.querySelector(".loadingCheckbox")).toBeTruthy();
     expect(screen.queryByRole("checkbox")).toBeNull();
 
@@ -356,8 +360,7 @@ describe("WorktreeNode", () => {
       </VsCodeContext.Provider>,
     );
 
-    // Checkbox should reappear, loading should be gone
-    expect(screen.getByRole("checkbox")).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
     expect(document.querySelector(".loadingCheckbox")).toBeNull();
   });
 
@@ -884,25 +887,7 @@ describe("TerminalEmbed", () => {
     expect(screen.getByText("", { selector: ".terminalInline" })).toBeTruthy();
   });
 
-  it("sizes terminal container to available viewport height", () => {
-    const originalInnerHeight = window.innerHeight;
-    Object.defineProperty(window, "innerHeight", {
-      configurable: true,
-      value: 600,
-    });
-    const rectSpy = vi
-      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
-      .mockReturnValue({
-        bottom: 120,
-        height: 20,
-        left: 0,
-        right: 0,
-        top: 100,
-        width: 0,
-        x: 0,
-        y: 100,
-        toJSON: () => ({}),
-      });
+  it("resizes terminal container when mounted and on viewport resize", () => {
     const rafSpy = vi
       .spyOn(window, "requestAnimationFrame")
       .mockImplementation((callback) => {
@@ -929,19 +914,14 @@ describe("TerminalEmbed", () => {
       />,
     );
 
-    const inline = document.querySelector(".terminalInline") as HTMLElement;
-    expect(inline.style.getPropertyValue("--terminal-inline-height")).toBe(
-      "492px",
-    );
-    expect(terminalApi.resize).toHaveBeenCalled();
+    expect(document.querySelector(".terminalInline")).toBeTruthy();
+    expect(terminalApi.resize).toHaveBeenCalledTimes(1);
 
-    rectSpy.mockRestore();
+    window.dispatchEvent(new Event("resize"));
+    expect(terminalApi.resize).toHaveBeenCalledTimes(2);
+
     rafSpy.mockRestore();
     cancelSpy.mockRestore();
-    Object.defineProperty(window, "innerHeight", {
-      configurable: true,
-      value: originalInnerHeight,
-    });
   });
 
   it("Escape key hides visible findBox and focuses terminal", () => {

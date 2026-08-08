@@ -9,13 +9,59 @@ body {
 
 .root {
   height: 100%;
-  overflow: auto;
+  overflow: hidden;
   padding: 8px;
   box-sizing: border-box;
 }
 
+.splitLayout {
+  display: grid;
+  height: calc(100vh - 16px);
+  min-height: 0;
+}
+
+.terminalPane,
 .sidebar {
   min-width: 0;
+  min-height: 0;
+}
+
+.terminalPane {
+  overflow: hidden;
+}
+
+.sidebar {
+  overflow: auto;
+  padding-left: 4px;
+}
+
+.resizeHandle {
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+}
+
+.resizeHandle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 1px;
+  background: var(--vscode-panel-border);
+}
+
+.resizeHandle:hover::before,
+.resizingLayout .resizeHandle::before {
+  left: 1px;
+  width: 3px;
+  background: var(--vscode-focusBorder, #007fd4);
+}
+
+.resizingLayout {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .repo {
@@ -33,6 +79,11 @@ body {
   padding: 4px 6px;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.wt {
+  position: relative;
+  padding-right: 34px;
 }
 
 .terminalLeaf {
@@ -53,6 +104,21 @@ body {
 .wt.active,
 .terminalLeaf.active {
   background: var(--vscode-list-hoverBackground);
+}
+
+.wt.workspaceActive {
+  background: var(
+    --vscode-list-activeSelectionBackground,
+    var(--vscode-list-hoverBackground)
+  );
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+}
+
+.wt.workspaceActive:hover {
+  background: var(
+    --vscode-list-activeSelectionBackground,
+    var(--vscode-list-hoverBackground)
+  );
 }
 
 .terminalIcon {
@@ -102,10 +168,12 @@ body {
   flex: 0 0 auto;
 }
 
-.workspaceState {
-  flex: 0 0 auto;
-  accent-color: #2ea043;
-  cursor: pointer;
+.worktreeLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
 }
 
 .loadingCheckbox {
@@ -126,9 +194,8 @@ body {
 }
 
 .terminalInline {
-  margin: 4px 0 8px 0;
   width: 100%;
-  height: var(--terminal-inline-height, calc(100vh - 16px));
+  height: 100%;
   min-height: 160px;
   border: 1px solid var(--vscode-panel-border);
   padding: 4px;
@@ -162,12 +229,46 @@ body {
 }
 
 .addTerminal {
-  margin-left: auto;
+  position: absolute;
+  right: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  align-items: center;
+  justify-content: center;
   border: none;
+  border-radius: 3px;
   background: transparent;
   color: var(--vscode-foreground);
   cursor: pointer;
-  opacity: 0.8;
+  opacity: 0;
+  padding: 0;
+  z-index: 1;
+}
+
+.wt:hover .addTerminal,
+.wt:focus-within .addTerminal {
+  opacity: 1;
+}
+
+.addTerminal::before,
+.addTerminal::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.addTerminal::after {
+  transform: translate(-50%, -50%) rotate(90deg);
 }
 
 .terminalLabel {

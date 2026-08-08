@@ -257,6 +257,63 @@ describe("App", () => {
     };
     renderWithVsCode(state);
     expect(screen.getByText("terminal 1")).toBeTruthy();
+    expect(
+      document.querySelector(".terminalPane .terminalInline"),
+    ).toBeTruthy();
+  });
+
+  it("resizes terminal and tree panes by dragging the divider", () => {
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [],
+        },
+      ],
+      activeSessionId: undefined,
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        bottom: 400,
+        height: 400,
+        left: 0,
+        right: 1000,
+        top: 0,
+        width: 1000,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 1;
+      });
+
+    renderWithVsCode(state);
+
+    const separator = screen.getByRole("separator", {
+      name: "Resize terminal and tree panels",
+    });
+    const split = separator.closest(".splitLayout") as HTMLElement;
+    expect(split.style.gridTemplateColumns).toBe("65% 6px minmax(220px, 1fr)");
+
+    fireEvent.mouseDown(separator, { clientX: 650 });
+    fireEvent.mouseMove(window, { clientX: 400 });
+    expect(split.style.gridTemplateColumns).toBe("40% 6px minmax(220px, 1fr)");
+
+    fireEvent.mouseUp(window);
+    expect(document.body.classList.contains("resizingLayout")).toBe(false);
+
+    rectSpy.mockRestore();
+    rafSpy.mockRestore();
   });
 
   it("hydrates active terminal output only once", async () => {
@@ -375,7 +432,7 @@ describe("App", () => {
     };
     renderWithVsCode(state);
     expect(screen.getByText(/feat-login/)).toBeTruthy();
-    expect(screen.getByRole("checkbox")).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 
   it("renders terminal leaf with idle state", () => {
@@ -570,11 +627,10 @@ describe("App", () => {
     });
     window.dispatchEvent(event);
 
-    // After loadingDone, checkbox should reappear
-    // Note: React state updates are async, so we use waitFor
+    // After loadingDone, loading indicator should disappear
     return new Promise<void>((resolve) => {
       setTimeout(() => {
-        expect(screen.getByRole("checkbox")).toBeTruthy();
+        expect(screen.queryByRole("checkbox")).toBeNull();
         expect(document.querySelector(".loadingCheckbox")).toBeNull();
         resolve();
       }, 0);
@@ -679,7 +735,9 @@ describe("App", () => {
     };
     renderWithVsCode(state, mockVsCode);
     // Click add button
-    fireEvent.click(screen.getByText("+"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "New terminal in feat-login" }),
+    );
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "create", path: "/tmp/feat-login" }),
     );
@@ -724,7 +782,9 @@ describe("App", () => {
     fireEvent.click(screen.getByText(/feat-login/));
     expect(screen.queryByText("terminal 1")).toBeNull();
 
-    fireEvent.click(screen.getByText("+"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "New terminal in feat-login" }),
+    );
 
     expect(screen.getByText("terminal 1")).toBeTruthy();
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
