@@ -81,9 +81,17 @@ export class EmbeddedTerminalViewProvider
       void vscode.window.showErrorMessage(`Worktree not found: ${fsPath}`);
       return;
     }
+    const shellPath = validatedConfiguredTerminalShell();
+    log("native terminal create prepare", {
+      worktree: worktree.name,
+      cwd: worktree.path,
+      shellPath: shellPath ?? "default",
+      configuredShell: Boolean(shellPath),
+    });
     const terminal = vscode.window.createTerminal({
       cwd: worktree.path,
       name: worktree.name,
+      ...(shellPath ? { shellPath } : {}),
     });
     terminal.show();
   }
@@ -566,33 +574,66 @@ export class EmbeddedTerminalViewProvider
     const generated = this.nextTerminalLabel(worktree);
     const label = options.label ?? generated.label;
     const terminalNumber = generated.terminalNumber;
-    const shell = safeEnv("SHELL") || defaultShell();
-    const wrapper = shellActivityWrapper(shell);
+    const shellResolution = resolvedTerminalShell();
+    const wrapper = shellActivityWrapper(shellResolution.shell);
     const env = ptyEnv({ ...options.env, ...wrapper.env });
     log("embedded terminal spawn prepare", {
       repo: worktree.repo.label,
       worktree: worktree.name,
       cwd: worktree.path,
       shell: wrapper.shell,
+      shellSource: shellResolution.source,
+      shellArgs: wrapper.args,
       label,
       envKeys: Object.keys(options.env ?? {}),
+      wrapperEnvKeys: Object.keys(wrapper.env),
       wrapped: wrapper.cleanupPaths.length > 0,
     });
     this.ensureNodePtySpawnHelperExecutable();
-    const proc = pty.spawn(wrapper.shell, wrapper.args, {
-      name: "xterm-256color",
-      cwd: worktree.path,
-      env,
-      cols: 80,
-      rows: 24,
-    });
+    let proc: pty.IPty;
+    try {
+      proc = pty.spawn(wrapper.shell, wrapper.args, {
+        name: "xterm-256color",
+        cwd: worktree.path,
+        env,
+        cols: 80,
+        rows: 24,
+      });
+    } catch (error) {
+      for (const cleanupPath of wrapper.cleanupPaths) {
+        try {
+          fs.rmSync(cleanupPath, { recursive: true, force: true });
+        } catch (cleanupError) {
+          logError("failed to clean shell activity wrapper after spawn error", {
+            cleanupPath,
+            cleanupError,
+          });
+        }
+      }
+      logError("failed to spawn embedded terminal", {
+        repo: worktree.repo.label,
+        worktree: worktree.name,
+        cwd: worktree.path,
+        shell: wrapper.shell,
+        shellSource: shellResolution.source,
+        shellArgs: wrapper.args,
+        error,
+      });
+      void vscode.window.showErrorMessage(
+        `Failed to open terminal with shell ${wrapper.shell}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
+    }
     log("spawn embedded terminal", {
       repo: worktree.repo.label,
       worktree: worktree.name,
       cwd: worktree.path,
       shell: wrapper.shell,
+      shellSource: shellResolution.source,
+      shellArgs: wrapper.args,
       label,
       envKeys: Object.keys(options.env ?? {}),
+      wrapperEnvKeys: Object.keys(wrapper.env),
       wrapped: wrapper.cleanupPaths.length > 0,
     });
     const session: EmbeddedSession = {
@@ -1001,12 +1042,21 @@ if [[ -z "$HISTFILE" || "$HISTFILE" == "$ZDOTDIR"/* ]]; then
   HISTFILE="$HOME/.zsh_history"
 fi
 
+typeset -g __wtwm_last_command=""
+
 __wtwm_preexec() {
-  print -rn -- $'\e]777;wtwm;start;' "$1" $'\a'
+  __wtwm_last_command="$1"
+  printf '\033]777;wtwm;start;%s\a' "$__wtwm_last_command"
 }
 
 __wtwm_precmd() {
-  print -rn -- $'\e]777;wtwm;idle\a'
+  local exit_code="$?"
+  if [[ "$exit_code" -ne 0 ]]; then
+    printf '\033]777;wtwm;error;%s;%s\a' "$exit_code" "$__wtwm_last_command"
+  else
+    printf '\033]777;wtwm;idle\a'
+  fi
+  return "$exit_code"
 }
 
 autoload -Uz add-zsh-hook
@@ -1092,6 +1142,72 @@ export function defaultShell(): string {
   if (process.platform === "win32") return "powershell.exe";
   if (process.platform === "darwin") return "/bin/zsh";
   return "/bin/bash";
+}
+
+export function configuredTerminalShell(): string | undefined {
+  const rawValue = vscode.workspace
+    .getConfiguration("worktreeManager")
+    .get<unknown>("terminalShell", "");
+  if (typeof rawValue !== "string") {
+    log("ignored invalid worktreeManager.terminalShell value", {
+      valueType: typeof rawValue,
+    });
+    return undefined;
+  }
+  const value = rawValue.trim();
+  return value || undefined;
+}
+
+export function validatedConfiguredTerminalShell(): string | undefined {
+  const configuredShell = configuredTerminalShell();
+  if (!configuredShell) return undefined;
+  if (isUsableShellPath(configuredShell)) return configuredShell;
+
+  logError("ignored unusable worktreeManager.terminalShell value", {
+    shell: configuredShell,
+    reason: "path does not exist, is not a file, or is not executable",
+  });
+  void vscode.window.showErrorMessage(
+    `Configured Worktree Manager terminal shell is not executable: ${configuredShell}. Falling back to the default shell.`,
+  );
+  return undefined;
+}
+
+function isUsableShellPath(shellPath: string): boolean {
+  if (process.platform === "win32") return true;
+  try {
+    if (!fs.existsSync(shellPath)) return false;
+    const stat = fs.statSync(shellPath);
+    const isFile = typeof stat.isFile === "function" ? stat.isFile() : true;
+    return isFile && (stat.mode & 0o111) !== 0;
+  } catch (error) {
+    logError("failed to inspect configured terminal shell", {
+      shell: shellPath,
+      error,
+    });
+    return false;
+  }
+}
+
+export function resolvedTerminalShell(): {
+  shell: string;
+  source: "configuration" | "environment" | "default";
+} {
+  const configuredShell = validatedConfiguredTerminalShell();
+  if (configuredShell) {
+    return { shell: configuredShell, source: "configuration" };
+  }
+
+  const envShell = safeEnv("SHELL");
+  if (envShell) {
+    return { shell: envShell, source: "environment" };
+  }
+
+  return { shell: defaultShell(), source: "default" };
+}
+
+export function terminalShell(): string {
+  return resolvedTerminalShell().shell;
 }
 
 export function ptyEnv(

@@ -6,6 +6,9 @@ import {
   terminalAliasFromLabel,
   numberOrUndefined,
   defaultShell,
+  configuredTerminalShell,
+  validatedConfiguredTerminalShell,
+  terminalShell,
   fishQuote,
   zshActivityRc,
   bashActivityRc,
@@ -19,6 +22,7 @@ import {
 } from "../embeddedTerminalView";
 import type { EmbeddedSession } from "../embeddedTerminalView";
 import * as vscode from "vscode";
+import * as pty from "node-pty";
 
 vi.mock("vscode", () => import("../__mocks__/vscode"));
 vi.mock("node-pty", () => ({
@@ -203,10 +207,72 @@ describe("numberOrUndefined", () => {
 });
 
 describe("defaultShell", () => {
+  beforeEach(() => {
+    (vscode as any).__resetConfig();
+    mockExistsSync.mockReturnValue(false);
+    mockStatSync.mockReturnValue({ mode: 0o644 });
+  });
+
   it("returns a string", () => {
     const shell = defaultShell();
     expect(typeof shell).toBe("string");
     expect(shell.length).toBeGreaterThan(0);
+  });
+
+  it("reads configured terminal shell", () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ mode: 0o755, isFile: () => true });
+    (vscode as any).__setConfig("worktreeManager.terminalShell", " /bin/zsh ");
+    expect(configuredTerminalShell()).toBe("/bin/zsh");
+    expect(validatedConfiguredTerminalShell()).toBe("/bin/zsh");
+    expect(terminalShell()).toBe("/bin/zsh");
+  });
+
+  it("ignores configured terminal shell when it is a directory", () => {
+    mockExistsSync.mockReturnValueOnce(true);
+    mockStatSync.mockReturnValueOnce({ mode: 0o755, isFile: () => false });
+    (vscode as any).__setConfig(
+      "worktreeManager.terminalShell",
+      "/usr/share/zsh",
+    );
+    expect(configuredTerminalShell()).toBe("/usr/share/zsh");
+    expect(validatedConfiguredTerminalShell()).toBeUndefined();
+  });
+
+  it("ignores configured terminal shell when path does not exist", () => {
+    mockExistsSync.mockReturnValueOnce(false);
+    (vscode as any).__setConfig(
+      "worktreeManager.terminalShell",
+      "/missing/zsh",
+    );
+    expect(validatedConfiguredTerminalShell()).toBeUndefined();
+  });
+
+  it("ignores configured terminal shell when path is not executable", () => {
+    mockExistsSync.mockReturnValueOnce(true);
+    mockStatSync.mockReturnValueOnce({ mode: 0o644, isFile: () => true });
+    (vscode as any).__setConfig("worktreeManager.terminalShell", "/bin/zsh");
+    expect(validatedConfiguredTerminalShell()).toBeUndefined();
+  });
+
+  it("ignores configured terminal shell when stat fails", () => {
+    mockExistsSync.mockReturnValueOnce(true);
+    mockStatSync.mockImplementationOnce(() => {
+      throw new Error("stat failed");
+    });
+    (vscode as any).__setConfig("worktreeManager.terminalShell", "/bin/zsh");
+    expect(validatedConfiguredTerminalShell()).toBeUndefined();
+  });
+
+  it("ignores non-string configured terminal shell", () => {
+    (vscode as any).__setConfig("worktreeManager.terminalShell", 42);
+    expect(configuredTerminalShell()).toBeUndefined();
+  });
+
+  it("ignores empty configured terminal shell", () => {
+    (vscode as any).__setConfig("worktreeManager.terminalShell", "   ");
+    expect(configuredTerminalShell()).toBeUndefined();
+    expect(typeof terminalShell()).toBe("string");
   });
 });
 
@@ -231,6 +297,14 @@ describe("zshActivityRc", () => {
     const rc = zshActivityRc();
     expect(rc).toContain('"$HISTFILE" == "$ZDOTDIR"/*');
     expect(rc).toContain('HISTFILE="$HOME/.zsh_history"');
+  });
+
+  it("emits an error marker with the previous command when it fails", () => {
+    const rc = zshActivityRc();
+    expect(rc).toContain('typeset -g __wtwm_last_command=""');
+    expect(rc).toContain('__wtwm_last_command="$1"');
+    expect(rc).toContain('if [[ "$exit_code" -ne 0 ]]');
+    expect(rc).toContain("777;wtwm;error;%s;%s");
   });
 });
 
@@ -409,6 +483,8 @@ describe("shellActivityWrapper", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMkdtempSync.mockReturnValue("/tmp/test-dir");
+    mockExistsSync.mockReturnValue(false);
+    mockStatSync.mockReturnValue({ mode: 0o644 });
   });
 
   it("returns base wrapper for unknown shell", () => {
@@ -478,6 +554,9 @@ describe("EmbeddedTerminalViewProvider", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    (vscode as any).__resetConfig();
+    mockExistsSync.mockReturnValue(false);
+    mockStatSync.mockReturnValue({ mode: 0o644 });
     const extensionUri = { fsPath: "/ext" } as any;
     provider = new EmbeddedTerminalViewProvider(extensionUri);
     const model = await import("../model");
@@ -553,6 +632,32 @@ describe("EmbeddedTerminalViewProvider", () => {
     expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalled();
   });
 
+  it("openTerminal uses configured terminal shell", async () => {
+    mockExistsSync.mockReturnValueOnce(true);
+    mockStatSync.mockReturnValueOnce({ mode: 0o755, isFile: () => true });
+    (vscode as any).__setConfig("worktreeManager.terminalShell", "/bin/zsh");
+    const worktree = {
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
+    } as any;
+    await provider.openTerminal(worktree);
+    expect(vi.mocked(pty.spawn)).toHaveBeenCalledWith(
+      "/bin/zsh",
+      expect.any(Array),
+      expect.objectContaining({ cwd: "/tmp/feat-login" }),
+    );
+  });
+
   it("openTerminalForPath opens when worktree found", async () => {
     const worktree = {
       repo: {
@@ -600,7 +705,39 @@ describe("EmbeddedTerminalViewProvider", () => {
       new Map([[worktree.repo, [worktree]]]),
     );
     await provider.openNativeTerminalForPath("/tmp/feat-login");
-    expect(vi.mocked(vscode.window.createTerminal)).toHaveBeenCalled();
+    expect(vi.mocked(vscode.window.createTerminal)).toHaveBeenCalledWith({
+      cwd: "/tmp/feat-login",
+      name: "feat-login",
+    });
+  });
+
+  it("openNativeTerminalForPath uses configured terminal shell", async () => {
+    mockExistsSync.mockReturnValueOnce(true);
+    mockStatSync.mockReturnValueOnce({ mode: 0o755, isFile: () => true });
+    (vscode as any).__setConfig("worktreeManager.terminalShell", "/bin/zsh");
+    const worktree = {
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
+    } as any;
+    mockListAllWorktrees.mockResolvedValueOnce(
+      new Map([[worktree.repo, [worktree]]]),
+    );
+    await provider.openNativeTerminalForPath("/tmp/feat-login");
+    expect(vi.mocked(vscode.window.createTerminal)).toHaveBeenCalledWith({
+      cwd: "/tmp/feat-login",
+      name: "feat-login",
+      shellPath: "/bin/zsh",
+    });
   });
 
   it("openNativeTerminalForPath shows error when not found", async () => {

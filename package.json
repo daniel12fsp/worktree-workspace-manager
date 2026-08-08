@@ -102,6 +102,11 @@
           },
           "description": "Bare git repositories to manage. Leading ~ is expanded; environment variables are not."
         },
+        "worktreeManager.terminalShell": {
+          "type": "string",
+          "default": "",
+          "description": "Optional shell executable path for terminals opened by Worktree Manager, for example /bin/zsh. Leave empty to use the environment/default shell."
+        },
         "worktreeManager.colors": {
           "type": "object",
           "default": {},
