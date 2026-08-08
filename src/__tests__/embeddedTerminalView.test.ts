@@ -311,6 +311,7 @@ describe("zshActivityRc", () => {
 describe("bashActivityRc", () => {
   it("returns a string with guarded DEBUG trap", () => {
     const rc = bashActivityRc();
+    expect(rc).toContain('if [[ -z "$(trap -p DEBUG)" ]]');
     expect(rc).toContain("trap '__wtwm_debug' DEBUG");
     expect(rc).toContain("__wtwm_debug");
     expect(rc).toContain("777;wtwm");
@@ -319,7 +320,16 @@ describe("bashActivityRc", () => {
   it("does not report prompt rendering as running", () => {
     const rc = bashActivityRc();
     expect(rc).toContain("__wtwm_in_prompt=1");
-    expect(rc).toContain('[[ "$__wtwm_in_prompt" == 1 ]] && return');
+    expect(rc).toContain("__wtwm_prompt_end()");
+    expect(rc).toContain('[[ "$__wtwm_in_prompt" == 1 ]] && return 0');
+  });
+
+  it("preserves array PROMPT_COMMAND", () => {
+    const rc = bashActivityRc();
+    expect(rc).toContain("grep -Eq '^declare -[^ ]*[aA]'");
+    expect(rc).toContain(
+      'PROMPT_COMMAND=(__wtwm_prompt_start "${PROMPT_COMMAND[@]}" __wtwm_prompt_end)',
+    );
   });
 
   it("emits an error marker with the previous command when it fails", () => {

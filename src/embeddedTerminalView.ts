@@ -1085,27 +1085,43 @@ __wtwm_command_from_history() {
 
 __wtwm_debug() {
   local command="$BASH_COMMAND"
-  [[ "$__wtwm_in_prompt" == 1 ]] && return
-  [[ -z "$command" || "$command" == __wtwm_* || "$command" == trap\\ * || "$command" == PROMPT_COMMAND=* ]] && return
+  [[ "$__wtwm_in_prompt" == 1 ]] && return 0
+  [[ -z "$command" || "$command" == __wtwm_* || "$command" == trap\\ * || "$command" == PROMPT_COMMAND=* ]] && return 0
   printf '\\033]777;wtwm;start;%s\\a' "$command"
 }
 
-__wtwm_prompt() {
-  local exit_code="$1"
+__wtwm_prompt_start() {
+  local exit_code="$?"
   local command=""
+  __wtwm_in_prompt=1
   if [[ "$exit_code" -ne 0 ]]; then
     command="$(__wtwm_command_from_history)"
     printf '\\033]777;wtwm;error;%s;%s\\a' "$exit_code" "$command"
   else
     printf '\\033]777;wtwm;idle\\a'
   fi
-  __wtwm_in_prompt=0
   return "$exit_code"
 }
 
-trap '__wtwm_debug' DEBUG
+__wtwm_prompt_end() {
+  __wtwm_in_prompt=0
+}
+
+# Do not clobber an existing DEBUG trap (for example ble.sh/bash-preexec), since
+# replacing it can break interactive line editing and make the terminal appear
+# unable to accept typing. When another DEBUG trap exists we still report idle
+# and error state from PROMPT_COMMAND, but skip start markers.
+if [[ -z "$(trap -p DEBUG)" ]]; then
+  trap '__wtwm_debug' DEBUG
+fi
+
 # Mark prompt rendering so DEBUG does not report prompt commands as running.
-PROMPT_COMMAND="__wtwm_exit_code=\\$?;__wtwm_in_prompt=1\${PROMPT_COMMAND:+;$PROMPT_COMMAND};__wtwm_prompt \\$__wtwm_exit_code"
+# Preserve both string and array PROMPT_COMMAND forms used by modern bash setups.
+if declare -p PROMPT_COMMAND 2>/dev/null | grep -Eq '^declare -[^ ]*[aA]'; then
+  PROMPT_COMMAND=(__wtwm_prompt_start "\${PROMPT_COMMAND[@]}" __wtwm_prompt_end)
+else
+  PROMPT_COMMAND="__wtwm_prompt_start\${PROMPT_COMMAND:+;$PROMPT_COMMAND};__wtwm_prompt_end"
+fi
 `;
 }
 
