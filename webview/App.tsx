@@ -291,14 +291,12 @@ export function App({ initialState }: Props) {
   return (
     <div className="root">
       <FindBox />
-      <div
-        ref={splitContainerRef}
-        className="splitLayout"
-        style={{
-          gridTemplateColumns: `${terminalPanePercent}% 6px minmax(220px, 1fr)`,
-        }}
-      >
-        <section className="terminalPane" aria-label="Terminal panel">
+      <div ref={splitContainerRef} className="splitLayout">
+        <section
+          className="terminalPane"
+          aria-label="Terminal panel"
+          style={{ flex: `0 0 ${terminalPanePercent}%` }}
+        >
           <TerminalEmbed
             activeSessionId={state.activeSessionId}
             containerRef={terminalContainerRef}
@@ -311,8 +309,9 @@ export function App({ initialState }: Props) {
           aria-label="Resize terminal and tree panels"
           aria-orientation="vertical"
           onMouseDown={handleResizeMouseDown}
+          style={{ flex: "0 0 6px" }}
         />
-        <div className="sidebar" id="list">
+        <div className="sidebar" id="list" style={{ flex: "1 1 220px" }}>
           {state.repos.map((repo) => {
             const isRepoCollapsed = collapsedReposRef.current.has(repo.label);
             return (

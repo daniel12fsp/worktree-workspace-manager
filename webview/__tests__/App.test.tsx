@@ -303,11 +303,12 @@ describe("App", () => {
       name: "Resize terminal and tree panels",
     });
     const split = separator.closest(".splitLayout") as HTMLElement;
-    expect(split.style.gridTemplateColumns).toBe("65% 6px minmax(220px, 1fr)");
+    const terminalPane = split.querySelector(".terminalPane") as HTMLElement;
+    expect(terminalPane.style.flex).toBe("0 0 65%");
 
     fireEvent.mouseDown(separator, { clientX: 650 });
     fireEvent.mouseMove(window, { clientX: 400 });
-    expect(split.style.gridTemplateColumns).toBe("40% 6px minmax(220px, 1fr)");
+    expect(terminalPane.style.flex).toBe("0 0 40%");
 
     fireEvent.mouseUp(window);
     expect(document.body.classList.contains("resizingLayout")).toBe(false);

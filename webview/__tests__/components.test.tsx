@@ -194,9 +194,11 @@ describe("WorktreeNode", () => {
         onSetExplorerWorktree={vi.fn()}
       />,
     );
-    expect(
-      screen.getByRole("button", { name: "New terminal in feat-login" }),
-    ).toBeTruthy();
+    const button = screen.getByRole("button", {
+      name: "New terminal in feat-login",
+    });
+    expect(button).toBeTruthy();
+    expect(button.textContent?.trim()).toBe("+");
   });
 
   it("calls onToggle and posts collapseAll when clicked", () => {

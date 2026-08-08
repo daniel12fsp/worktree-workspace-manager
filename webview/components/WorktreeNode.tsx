@@ -106,7 +106,9 @@ export function WorktreeNode({
         title="New terminal here"
         aria-label={`New terminal in ${worktree.name}`}
         onClick={handleAdd}
-      />
+      >
+        +
+      </button>
     </div>
   );
 }
