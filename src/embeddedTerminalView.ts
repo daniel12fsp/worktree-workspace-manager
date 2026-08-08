@@ -16,6 +16,7 @@ import {
   normalizePath,
 } from "./workspaceFile";
 import { log, logError } from "./logger";
+import { stripTerminalControlSequences } from "./terminalControl";
 
 type TerminalActivityState = "idle" | "running";
 
@@ -480,7 +481,8 @@ export class EmbeddedTerminalViewProvider
       return;
     }
 
-    const output = session.output.join("") || "No captured output yet.\n";
+    const output =
+      sanitizedOutputForEditor(session.output) || "No captured output yet.\n";
     const content = [
       `Terminal: ${session.label}`,
       `Worktree: ${session.worktree.name}`,
@@ -1138,11 +1140,15 @@ export function resolveTerminalFilePath(rawPath: string, cwd?: string): string {
   return resolvedPath;
 }
 
-export function outputPreview(output: string[]): string {
-  const text = output
-    .join("")
-    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
+export function sanitizedOutputForEditor(output: string[]): string {
+  return stripTerminalControlSequences(output.join(""))
+    .replace(/\r\n/g, "\n")
     .replace(/\r/g, "\n")
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+}
+
+export function outputPreview(output: string[]): string {
+  const text = sanitizedOutputForEditor(output)
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)

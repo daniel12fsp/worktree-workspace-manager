@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   outputPreview,
+  sanitizedOutputForEditor,
   resolveTerminalFilePath,
   terminalAliasFromLabel,
   numberOrUndefined,
@@ -71,6 +72,23 @@ vi.mock("node:fs", () => ({
     rmSync: vi.fn(),
   },
 }));
+
+describe("sanitizedOutputForEditor", () => {
+  it("removes terminal color and control sequences", () => {
+    const output = [
+      "\x1b[31mred\x1b[0m\n",
+      "A\x1b]2;title\x07B\n",
+      "C\x1bP1$r0m\x1b\\D\n",
+    ];
+    expect(sanitizedOutputForEditor(output)).toBe("red\nAB\nCD\n");
+  });
+
+  it("normalizes carriage returns and preserves printable text", () => {
+    expect(sanitizedOutputForEditor(["hello\r\nworld\r!"])).toBe(
+      "hello\nworld\n!",
+    );
+  });
+});
 
 describe("outputPreview", () => {
   it("returns last non-empty line", () => {
@@ -1827,8 +1845,16 @@ describe("EmbeddedTerminalViewProvider", () => {
     const sessions = (provider as any).sessions;
     const sessionIds = [...sessions.keys()];
     if (sessionIds.length > 0) {
+      sessions.get(sessionIds[0]).output = ["\x1b[31mred\x1b[0m\n"];
       await messageHandler!({ type: "openSessionOutput", id: sessionIds[0] });
-      expect(vscode.workspace.openTextDocument).toHaveBeenCalled();
+      expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith(
+        expect.objectContaining({ content: expect.stringContaining("red\n") }),
+      );
+      expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: expect.not.stringContaining("\x1b[31m"),
+        }),
+      );
     }
   });
 
