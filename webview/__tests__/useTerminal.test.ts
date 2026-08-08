@@ -9,6 +9,8 @@ import {
   stripTerminalGeneratedInput,
   stripMouseReports,
   sanitizeReplayedTerminalOutput,
+  TerminalControlSanitizer,
+  TerminalInputSanitizer,
 } from "../hooks/useTerminal";
 
 describe("trimTerminalLink", () => {
@@ -199,6 +201,15 @@ describe("stripTerminalQueryResponses", () => {
       stripTerminalQueryResponses("echo hi\x1b[?0;276;0c\x1b[>0;276;0c\r"),
     ).toBe("echo hi\r");
   });
+
+  it("removes additional terminal-generated replies", () => {
+    const input = "a\x1b[12;34R\x1b[8;24;80t\x1b[?2004;1$yb";
+    expect(stripTerminalQueryResponses(input)).toBe("ab");
+  });
+
+  it("removes 8-bit C1 query responses", () => {
+    expect(stripTerminalQueryResponses("a\x9b>0;276;0cb")).toBe("ab");
+  });
 });
 
 describe("stripTerminalGeneratedInput", () => {
@@ -222,6 +233,21 @@ describe("stripTerminalGeneratedInput", () => {
   it("removes x10 mouse reports while idle", () => {
     expect(stripMouseReports("a\x1b[M !!b")).toBe("ab");
   });
+
+  it("handles leaked DA2 split across chunks", () => {
+    const sanitizer = new TerminalInputSanitizer();
+    const output = [
+      sanitizer.write("A\x1b", "idle"),
+      sanitizer.write("[>", "idle"),
+      sanitizer.write("0;276;", "idle"),
+      sanitizer.write("0cB", "idle"),
+    ].join("");
+    expect(output).toBe("AB");
+  });
+
+  it("preserves keyboard input sequences while idle", () => {
+    expect(stripTerminalGeneratedInput("a\x1b[Ab", "idle")).toBe("a\x1b[Ab");
+  });
 });
 
 describe("sanitizeReplayedTerminalOutput", () => {
@@ -238,6 +264,47 @@ describe("sanitizeReplayedTerminalOutput", () => {
   it("preserves normal text, colors, and non-input terminal modes", () => {
     const input = "\x1b[31mred\x1b[0m\x1b[?25h";
     expect(sanitizeReplayedTerminalOutput(input)).toBe(input);
+  });
+
+  it("removes replayed terminal size and DEC mode queries", () => {
+    const input = "a\x1b[18t\x1b[?2004$pb";
+    expect(sanitizeReplayedTerminalOutput(input)).toBe("ab");
+  });
+});
+
+const stripEveryTerminalSequence = (sequence: string) =>
+  sequence.startsWith("\x1b") ||
+  sequence.startsWith("\x90") ||
+  sequence.startsWith("\x9d") ||
+  sequence.startsWith("\x9e") ||
+  sequence.startsWith("\x9f");
+
+describe("TerminalControlSanitizer fixture corpus", () => {
+  const cases: Array<[string, string, string]> = [
+    ["SGR", "A\x1b[38;2;12;34;56mB", "AB"],
+    ["OSC BEL", "A\x1b]2;title\x07B", "AB"],
+    ["OSC ST", "A\x1b]7;file://localhost/tmp\x1b\\B", "AB"],
+    ["DCS", "A\x1bP1$r0m\x1b\\B", "AB"],
+    ["APC", "A\x1b_payload\x1b\\B", "AB"],
+    ["PM", "A\x1b^payload\x1b\\B", "AB"],
+    ["SOS", "A\x1bXpayload\x1b\\B", "AB"],
+    ["8-bit OSC", "A\x9d2;title\x9cB", "AB"],
+  ];
+
+  it.each(cases)("strips %s", (_name, input, expected) => {
+    const sanitizer = new TerminalControlSanitizer(stripEveryTerminalSequence);
+    expect(sanitizer.write(input)).toBe(expected);
+  });
+
+  it("is stateful across OSC chunk boundaries", () => {
+    const sanitizer = new TerminalControlSanitizer(stripEveryTerminalSequence);
+    const output = [
+      sanitizer.write("A\x1b]"),
+      sanitizer.write("2;long-title"),
+      sanitizer.write("\x1b"),
+      sanitizer.write("\\B"),
+    ].join("");
+    expect(output).toBe("AB");
   });
 });
 

@@ -15,6 +15,7 @@ export function useTerminal(
   const searchAddonRef = useRef<any>(null);
   const fitAddonRef = useRef<any>(null);
   const hasFocusRef = useRef(false);
+  const inputSanitizerRef = useRef(new TerminalInputSanitizer());
 
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
@@ -127,7 +128,7 @@ export function useTerminal(
       term.onData((data: string) => {
         const sid = activeSessionIdRef.current;
         if (!sid) return;
-        const sanitized = stripTerminalGeneratedInput(
+        const sanitized = inputSanitizerRef.current.write(
           data,
           activeSessionStateRef.current,
         );
@@ -245,35 +246,283 @@ export function useTerminal(
   );
 }
 
+export class TerminalInputSanitizer {
+  private pending = "";
+
+  write(
+    data: string,
+    activeSessionState: "idle" | "running" | undefined,
+  ): string {
+    const result = sanitizeTerminalStream(this.pending + data, (sequence) =>
+      shouldStripGeneratedInput(sequence, activeSessionState),
+    );
+    this.pending = result.pending;
+    return result.output;
+  }
+
+  flush(): string {
+    const pending = this.pending;
+    this.pending = "";
+    return pending;
+  }
+}
+
+export class TerminalControlSanitizer {
+  private pending = "";
+
+  constructor(private readonly shouldStrip: (sequence: string) => boolean) {}
+
+  write(data: string): string {
+    const result = sanitizeTerminalStream(
+      this.pending + data,
+      this.shouldStrip,
+    );
+    this.pending = result.pending;
+    return result.output;
+  }
+
+  flush(): string {
+    const pending = this.pending;
+    this.pending = "";
+    return pending;
+  }
+}
+
 export function stripTerminalQueryResponses(data: string): string {
-  return data
-    .replace(/\x1b\[\d+;\d+R/g, "")
-    .replace(/\x1b\[\?\d+(?:;\d+)*c/g, "")
-    .replace(/\x1b\[>\d+(?:;\d+)*c/g, "")
-    .replace(/\x1b\](?:10|11);[^\x07\x1b]*(?:\x07|\x1b\\)/g, "");
+  return sanitizeTerminalStream(data, shouldStripQueryResponse).output;
 }
 
 export function stripTerminalGeneratedInput(
   data: string,
   activeSessionState: "idle" | "running" | undefined,
 ): string {
-  const withoutQueries = stripTerminalQueryResponses(data);
-  if (activeSessionState === "running") return withoutQueries;
-  return stripMouseReports(withoutQueries);
+  return sanitizeTerminalStream(data, (sequence) =>
+    shouldStripGeneratedInput(sequence, activeSessionState),
+  ).output;
 }
 
 export function stripMouseReports(data: string): string {
-  return data
-    .replace(/\x1b\[<\d+;\d+;\d+[Mm]/g, "")
-    .replace(/\x1b\[M[\s\S]{3}/g, "");
+  return sanitizeTerminalStream(data, isMouseReport).output;
 }
 
 export function sanitizeReplayedTerminalOutput(data: string): string {
-  return data
-    .replace(/\x1b\[(?:>|\?)?\d*(?:;\d+)*[cn]/g, "")
-    .replace(/\x1b\[\?\d+(?:;\d+)*h/g, (sequence) =>
-      containsTerminalInputMode(sequence) ? "" : sequence,
-    );
+  return sanitizeTerminalStream(data, shouldStripReplayedOutput).output;
+}
+
+function sanitizeTerminalStream(
+  data: string,
+  shouldStrip: (sequence: string) => boolean,
+): { output: string; pending: string } {
+  let output = "";
+  let index = 0;
+
+  while (index < data.length) {
+    const sequence = readTerminalSequence(data, index);
+    if (!sequence) {
+      output += data[index];
+      index += 1;
+      continue;
+    }
+    if (!sequence.complete) {
+      return { output, pending: data.slice(index) };
+    }
+    if (!shouldStrip(sequence.value)) output += sequence.value;
+    index = sequence.end;
+  }
+
+  return { output, pending: "" };
+}
+
+function readTerminalSequence(
+  data: string,
+  start: number,
+): { value: string; end: number; complete: boolean } | undefined {
+  const code = data.charCodeAt(start);
+  if (code === 0x1b) return readEscSequence(data, start);
+  if (code === 0x9b) return readCsiSequence(data, start, start + 1);
+  if (code === 0x90 || code === 0x9d || code === 0x9e || code === 0x9f) {
+    return readStringControl(data, start, start + 1, true);
+  }
+  return undefined;
+}
+
+function readEscSequence(
+  data: string,
+  start: number,
+): { value: string; end: number; complete: boolean } {
+  if (start + 1 >= data.length) {
+    return { value: data.slice(start), end: data.length, complete: false };
+  }
+
+  const next = data[start + 1];
+  if (next === "[") return readCsiSequence(data, start, start + 2);
+  if (
+    next === "]" ||
+    next === "P" ||
+    next === "_" ||
+    next === "^" ||
+    next === "X"
+  ) {
+    return readStringControl(data, start, start + 2, false);
+  }
+  if (
+    next === "(" ||
+    next === ")" ||
+    next === "*" ||
+    next === "+" ||
+    next === "-" ||
+    next === "." ||
+    next === "/"
+  ) {
+    const end = start + 3;
+    return {
+      value: data.slice(start, Math.min(end, data.length)),
+      end: Math.min(end, data.length),
+      complete: end <= data.length,
+    };
+  }
+
+  return {
+    value: data.slice(start, start + 2),
+    end: start + 2,
+    complete: true,
+  };
+}
+
+function readCsiSequence(
+  data: string,
+  start: number,
+  index: number,
+): { value: string; end: number; complete: boolean } {
+  while (index < data.length) {
+    const code = data.charCodeAt(index);
+    if (code >= 0x40 && code <= 0x7e) {
+      const end =
+        code === 0x4d && data.slice(start, index + 1) === "\x1b[M"
+          ? index + 4
+          : index + 1;
+      return {
+        value: data.slice(start, Math.min(end, data.length)),
+        end: Math.min(end, data.length),
+        complete: end <= data.length,
+      };
+    }
+    index += 1;
+  }
+  return { value: data.slice(start), end: data.length, complete: false };
+}
+
+function readStringControl(
+  data: string,
+  start: number,
+  index: number,
+  allowC1Terminator: boolean,
+): { value: string; end: number; complete: boolean } {
+  while (index < data.length) {
+    const code = data.charCodeAt(index);
+    if (code === 0x07 || (allowC1Terminator && code === 0x9c)) {
+      return {
+        value: data.slice(start, index + 1),
+        end: index + 1,
+        complete: true,
+      };
+    }
+    if (code === 0x1b && data[index + 1] === "\\") {
+      return {
+        value: data.slice(start, index + 2),
+        end: index + 2,
+        complete: true,
+      };
+    }
+    index += 1;
+  }
+  return { value: data.slice(start), end: data.length, complete: false };
+}
+
+function shouldStripGeneratedInput(
+  sequence: string,
+  activeSessionState: "idle" | "running" | undefined,
+): boolean {
+  if (shouldStripQueryResponse(sequence)) return true;
+  return activeSessionState !== "running" && isMouseReport(sequence);
+}
+
+function shouldStripQueryResponse(sequence: string): boolean {
+  return (
+    isPrimaryDeviceAttributesReply(sequence) ||
+    isSecondaryDeviceAttributesReply(sequence) ||
+    isCursorPositionReply(sequence) ||
+    isWindowSizeReply(sequence) ||
+    isDecModeReply(sequence) ||
+    isOscColorQueryReply(sequence)
+  );
+}
+
+function shouldStripReplayedOutput(sequence: string): boolean {
+  return isTerminalQuery(sequence) || isInputModeEnable(sequence);
+}
+
+function isTerminalQuery(sequence: string): boolean {
+  return (
+    /^\x1b\[(?:>|\?)?\d*(?:;\d+)*[cn]$/.test(sequence) ||
+    /^\x1b\[(?:\?|>)?\d*(?:;\d+)*t$/.test(sequence) ||
+    /^\x1b\[\?\d+(?:;\d+)*\$p$/.test(sequence)
+  );
+}
+
+function isPrimaryDeviceAttributesReply(sequence: string): boolean {
+  return (
+    /^\x1b\[\?\d+(?:;\d+)*c$/.test(sequence) ||
+    /^\x9b\?\d+(?:;\d+)*c$/.test(sequence)
+  );
+}
+
+function isSecondaryDeviceAttributesReply(sequence: string): boolean {
+  return (
+    /^\x1b\[>\d+(?:;\d+)*c$/.test(sequence) ||
+    /^\x9b>\d+(?:;\d+)*c$/.test(sequence)
+  );
+}
+
+function isCursorPositionReply(sequence: string): boolean {
+  return (
+    /^\x1b\[(?:\?)?\d+;\d+R$/.test(sequence) ||
+    /^\x9b(?:\?)?\d+;\d+R$/.test(sequence)
+  );
+}
+
+function isWindowSizeReply(sequence: string): boolean {
+  return (
+    /^\x1b\[8;\d+;\d+t$/.test(sequence) || /^\x9b8;\d+;\d+t$/.test(sequence)
+  );
+}
+
+function isDecModeReply(sequence: string): boolean {
+  return (
+    /^\x1b\[\?\d+(?:;\d+)*;\d+\$y$/.test(sequence) ||
+    /^\x9b\?\d+(?:;\d+)*;\d+\$y$/.test(sequence)
+  );
+}
+
+function isOscColorQueryReply(sequence: string): boolean {
+  return (
+    /^\x1b\](?:10|11);[\s\S]*(?:\x07|\x1b\\)$/.test(sequence) ||
+    /^\x9d(?:10|11);[\s\S]*\x9c$/.test(sequence)
+  );
+}
+
+function isMouseReport(sequence: string): boolean {
+  return (
+    /^\x1b\[<\d+;\d+;\d+[Mm]$/.test(sequence) ||
+    /^\x1b\[M[\s\S]{3}$/.test(sequence)
+  );
+}
+
+function isInputModeEnable(sequence: string): boolean {
+  return (
+    /^\x1b\[\?\d+(?:;\d+)*h$/.test(sequence) &&
+    containsTerminalInputMode(sequence)
+  );
 }
 
 function containsTerminalInputMode(sequence: string): boolean {
