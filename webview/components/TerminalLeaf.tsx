@@ -103,14 +103,18 @@ export function TerminalLeaf({
     [clearDraggedSession],
   );
 
+  const stateLabel =
+    session.state === "running"
+      ? "Running"
+      : session.state === "error"
+        ? "Failed"
+        : "Idle";
+
   return (
     <div
       className={`terminalLeaf${isActive ? " active" : ""}`}
       draggable
-      title={
-        (session.state === "running" ? "Running: " : "Idle: ") +
-        `${terminalNumberLabel} - ${session.statusText || "idle"}`
-      }
+      title={`${stateLabel}: ${terminalNumberLabel} - ${session.statusText || "idle"}`}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onDragStart={handleDragStart}
@@ -119,10 +123,7 @@ export function TerminalLeaf({
       onDrop={handleDrop}
       onDragEnd={handleDragEnd}
     >
-      <span
-        className={`terminalStatus ${session.state}`}
-        title={session.state === "running" ? "Working" : "Idle"}
-      />
+      <span className={`terminalStatus ${session.state}`} title={stateLabel} />
       <span className={`terminalCommand ${session.state}`}>
         {session.statusText || "idle"}
       </span>

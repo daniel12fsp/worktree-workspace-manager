@@ -4,10 +4,12 @@ import { Terminal } from "@xterm/xterm";
 import { SearchAddon } from "@xterm/addon-search";
 import { FitAddon } from "@xterm/addon-fit";
 
+type TerminalActivityState = "idle" | "running" | "error";
+
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   activeSessionId: string | undefined,
-  activeSessionState: "idle" | "running" | undefined,
+  activeSessionState: TerminalActivityState | undefined,
   onData: (data: string) => void,
   onResize: (cols: number, rows: number) => void,
 ) {
@@ -251,7 +253,7 @@ export class TerminalInputSanitizer {
 
   write(
     data: string,
-    activeSessionState: "idle" | "running" | undefined,
+    activeSessionState: TerminalActivityState | undefined,
   ): string {
     const result = sanitizeTerminalStream(this.pending + data, (sequence) =>
       shouldStripGeneratedInput(sequence, activeSessionState),
@@ -294,7 +296,7 @@ export function stripTerminalQueryResponses(data: string): string {
 
 export function stripTerminalGeneratedInput(
   data: string,
-  activeSessionState: "idle" | "running" | undefined,
+  activeSessionState: TerminalActivityState | undefined,
 ): string {
   return sanitizeTerminalStream(data, (sequence) =>
     shouldStripGeneratedInput(sequence, activeSessionState),
@@ -441,7 +443,7 @@ function readStringControl(
 
 function shouldStripGeneratedInput(
   sequence: string,
-  activeSessionState: "idle" | "running" | undefined,
+  activeSessionState: TerminalActivityState | undefined,
 ): boolean {
   if (shouldStripQueryResponse(sequence)) return true;
   return activeSessionState !== "running" && isMouseReport(sequence);

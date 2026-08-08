@@ -16,7 +16,7 @@ export interface WorktreeData {
 export interface SessionData {
   id: string;
   label: string;
-  state: "idle" | "running";
+  state: "idle" | "running" | "error";
   displayName: string;
   statusText: string;
   preview: string;

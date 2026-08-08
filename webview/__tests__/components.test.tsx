@@ -546,6 +546,28 @@ describe("TerminalLeaf", () => {
     expect(leaf?.getAttribute("title")).toContain("Idle");
   });
 
+  it("shows failed title when error", () => {
+    const errorSession = {
+      ...session,
+      state: "error" as const,
+      statusText: "error (1)",
+    };
+    renderWithVsCode(
+      <TerminalLeaf
+        session={errorSession}
+        isActive={false}
+        onSelect={vi.fn()}
+        onReorder={vi.fn()}
+        onDragStartSession={vi.fn()}
+        getDraggedSessionId={vi.fn()}
+        clearDraggedSession={vi.fn()}
+      />,
+    );
+    const leaf = screen.getByText("error (1)").closest(".terminalLeaf");
+    expect(leaf?.getAttribute("title")).toContain("Failed");
+    expect(document.querySelector(".terminalStatus.error")).toBeTruthy();
+  });
+
   it("calls onDragStartSession on drag start", () => {
     const onDragStartSession = vi.fn();
     renderWithVsCode(

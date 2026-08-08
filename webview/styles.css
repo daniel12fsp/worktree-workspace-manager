@@ -139,6 +139,12 @@ body {
   animation: pulse 1.4s ease-out infinite;
 }
 
+.terminalStatus.error {
+  background: var(--vscode-terminal-ansiRed);
+  box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.75);
+  animation: pulseError 1.4s ease-out infinite;
+}
+
 .terminalStatus.idle {
   border: 1px solid var(--vscode-descriptionForeground);
   opacity: 0.7;
@@ -150,6 +156,15 @@ body {
   }
   100% {
     box-shadow: 0 0 0 0 rgba(46, 160, 67, 0);
+  }
+}
+
+@keyframes pulseError {
+  70% {
+    box-shadow: 0 0 0 5px rgba(248, 81, 73, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(248, 81, 73, 0);
   }
 }
 
@@ -267,6 +282,11 @@ body {
 
 .terminalCommand.idle {
   color: var(--vscode-descriptionForeground);
+}
+
+.terminalCommand.error {
+  color: var(--vscode-terminal-ansiRed);
+  font-weight: 600;
 }
 
 .terminalActions {

@@ -18,7 +18,7 @@ import {
 import { log, logError } from "./logger";
 import { stripTerminalControlSequences } from "./terminalControl";
 
-type TerminalActivityState = "idle" | "running";
+type TerminalActivityState = "idle" | "running" | "error";
 
 export interface EmbeddedSession {
   readonly id: string;
@@ -29,6 +29,7 @@ export interface EmbeddedSession {
   readonly output: string[];
   state: TerminalActivityState;
   statusText: string;
+  lastCommand: string;
   activityMarkerRemainder: string;
   readonly wrapperCleanupPaths: string[];
 }
@@ -603,6 +604,7 @@ export class EmbeddedTerminalViewProvider
       output: [],
       state: "idle",
       statusText: "idle",
+      lastCommand: "",
       activityMarkerRemainder: "",
       wrapperCleanupPaths: wrapper.cleanupPaths,
     };
@@ -784,6 +786,7 @@ export class EmbeddedTerminalViewProvider
               id: session.id,
               label: session.label,
               state: session.state,
+              statusText: session.statusText,
             })),
           })),
         })),
@@ -865,7 +868,8 @@ export class EmbeddedTerminalViewProvider
 }
 
 const activityMarkerPrefix = "\x1b]777;wtwm;";
-const activityMarkerPattern = /\x1b\]777;wtwm;(start;([^\x07]*)|idle)\x07/g;
+const activityMarkerPattern =
+  /\x1b\]777;wtwm;(start;([^\x07]*)|idle|error;([^;\x07]*)(?:;([^\x07]*))?)\x07/g;
 
 export function consumeActivityMarkers(
   session: EmbeddedSession,
@@ -886,13 +890,30 @@ export function consumeActivityMarkers(
   let stateChanged = false;
   const visibleData = combined.replace(
     activityMarkerPattern,
-    (_match, kind: string, command?: string) => {
+    (
+      _match,
+      kind: string,
+      command?: string,
+      exitCode?: string,
+      failedCommand?: string,
+    ) => {
       if (kind.startsWith("start;")) {
+        const trimmedCommand = (command ?? "").trim();
         session.state = "running";
-        session.statusText = (command ?? "").trim() || "running";
+        session.statusText = trimmedCommand || "running";
+        session.lastCommand = trimmedCommand;
+      } else if (kind.startsWith("error;")) {
+        const trimmedExitCode = (exitCode ?? "").trim();
+        const trimmedFailedCommand = (failedCommand ?? "").trim();
+        const commandText = trimmedFailedCommand || session.lastCommand;
+        const failedText = commandText ? `${commandText} failed` : "failed";
+        session.state = "error";
+        session.statusText = trimmedExitCode
+          ? `${failedText} (${trimmedExitCode})`
+          : failedText;
       } else {
         session.state = "idle";
-        session.statusText = "idle";
+        session.statusText = session.lastCommand || "idle";
       }
       stateChanged = true;
       return "";
@@ -937,6 +958,7 @@ export function shellActivityWrapper(shell: string): ShellActivityWrapper {
       const bashDir = fs.mkdtempSync(path.join(os.tmpdir(), "wtwm-bash-"));
       const bashrcPath = path.join(bashDir, "bashrc");
       fs.writeFileSync(bashrcPath, bashActivityRc(), { mode: 0o600 });
+      log("created bash activity wrapper", { shell, bashrcPath });
       return {
         ...base,
         args: ["--rcfile", bashrcPath, "-i"],
@@ -1001,21 +1023,39 @@ elif [[ -r "$HOME/.bash_profile" ]]; then
   source "$HOME/.bash_profile"
 fi
 
+__wtwm_in_prompt=0
+
+__wtwm_command_from_history() {
+  local command="$(HISTTIMEFORMAT= history 1)"
+  command="\${command#\${command%%[![:space:]]*}}"
+  command="\${command#\${command%%[!0-9]*}}"
+  command="\${command#\${command%%[![:space:]]*}}"
+  printf '%s' "$command"
+}
+
 __wtwm_debug() {
   local command="$BASH_COMMAND"
+  [[ "$__wtwm_in_prompt" == 1 ]] && return
   [[ -z "$command" || "$command" == __wtwm_* || "$command" == trap\\ * || "$command" == PROMPT_COMMAND=* ]] && return
   printf '\\033]777;wtwm;start;%s\\a' "$command"
 }
 
 __wtwm_prompt() {
-  printf '\\033]777;wtwm;idle\\a'
+  local exit_code="$1"
+  local command=""
+  if [[ "$exit_code" -ne 0 ]]; then
+    command="$(__wtwm_command_from_history)"
+    printf '\\033]777;wtwm;error;%s;%s\\a' "$exit_code" "$command"
+  else
+    printf '\\033]777;wtwm;idle\\a'
+  fi
+  __wtwm_in_prompt=0
+  return "$exit_code"
 }
 
 trap '__wtwm_debug' DEBUG
-# Run after the user's prompt command. If PROMPT_COMMAND calls a function like
-# __my_prompt, DEBUG may briefly mark it as running; this final idle marker keeps
-# prompt rendering from being shown as terminal work.
-PROMPT_COMMAND="\${PROMPT_COMMAND:+$PROMPT_COMMAND;}__wtwm_prompt"
+# Mark prompt rendering so DEBUG does not report prompt commands as running.
+PROMPT_COMMAND="__wtwm_exit_code=\\$?;__wtwm_in_prompt=1\${PROMPT_COMMAND:+;$PROMPT_COMMAND};__wtwm_prompt \\$__wtwm_exit_code"
 `;
 }
 

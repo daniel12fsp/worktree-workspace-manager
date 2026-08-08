@@ -235,11 +235,24 @@ describe("zshActivityRc", () => {
 });
 
 describe("bashActivityRc", () => {
-  it("returns a string with DEBUG trap", () => {
+  it("returns a string with guarded DEBUG trap", () => {
     const rc = bashActivityRc();
-    expect(rc).toContain("trap");
+    expect(rc).toContain("trap '__wtwm_debug' DEBUG");
     expect(rc).toContain("__wtwm_debug");
     expect(rc).toContain("777;wtwm");
+  });
+
+  it("does not report prompt rendering as running", () => {
+    const rc = bashActivityRc();
+    expect(rc).toContain("__wtwm_in_prompt=1");
+    expect(rc).toContain('[[ "$__wtwm_in_prompt" == 1 ]] && return');
+  });
+
+  it("emits an error marker with the previous command when it fails", () => {
+    const rc = bashActivityRc();
+    expect(rc).toContain('if [[ "$exit_code" -ne 0 ]]');
+    expect(rc).toContain("777;wtwm;error;%s;%s");
+    expect(rc).toContain("history 1");
   });
 });
 
@@ -292,6 +305,7 @@ describe("consumeActivityMarkers", () => {
     output: [],
     state: "idle",
     statusText: "idle",
+    lastCommand: "",
     activityMarkerRemainder: "",
     wrapperCleanupPaths: [],
     ...overrides,
@@ -310,10 +324,24 @@ describe("consumeActivityMarkers", () => {
     const result = consumeActivityMarkers(session, data);
     expect(session.state).toBe("running");
     expect(session.statusText).toBe("npm run dev");
+    expect(session.lastCommand).toBe("npm run dev");
     expect(result.stateChanged).toBe(true);
   });
 
-  it("detects idle marker and sets idle state", () => {
+  it("detects idle marker and shows the last command when available", () => {
+    const session = makeSession({
+      state: "running",
+      statusText: "npm run dev",
+      lastCommand: "npm run dev",
+    });
+    const data = "\x1b]777;wtwm;idle\x07";
+    const result = consumeActivityMarkers(session, data);
+    expect(session.state).toBe("idle");
+    expect(session.statusText).toBe("npm run dev");
+    expect(result.stateChanged).toBe(true);
+  });
+
+  it("detects idle marker and falls back to idle text", () => {
     const session = makeSession({
       state: "running",
       statusText: "npm run dev",
@@ -322,6 +350,31 @@ describe("consumeActivityMarkers", () => {
     const result = consumeActivityMarkers(session, data);
     expect(session.state).toBe("idle");
     expect(session.statusText).toBe("idle");
+    expect(result.stateChanged).toBe(true);
+  });
+
+  it("detects error marker and shows the failed command from the marker", () => {
+    const session = makeSession({
+      state: "running",
+      statusText: "npm run dev",
+    });
+    const data = "\x1b]777;wtwm;error;127;npm run dev\x07";
+    const result = consumeActivityMarkers(session, data);
+    expect(session.state).toBe("error");
+    expect(session.statusText).toBe("npm run dev failed (127)");
+    expect(result.stateChanged).toBe(true);
+  });
+
+  it("falls back to the last running command for old error markers", () => {
+    const session = makeSession({
+      state: "running",
+      statusText: "npm run dev",
+      lastCommand: "npm run dev",
+    });
+    const data = "\x1b]777;wtwm;error;127\x07";
+    const result = consumeActivityMarkers(session, data);
+    expect(session.state).toBe("error");
+    expect(session.statusText).toBe("npm run dev failed (127)");
     expect(result.stateChanged).toBe(true);
   });
 
@@ -2270,6 +2323,7 @@ function makeSession(
     output: [],
     state: "idle",
     statusText: "idle",
+    lastCommand: "",
     activityMarkerRemainder: "",
     wrapperCleanupPaths: [],
     ...overrides,
