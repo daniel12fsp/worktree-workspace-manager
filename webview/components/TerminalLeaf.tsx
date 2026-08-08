@@ -6,7 +6,6 @@ interface Props {
   session: SessionData;
   isActive: boolean;
   onSelect: (id: string) => void;
-  onCollapse: (id: string) => void;
   onReorder: (draggedId: string, targetId: string) => void;
   onDragStartSession: (id: string) => void;
   getDraggedSessionId: () => string | undefined;
@@ -17,24 +16,20 @@ export function TerminalLeaf({
   session,
   isActive,
   onSelect,
-  onCollapse,
   onReorder,
   onDragStartSession,
   getDraggedSessionId,
   clearDraggedSession,
 }: Props) {
   const vscode = useVsCode();
+  const terminalNumberLabel = terminalNumberFromLabel(session.label);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (isActive) {
-        onCollapse(session.id);
-      } else {
-        onSelect(session.id);
-      }
+      onSelect(session.id);
     },
-    [session.id, isActive, onSelect, onCollapse],
+    [session.id, onSelect],
   );
 
   const handleContextMenu = useCallback(
@@ -113,7 +108,8 @@ export function TerminalLeaf({
       className={`terminalLeaf${isActive ? " active" : ""}`}
       draggable
       title={
-        (session.state === "running" ? "Running: " : "Idle: ") + session.label
+        (session.state === "running" ? "Running: " : "Idle: ") +
+        `${terminalNumberLabel} - ${session.statusText || "idle"}`
       }
       onClick={handleClick}
       onContextMenu={handleContextMenu}
@@ -123,13 +119,13 @@ export function TerminalLeaf({
       onDrop={handleDrop}
       onDragEnd={handleDragEnd}
     >
-      <span className="terminalIcon">{isActive ? "\u25be" : "\u25b8"}</span>
       <span
         className={`terminalStatus ${session.state}`}
         title={session.state === "running" ? "Working" : "Idle"}
       />
-      <span className={`terminalLabel ${session.state}`}>{session.label}</span>
-      <span className="terminalStateText">{session.statusText || "idle"}</span>
+      <span className={`terminalCommand ${session.state}`}>
+        {session.statusText || "idle"}
+      </span>
       <span className="terminalActions">
         <button
           className="terminalAction"
@@ -144,4 +140,9 @@ export function TerminalLeaf({
       </span>
     </div>
   );
+}
+
+function terminalNumberFromLabel(label: string): string {
+  const match = /^(?:terminal\s+|t)(\d+)\b/i.exec(label.trim());
+  return match ? `terminal ${match[1]}` : label;
 }

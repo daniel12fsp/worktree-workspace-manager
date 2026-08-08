@@ -76,8 +76,10 @@ body {
 .wt,
 .terminalLeaf {
   display: flex;
+  flex-wrap: nowrap;
   gap: 6px;
   align-items: center;
+  min-width: 0;
   padding: 4px 6px;
   border-radius: 4px;
   cursor: pointer;
@@ -121,10 +123,6 @@ body {
     --vscode-list-activeSelectionBackground,
     var(--vscode-list-hoverBackground)
   );
-}
-
-.terminalIcon {
-  color: var(--vscode-terminal-ansiGreen);
 }
 
 .terminalStatus {
@@ -172,6 +170,7 @@ body {
 
 .worktreeLabel {
   min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -254,31 +253,26 @@ body {
   line-height: 1;
 }
 
-.terminalLabel {
+.terminalCommand {
   min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.terminalLabel.running {
+.terminalCommand.running {
   font-weight: 600;
 }
 
-.terminalLabel.idle {
+.terminalCommand.idle {
   color: var(--vscode-descriptionForeground);
-}
-
-.terminalStateText {
-  opacity: 0.65;
-  font-size: 11px;
-  flex: 0 0 auto;
-  white-space: nowrap;
 }
 
 .terminalActions {
   margin-left: auto;
   display: inline-flex;
+  flex: 0 0 auto;
   gap: 2px;
 }
 

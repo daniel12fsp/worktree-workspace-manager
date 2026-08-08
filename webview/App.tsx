@@ -77,23 +77,6 @@ export function App({ initialState }: Props) {
     [vscode, terminalApi],
   );
 
-  const handleCollapse = useCallback(
-    (id: string) => {
-      vscode.postMessage({ type: "collapse", id });
-      setState((prev) => ({
-        ...prev,
-        activeSessionId:
-          prev.activeSessionId === id ? undefined : prev.activeSessionId,
-      }));
-    },
-    [vscode],
-  );
-
-  const handleCollapseAll = useCallback(() => {
-    vscode.postMessage({ type: "collapseAll" });
-    setState((prev) => ({ ...prev, activeSessionId: undefined }));
-  }, [vscode]);
-
   const handleReorder = useCallback(
     (draggedId: string, targetId: string) => {
       vscode.postMessage({ type: "reorderSession", draggedId, targetId });
@@ -346,7 +329,6 @@ export function App({ initialState }: Props) {
                               session={session}
                               isActive={session.id === state.activeSessionId}
                               onSelect={handleSelect}
-                              onCollapse={handleCollapse}
                               onReorder={handleReorder}
                               onDragStartSession={handleDragStartSession}
                               getDraggedSessionId={getDraggedSessionId}

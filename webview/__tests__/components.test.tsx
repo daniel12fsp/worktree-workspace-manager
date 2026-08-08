@@ -398,20 +398,21 @@ describe("TerminalLeaf", () => {
     preview: "building...",
   };
 
-  it("renders session label", () => {
+  it("renders only command or idle text", () => {
     renderWithVsCode(
       <TerminalLeaf
-        session={session}
+        session={{ ...session, label: "t1 - feat-login" }}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
     );
-    expect(screen.getByText("terminal 1")).toBeTruthy();
+    expect(screen.getByText("npm run dev")).toBeTruthy();
+    expect(screen.queryByText("terminal 1")).toBeNull();
+    expect(screen.queryByText("t1 - feat-login")).toBeNull();
   });
 
   it("shows active class when active", () => {
@@ -420,7 +421,6 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={true}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
@@ -428,7 +428,7 @@ describe("TerminalLeaf", () => {
       />,
     );
     expect(
-      screen.getByText("terminal 1").closest(".terminalLeaf")?.className,
+      screen.getByText("npm run dev").closest(".terminalLeaf")?.className,
     ).toContain("active");
   });
 
@@ -439,33 +439,47 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={onSelect}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByText("terminal 1"));
+    fireEvent.click(screen.getByText("npm run dev"));
     expect(onSelect).toHaveBeenCalledWith("s1");
   });
 
-  it("calls onCollapse when clicked and active", () => {
-    const onCollapse = vi.fn();
+  it("calls onSelect when clicked and active", () => {
+    const onSelect = vi.fn();
+    renderWithVsCode(
+      <TerminalLeaf
+        session={session}
+        isActive={true}
+        onSelect={onSelect}
+        onReorder={vi.fn()}
+        onDragStartSession={vi.fn()}
+        getDraggedSessionId={vi.fn()}
+        clearDraggedSession={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText("npm run dev"));
+    expect(onSelect).toHaveBeenCalledWith("s1");
+  });
+
+  it("does not render a collapse icon", () => {
     renderWithVsCode(
       <TerminalLeaf
         session={session}
         isActive={true}
         onSelect={vi.fn()}
-        onCollapse={onCollapse}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByText("terminal 1"));
-    expect(onCollapse).toHaveBeenCalledWith("s1");
+    expect(screen.queryByText("▾")).toBeNull();
+    expect(screen.queryByText("▸")).toBeNull();
   });
 
   it("renders close button", () => {
@@ -474,7 +488,6 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
@@ -491,7 +504,6 @@ describe("TerminalLeaf", () => {
         session={idleSession}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
@@ -507,14 +519,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf");
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf");
     expect(leaf?.getAttribute("title")).toContain("Running");
   });
 
@@ -525,14 +536,13 @@ describe("TerminalLeaf", () => {
         session={idleSession}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf");
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf");
     expect(leaf?.getAttribute("title")).toContain("Idle");
   });
 
@@ -543,14 +553,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={onDragStartSession}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
     const dragStartEvent = new Event("dragstart", { bubbles: true });
     Object.defineProperty(dragStartEvent, "dataTransfer", {
       value: { effectAllowed: "", setData: vi.fn() },
@@ -565,14 +574,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => "other-id"}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
     const dragOverEvent = new Event("dragover", { bubbles: true });
     Object.defineProperty(dragOverEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dragOverEvent, "currentTarget", { value: leaf });
@@ -585,14 +593,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => "s1"}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
     const dragOverEvent = new Event("dragover", { bubbles: true });
     Object.defineProperty(dragOverEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dragOverEvent, "currentTarget", { value: leaf });
@@ -605,14 +612,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => undefined}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
     const dragOverEvent = new Event("dragover", { bubbles: true });
     Object.defineProperty(dragOverEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dragOverEvent, "currentTarget", { value: leaf });
@@ -626,14 +632,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={onReorder}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => "dragged-id"}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
     const dropEvent = new Event("drop", { bubbles: true });
     Object.defineProperty(dropEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dropEvent, "stopPropagation", { value: vi.fn() });
@@ -652,14 +657,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={onReorder}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={() => "s1"}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
     const dropEvent = new Event("drop", { bubbles: true });
     Object.defineProperty(dropEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dropEvent, "stopPropagation", { value: vi.fn() });
@@ -677,14 +681,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
     const contextMenuEvent = new MouseEvent("contextmenu", {
       bubbles: true,
       clientX: 100,
@@ -702,14 +705,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
     const dragEndEvent = new Event("dragend", { bubbles: true });
     Object.defineProperty(dragEndEvent, "currentTarget", { value: leaf });
     leaf.dispatchEvent(dragEndEvent);
@@ -721,14 +723,13 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("terminal 1").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
     leaf.classList.add("dragOver");
     const dragLeaveEvent = new Event("dragleave", { bubbles: true });
     Object.defineProperty(dragLeaveEvent, "currentTarget", { value: leaf });
@@ -742,7 +743,6 @@ describe("TerminalLeaf", () => {
         session={session}
         isActive={false}
         onSelect={vi.fn()}
-        onCollapse={vi.fn()}
         onReorder={vi.fn()}
         onDragStartSession={vi.fn()}
         getDraggedSessionId={vi.fn()}

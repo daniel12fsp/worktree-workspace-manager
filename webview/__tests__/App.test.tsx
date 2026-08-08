@@ -173,7 +173,7 @@ describe("App", () => {
       loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
-    expect(screen.getByText("terminal 1")).toBeTruthy();
+    expect(screen.getByText("npm run dev")).toBeTruthy();
   });
 
   it("renders collapsed repos with expand icon", () => {
@@ -256,7 +256,7 @@ describe("App", () => {
       disconnect() {}
     };
     renderWithVsCode(state);
-    expect(screen.getByText("terminal 1")).toBeTruthy();
+    expect(screen.getByText("npm run dev")).toBeTruthy();
     expect(
       document.querySelector(".terminalPane .terminalInline"),
     ).toBeTruthy();
@@ -470,7 +470,7 @@ describe("App", () => {
       loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
-    expect(screen.getByText("terminal 1")).toBeTruthy();
+    expect(screen.getByText("idle")).toBeTruthy();
   });
 
   it("collapses repo on toggle", () => {
@@ -787,7 +787,7 @@ describe("App", () => {
       screen.getByRole("button", { name: "New terminal in feat-login" }),
     );
 
-    expect(screen.getByText("terminal 1")).toBeTruthy();
+    expect(screen.getByText("idle")).toBeTruthy();
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "create", path: "/tmp/feat-login" }),
     );
@@ -895,13 +895,13 @@ describe("App", () => {
     };
     renderWithVsCode(state, mockVsCode);
     // Click on terminal leaf to select
-    fireEvent.click(screen.getByText("terminal 1"));
+    fireEvent.click(screen.getByText("idle"));
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "select", id: "s1" }),
     );
   });
 
-  it("collapses active session via handleCollapse", () => {
+  it("selects active session again instead of collapsing", () => {
     const mockVsCode = createMockVsCode();
     const state: AppState = {
       repos: [
@@ -936,9 +936,11 @@ describe("App", () => {
       loadingWorktrees: new Set(),
     };
     renderWithVsCode(state, mockVsCode);
-    // Click on active terminal leaf to collapse
-    fireEvent.click(screen.getByText("terminal 1"));
+    fireEvent.click(screen.getByText("idle"));
     expect(mockVsCode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "select", id: "s1" }),
+    );
+    expect(mockVsCode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "collapse", id: "s1" }),
     );
   });
