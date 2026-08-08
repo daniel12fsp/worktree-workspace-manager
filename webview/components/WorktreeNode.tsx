@@ -26,40 +26,57 @@ export function WorktreeNode({
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onSetExplorerWorktree(worktree.path);
       onToggle();
-      vscode.postMessage({ type: "collapseAll" });
+      if (worktree.kind !== "workspaceFolder") {
+        onSetExplorerWorktree(worktree.path);
+        vscode.postMessage({ type: "collapseAll" });
+      }
     },
-    [onSetExplorerWorktree, onToggle, vscode, worktree.path],
+    [onSetExplorerWorktree, onToggle, vscode, worktree.kind, worktree.path],
   );
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
-      const items: ContextMenuItem[] = [
-        {
-          label: "Remove Worktree",
-          message: { type: "removeWorktree", path: worktree.path },
-        },
-        {
-          label: "Copy Worktree Path",
-          message: { type: "copyWorktreePath", path: worktree.path },
-        },
-        {
-          label: "Copy Branch",
-          message: { type: "copyWorktreeBranch", path: worktree.path },
-        },
-        {
-          label: "Change Color\u2026",
-          message: { type: "changeColor", path: worktree.path },
-        },
-        {
-          label: "Kill Related Terminals",
-          message: { type: "killWorktree", path: worktree.path },
-        },
-      ];
+      const items: ContextMenuItem[] =
+        worktree.kind === "workspaceFolder"
+          ? [
+              {
+                label: "Copy Folder Path",
+                message: {
+                  type: "copyWorkspaceFolderPath",
+                  path: worktree.path,
+                },
+              },
+              {
+                label: "Kill Related Terminals",
+                message: { type: "killWorktree", path: worktree.path },
+              },
+            ]
+          : [
+              {
+                label: "Remove Worktree",
+                message: { type: "removeWorktree", path: worktree.path },
+              },
+              {
+                label: "Copy Worktree Path",
+                message: { type: "copyWorktreePath", path: worktree.path },
+              },
+              {
+                label: "Copy Branch",
+                message: { type: "copyWorktreeBranch", path: worktree.path },
+              },
+              {
+                label: "Change Color\u2026",
+                message: { type: "changeColor", path: worktree.path },
+              },
+              {
+                label: "Kill Related Terminals",
+                message: { type: "killWorktree", path: worktree.path },
+              },
+            ];
       showContextMenu(e, items, (msg) => vscode.postMessage(msg));
     },
-    [worktree.path, vscode],
+    [worktree.kind, worktree.path, vscode],
   );
 
   const handleAdd = useCallback(
@@ -76,9 +93,11 @@ export function WorktreeNode({
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       title={
-        worktree.activeInExplorer
-          ? "Enabled in VSCode Explorer"
-          : "Enable in VSCode Explorer"
+        worktree.kind === "workspaceFolder"
+          ? "Workspace folder"
+          : worktree.activeInExplorer
+            ? "Enabled in VSCode Explorer"
+            : "Enable in VSCode Explorer"
       }
     >
       <span
@@ -89,17 +108,28 @@ export function WorktreeNode({
       >
         {collapsed ? "\u25b8" : "\u25be"}
       </span>
-      <span
-        className="dot"
-        style={{
-          background: worktree.color,
-        }}
-      />
+      {worktree.kind !== "workspaceFolder" && (
+        <span
+          className="dot"
+          style={{
+            background: worktree.color,
+          }}
+        />
+      )}
       {loading && (
         <span className="loadingCheckbox" title="Loading worktree\u2026" />
       )}
-      <span className="worktreeLabel" style={{ color: worktree.color }}>
-        {worktree.name} ({worktree.branch})
+      <span
+        className="worktreeLabel"
+        style={
+          worktree.kind === "workspaceFolder"
+            ? undefined
+            : { color: worktree.color }
+        }
+      >
+        {worktree.kind === "workspaceFolder"
+          ? worktree.name
+          : `${worktree.name} (${worktree.branch})`}
       </span>
       <button
         className="addTerminal"

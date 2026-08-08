@@ -58,7 +58,7 @@
       "**/fe-2": true,
       "**/fe-2/**": true,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2": true,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": true
     },
     "search.exclude": {
       "**/node_modules": true,
@@ -99,7 +99,7 @@
       "**/fe-2": true,
       "**/fe-2/**": true,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2": true,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": true,
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": true
     },
     "worktreeManager.repositories": [
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git",

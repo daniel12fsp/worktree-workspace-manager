@@ -294,6 +294,11 @@ export class EmbeddedTerminalViewProvider
           { worktree },
         );
       }
+    } else if (message?.type === "copyWorkspaceFolderPath") {
+      await vscode.env.clipboard.writeText(String(message.path));
+      void vscode.window.showInformationMessage(
+        `Copied ${path.basename(String(message.path))} path`,
+      );
     } else if (message?.type === "killRepo") {
       const repoPath = String(message.path);
       const confirmed = await vscode.window.showWarningMessage(
@@ -770,34 +775,46 @@ export class EmbeddedTerminalViewProvider
       return;
     }
     try {
-      const hasWorkspace = Boolean(vscode.workspace.workspaceFile);
+      const hasWorkspace = Boolean(
+        vscode.workspace.workspaceFile ||
+        vscode.workspace.workspaceFolders?.length,
+      );
       const all = await listAllWorktrees();
       const activeWorkspaceFolders = await getCheckedWorktreePaths();
-      const repos = [...all].map(([repo, worktrees]) => ({
-        label: repo.label,
-        path: repo.fsPath,
-        worktrees: worktrees.map((worktree) => ({
-          name: worktree.name,
-          branch: worktree.branch ?? "detached",
-          path: worktree.path,
-          color: worktree.color,
-          activeInExplorer: activeWorkspaceFolders.has(
-            normalizePath(worktree.path),
-          ),
-          sessions: this.orderedSessions(
-            [...this.sessions.values()].filter(
-              (session) => session.worktree.path === worktree.path,
+      const repos = [
+        ...[...all].map(([repo, worktrees]) => ({
+          label: repo.label,
+          path: repo.fsPath,
+          kind: "bareRepo" as const,
+          worktrees: worktrees.map((worktree) => ({
+            name: worktree.name,
+            branch: worktree.branch ?? "detached",
+            path: worktree.path,
+            color: worktree.color,
+            kind: "worktree" as const,
+            activeInExplorer: activeWorkspaceFolders.has(
+              normalizePath(worktree.path),
             ),
-          ).map((session) => ({
-            id: session.id,
-            label: session.label,
-            state: session.state,
-            displayName: session.label,
-            statusText: session.statusText,
-            preview: outputPreview(session.output),
+            sessions: this.sessionsForWorktree(worktree.path),
           })),
         })),
-      }));
+        ...workspaceFolderRepos(all).map(({ repo, worktree }) => ({
+          label: repo.label,
+          path: repo.fsPath,
+          kind: "workspaceFolder" as const,
+          worktrees: [
+            {
+              name: worktree.name,
+              branch: "",
+              path: worktree.path,
+              color: worktree.color,
+              kind: "workspaceFolder" as const,
+              activeInExplorer: true,
+              sessions: this.sessionsForWorktree(worktree.path),
+            },
+          ],
+        })),
+      ];
       const active = this.activeSessionId
         ? this.sessions.get(this.activeSessionId)
         : undefined;
@@ -872,11 +889,36 @@ export class EmbeddedTerminalViewProvider
     }
   }
 
+  private sessionsForWorktree(worktreePath: string) {
+    return this.orderedSessions(
+      [...this.sessions.values()].filter(
+        (session) =>
+          path.resolve(session.worktree.path) === path.resolve(worktreePath),
+      ),
+    ).map((session) => ({
+      id: session.id,
+      label: session.label,
+      state: session.state,
+      displayName: session.label,
+      statusText: session.statusText,
+      preview: outputPreview(session.output),
+    }));
+  }
+
   private async findWorktree(fsPath: string): Promise<Worktree | undefined> {
     const all = await listAllWorktrees();
-    return [...all.values()]
-      .flat()
-      .find((worktree) => path.resolve(worktree.path) === path.resolve(fsPath));
+    return (
+      [...all.values()]
+        .flat()
+        .find(
+          (worktree) => path.resolve(worktree.path) === path.resolve(fsPath),
+        ) ??
+      workspaceFolderRepos(all)
+        .map(({ worktree }) => worktree)
+        .find(
+          (worktree) => path.resolve(worktree.path) === path.resolve(fsPath),
+        )
+    );
   }
 
   private async findRepo(fsPath: string): Promise<BareRepository | undefined> {
@@ -906,6 +948,41 @@ export class EmbeddedTerminalViewProvider
 </body>
 </html>`;
   }
+}
+
+function workspaceFolderRepos(
+  all: Map<BareRepository, Worktree[]>,
+): Array<{ repo: BareRepository; worktree: Worktree }> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const managedPaths = new Set<string>();
+  for (const [repo, worktrees] of all) {
+    managedPaths.add(path.resolve(repo.fsPath));
+    managedPaths.add(path.resolve(repo.gitDir));
+    for (const worktree of worktrees) {
+      managedPaths.add(path.resolve(worktree.path));
+    }
+  }
+
+  return folders
+    .filter((folder) => !managedPaths.has(path.resolve(folder.uri.fsPath)))
+    .map((folder) => {
+      const repo: BareRepository = {
+        configPath: folder.uri.fsPath,
+        fsPath: folder.uri.fsPath,
+        gitDir: folder.uri.fsPath,
+        label: folder.name || path.basename(folder.uri.fsPath),
+      };
+      const worktree: Worktree = {
+        repo,
+        path: folder.uri.fsPath,
+        name: repo.label,
+        branch: undefined,
+        head: undefined,
+        color: "#808080",
+        colorKey: `workspaceFolder/${repo.label}`,
+      };
+      return { repo, worktree };
+    });
 }
 
 const activityMarkerPrefix = "\x1b]777;wtwm;";

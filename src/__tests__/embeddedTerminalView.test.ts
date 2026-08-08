@@ -567,6 +567,8 @@ describe("EmbeddedTerminalViewProvider", () => {
     (vscode as any).__resetConfig();
     mockExistsSync.mockReturnValue(false);
     mockStatSync.mockReturnValue({ mode: 0o644 });
+    (vscode.workspace as any).workspaceFile = null;
+    (vscode.workspace as any).workspaceFolders = null;
     const extensionUri = { fsPath: "/ext" } as any;
     provider = new EmbeddedTerminalViewProvider(extensionUri);
     const model = await import("../model");
@@ -688,6 +690,21 @@ describe("EmbeddedTerminalViewProvider", () => {
     );
     await provider.openTerminalForPath("/tmp/feat-login");
     expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalled();
+  });
+
+  it("openTerminalForPath opens non-bare workspace folder", async () => {
+    (vscode.workspace as any).workspaceFolders = [
+      { uri: vscode.Uri.file("/workspace/test"), name: "test", index: 0 },
+    ];
+    mockListAllWorktrees.mockResolvedValueOnce(new Map());
+
+    await provider.openTerminalForPath("/workspace/test");
+
+    expect(vi.mocked(pty.spawn)).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Array),
+      expect.objectContaining({ cwd: "/workspace/test" }),
+    );
   });
 
   it("openTerminalForPath shows error when worktree not found", async () => {
@@ -1823,6 +1840,54 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     await messageHandler!({ type: "unknownType" });
+  });
+
+  it("renderSessions includes non-bare workspace folders", async () => {
+    let messageHandler: ((msg: any) => void) | undefined;
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    const mockView = {
+      visible: true,
+      webview: mockWebview,
+    } as any;
+    provider.resolveWebviewView(mockView);
+    (vscode.workspace as any).workspaceFile = vscode.Uri.file(
+      "/workspace/dev.code-workspace",
+    );
+    (vscode.workspace as any).workspaceFolders = [
+      { uri: vscode.Uri.file("/workspace/test"), name: "test", index: 0 },
+    ];
+    mockListAllWorktrees.mockResolvedValue(new Map());
+
+    await messageHandler!({ type: "ready" });
+
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "state",
+        repos: [
+          expect.objectContaining({
+            kind: "workspaceFolder",
+            label: "test",
+            path: "/workspace/test",
+            worktrees: [
+              expect.objectContaining({
+                kind: "workspaceFolder",
+                path: "/workspace/test",
+              }),
+            ],
+          }),
+        ],
+      }),
+    );
   });
 
   it("renderSessions posts state to webview", async () => {

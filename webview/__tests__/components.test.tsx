@@ -132,6 +132,22 @@ describe("RepoNode", () => {
       path: "/repos/project",
     });
   });
+
+  it("hides bare repository actions for workspace folder repos", () => {
+    renderWithVsCode(
+      <RepoNode
+        repo={{ ...repo, kind: "workspaceFolder", label: "test" }}
+        collapsed={true}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText(/test/));
+
+    expect(screen.queryByText("Add Worktree…")).toBeNull();
+    expect(screen.queryByText("Remove Bare Repository")).toBeNull();
+    expect(screen.getByText("Copy Folder Path")).toBeTruthy();
+  });
 });
 
 describe("WorktreeNode", () => {
@@ -270,6 +286,32 @@ describe("WorktreeNode", () => {
     expect(onSetExplorerWorktree).toHaveBeenCalledWith("/tmp/feat-login");
   });
 
+  it("workspace folder row click only toggles and skips explorer selection", () => {
+    const mockVsCode = createMockVsCode();
+    const onToggle = vi.fn();
+    const onSetExplorerWorktree = vi.fn();
+    renderWithVsCode(
+      <WorktreeNode
+        repoLabel="test"
+        worktree={{ ...worktree, kind: "workspaceFolder", name: "test" }}
+        collapsed={false}
+        onToggle={onToggle}
+        onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={onSetExplorerWorktree}
+      />,
+      mockVsCode,
+    );
+
+    fireEvent.click(screen.getByText("test"));
+
+    expect(onToggle).toHaveBeenCalled();
+    expect(onSetExplorerWorktree).not.toHaveBeenCalled();
+    expect(mockVsCode.postMessage).not.toHaveBeenCalledWith({
+      type: "collapseAll",
+    });
+  });
+
   it("add button calls onCreateTerminal", () => {
     const onCreateTerminal = vi.fn();
     renderWithVsCode(
@@ -311,6 +353,26 @@ describe("WorktreeNode", () => {
       value: vi.fn(),
     });
     wt.dispatchEvent(contextMenuEvent);
+  });
+
+  it("hides color and worktree-only actions for workspace folder nodes", () => {
+    renderWithVsCode(
+      <WorktreeNode
+        repoLabel="test"
+        worktree={{ ...worktree, kind: "workspaceFolder", name: "test" }}
+        collapsed={false}
+        onToggle={vi.fn()}
+        onCreateTerminal={vi.fn()}
+        loading={false}
+        onSetExplorerWorktree={vi.fn()}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByText("test"));
+
+    expect(screen.queryByText("Change Color…")).toBeNull();
+    expect(screen.queryByText("Remove Worktree")).toBeNull();
+    expect(screen.getByText("Copy Folder Path")).toBeTruthy();
   });
 
   it("shows loading state when loading prop is true", () => {

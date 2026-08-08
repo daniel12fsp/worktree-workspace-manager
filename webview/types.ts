@@ -1,6 +1,7 @@
 export interface RepoData {
   label: string;
   path: string;
+  kind?: "bareRepo" | "workspaceFolder";
   worktrees: WorktreeData[];
 }
 
@@ -9,6 +10,7 @@ export interface WorktreeData {
   branch: string;
   path: string;
   color: string;
+  kind?: "worktree" | "workspaceFolder";
   activeInExplorer: boolean;
   sessions: SessionData[];
 }

@@ -18,27 +18,39 @@ export function RepoNode({ repo, collapsed, onToggle }: Props) {
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
-      const items: ContextMenuItem[] = [
-        {
-          label: "Add Worktree\u2026",
-          message: { type: "addWorktree", path: repo.path },
-        },
-        {
-          label: "Copy Bare Repository Path",
-          message: { type: "copyRepoPath", path: repo.path },
-        },
-        {
-          label: "Remove Bare Repository",
-          message: { type: "removeBareRepository", path: repo.path },
-        },
-        {
-          label: "Close All Terminals",
-          message: { type: "killRepo", path: repo.path },
-        },
-      ];
+      const items: ContextMenuItem[] =
+        repo.kind === "workspaceFolder"
+          ? [
+              {
+                label: "Copy Folder Path",
+                message: { type: "copyWorkspaceFolderPath", path: repo.path },
+              },
+              {
+                label: "Close All Terminals",
+                message: { type: "killRepo", path: repo.path },
+              },
+            ]
+          : [
+              {
+                label: "Add Worktree\u2026",
+                message: { type: "addWorktree", path: repo.path },
+              },
+              {
+                label: "Copy Bare Repository Path",
+                message: { type: "copyRepoPath", path: repo.path },
+              },
+              {
+                label: "Remove Bare Repository",
+                message: { type: "removeBareRepository", path: repo.path },
+              },
+              {
+                label: "Close All Terminals",
+                message: { type: "killRepo", path: repo.path },
+              },
+            ];
       showContextMenu(e, items, (msg) => vscode.postMessage(msg));
     },
-    [repo.path, vscode],
+    [repo.kind, repo.path, vscode],
   );
 
   return (
