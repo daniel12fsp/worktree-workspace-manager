@@ -299,6 +299,11 @@ export class EmbeddedTerminalViewProvider
       void vscode.window.showInformationMessage(
         `Copied ${path.basename(String(message.path))} path`,
       );
+    } else if (message?.type === "transformInBareGit") {
+      await vscode.commands.executeCommand(
+        "worktreeManager.transformInBareGit",
+        String(message.path),
+      );
     } else if (message?.type === "killRepo") {
       const repoPath = String(message.path);
       const confirmed = await vscode.window.showWarningMessage(
@@ -433,7 +438,7 @@ export class EmbeddedTerminalViewProvider
         }
       } else if (result === "noWorkspaceFile") {
         void vscode.window.showErrorMessage(
-          "Check Worktree requires an open workspace",
+          "Select Worktree requires an open workspace",
         );
       } else if (result === "missingFolders") {
         void vscode.window.showErrorMessage(

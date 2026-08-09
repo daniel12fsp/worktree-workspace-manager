@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { WorktreeProvider, RepoNode, WorktreeNode } from "../worktreeView";
-import {
-  TreeItemCollapsibleState,
-  TreeItemCheckboxState,
-  EventEmitter,
-} from "vscode";
+import { TreeItemCollapsibleState, EventEmitter } from "vscode";
 
 vi.mock("vscode", () => import("../__mocks__/vscode"));
 
@@ -75,12 +71,9 @@ describe("WorktreeNode", () => {
     expect(node.label).toContain("detached");
   });
 
-  it("sets checkbox state based on checked param", () => {
-    const checked = new WorktreeNode(makeWorktree() as any, true);
-    expect(checked.checkboxState).toBe(TreeItemCheckboxState.Checked);
-
-    const unchecked = new WorktreeNode(makeWorktree() as any, false);
-    expect(unchecked.checkboxState).toBe(TreeItemCheckboxState.Unchecked);
+  it("does not expose checkbox selection", () => {
+    const node = new WorktreeNode(makeWorktree() as any, true);
+    expect(node.checkboxState).toBeUndefined();
   });
 
   it("sets resourceUri to worktree path", () => {

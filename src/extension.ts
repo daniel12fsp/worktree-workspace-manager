@@ -90,22 +90,6 @@ export function activate(context: vscode.ExtensionContext): void {
       selectedRepo =
         node instanceof RepoNode ? node.repo : selectedWorktree?.repo;
     }),
-    worktreeView.onDidChangeCheckboxState(async (event) => {
-      const node = event.items[0]?.[0];
-      log("worktree checkbox changed", {
-        itemCount: event.items.length,
-        nodeType: node?.constructor?.name,
-        isWorktreeNode: node instanceof WorktreeNode,
-        worktree: node instanceof WorktreeNode ? node.worktree.name : undefined,
-        path: node instanceof WorktreeNode ? node.worktree.path : undefined,
-      });
-      if (node instanceof WorktreeNode) {
-        suppressTerminalRefreshUntil = Date.now() + 3000;
-        await checkWorktree(node.worktree);
-        refreshAll();
-        terminalProvider.refresh();
-      }
-    }),
     terminalProvider.onDidChangeExplorerWorktree(() => {
       refreshAll();
       terminalProvider.refresh();
@@ -173,6 +157,13 @@ export function activate(context: vscode.ExtensionContext): void {
       "worktreeManager.addExistingBareRepository",
       async () => {
         await addExistingBareRepository();
+        refreshAll();
+      },
+    ),
+    vscode.commands.registerCommand(
+      "worktreeManager.transformInBareGit",
+      async (repoPath?: string) => {
+        await transformInBareGit(repoPath);
         refreshAll();
       },
     ),
@@ -459,10 +450,16 @@ async function addExistingBareRepository(): Promise<void> {
     canSelectFiles: false,
     canSelectFolders: true,
     canSelectMany: false,
-    openLabel: "Add Bare Repository",
-    title: "Choose an existing bare repository folder",
+    openLabel: "Add Git Repository",
+    title: "Choose an existing git repository folder",
   });
   const repoPath = folderChoice?.[0]?.fsPath;
+  if (!repoPath) return;
+
+  await transformInBareGit(repoPath);
+}
+
+async function transformInBareGit(repoPath?: string): Promise<void> {
   if (!repoPath) return;
 
   const script = existingBareRepositoryScript(repoPath);
@@ -472,16 +469,16 @@ async function addExistingBareRepository(): Promise<void> {
   });
   await vscode.window.showTextDocument(document);
 
-  log("existing bare repository commands opened", { repoPath });
+  log("transform in bare git commands opened", { repoPath });
   void vscode.window.showInformationMessage(
-    "Existing bare repository commands opened. Run them in a terminal.",
+    "Transform in Bare Git commands opened. Run them in a terminal.",
   );
 }
 
 async function cloneBareRepository(): Promise<void> {
   log("clone bare repository invoked");
   const remoteUrlInput = await vscode.window.showInputBox({
-    prompt: "Git remote URL to clone as a bare repository",
+    prompt: "Git remote URL to clone as a git repository",
     placeHolder: "git@github.com:owner/project.git",
   });
   const remoteUrl = remoteUrlInput?.trim();
@@ -495,8 +492,8 @@ async function cloneBareRepository(): Promise<void> {
     canSelectFiles: false,
     canSelectFolders: true,
     canSelectMany: false,
-    openLabel: "Clone Bare Repo Here",
-    title: "Choose the directory that will contain the bare repository",
+    openLabel: "Clone Git Repo Here",
+    title: "Choose the directory that will contain the git repository",
   });
   const parentDir = folderChoice?.[0]?.fsPath;
   if (!parentDir) {
@@ -528,7 +525,7 @@ async function cloneBareRepository(): Promise<void> {
   await vscode.window.showTextDocument(document);
   log("clone bare repository setup commands opened", { remoteUrl, repoPath });
   void vscode.window.showInformationMessage(
-    "Bare repository setup commands opened. Run them in a terminal, then use Add Existing Bare Repository…",
+    "Git repository setup commands opened. Run them in a terminal, then use Add Existing Git Repository…",
   );
 }
 
@@ -721,7 +718,7 @@ async function removeBareRepository(repo?: BareRepository): Promise<void> {
   if (!repo) return;
 
   const confirmed = await vscode.window.showWarningMessage(
-    `Remove bare repository ${repo.label} from Worktree Manager?`,
+    `Remove git repository ${repo.label} from Worktree Manager?`,
     {
       modal: true,
       detail: `This removes it from configuration and the Explorer workspace folders. It does not delete files.\n${repo.fsPath}`,
@@ -912,7 +909,7 @@ async function pickRepo(): Promise<BareRepository | undefined> {
       repo,
     })),
     {
-      placeHolder: "Choose a bare repository",
+      placeHolder: "Choose a git repository",
     },
   );
   return choice?.repo;
@@ -946,7 +943,7 @@ export function menuItems(
   hasSelectedWorktree: boolean,
 ): Array<{ label: string; command: string }> {
   const worktreeActions = [
-    { label: "Check Worktree", command: "worktreeManager.checkWorktree" },
+    { label: "Select Worktree", command: "worktreeManager.checkWorktree" },
     {
       label: "Open Terminal Here",
       command: "worktreeManager.openTerminalHere",
@@ -956,16 +953,16 @@ export function menuItems(
   ];
   const repoActions = [
     {
-      label: "Clone Bare Repository…",
+      label: "Clone Git Repository…",
       command: "worktreeManager.cloneBareRepository",
     },
     {
-      label: "Add Existing Bare Repository…",
+      label: "Add Existing Git Repository…",
       command: "worktreeManager.addExistingBareRepository",
     },
     { label: "Add Worktree…", command: "worktreeManager.addWorktree" },
     {
-      label: "Remove Bare Repository",
+      label: "Remove Git Repository",
       command: "worktreeManager.removeBareRepository",
     },
     { label: "Fetch", command: "worktreeManager.fetch" },

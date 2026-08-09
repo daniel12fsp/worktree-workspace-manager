@@ -112,12 +112,12 @@ describe("RepoNode", () => {
     el.dispatchEvent(contextMenuEvent);
 
     expect(screen.getByText("Add Worktree…")).toBeTruthy();
-    expect(screen.getByText("Copy Bare Repository Path")).toBeTruthy();
-    expect(screen.getByText("Remove Bare Repository")).toBeTruthy();
+    expect(screen.getByText("Copy Git Repository Path")).toBeTruthy();
+    expect(screen.getByText("Remove Git Repository")).toBeTruthy();
     expect(screen.getByText("Close All Terminals")).toBeTruthy();
   });
 
-  it("posts remove bare repository from context menu", () => {
+  it("posts remove git repository from context menu", () => {
     const mockVsCode = createMockVsCode();
     renderWithVsCode(
       <RepoNode repo={repo} collapsed={true} onToggle={vi.fn()} />,
@@ -125,7 +125,7 @@ describe("RepoNode", () => {
     );
 
     fireEvent.contextMenu(screen.getByText(/project\.git/));
-    fireEvent.click(screen.getByText("Remove Bare Repository"));
+    fireEvent.click(screen.getByText("Remove Git Repository"));
 
     expect(mockVsCode.postMessage).toHaveBeenCalledWith({
       type: "removeBareRepository",
@@ -145,7 +145,8 @@ describe("RepoNode", () => {
     fireEvent.contextMenu(screen.getByText(/test/));
 
     expect(screen.queryByText("Add Worktree…")).toBeNull();
-    expect(screen.queryByText("Remove Bare Repository")).toBeNull();
+    expect(screen.queryByText("Remove Git Repository")).toBeNull();
+    expect(screen.getByText("Transform in Bare Git")).toBeTruthy();
     expect(screen.getByText("Copy Folder Path")).toBeTruthy();
   });
 });
@@ -217,7 +218,7 @@ describe("WorktreeNode", () => {
     expect(button.textContent?.trim()).toBe("+");
   });
 
-  it("calls onToggle and posts collapseAll when clicked", () => {
+  it("calls onToggle without selecting when clicked", () => {
     const mockVsCode = createMockVsCode();
     const onToggle = vi.fn();
     renderWithVsCode(
@@ -234,9 +235,7 @@ describe("WorktreeNode", () => {
     );
     fireEvent.click(screen.getByText(/feat-login/));
     expect(onToggle).toHaveBeenCalled();
-    expect(mockVsCode.postMessage).toHaveBeenCalledWith({
-      type: "collapseAll",
-    });
+    expect(mockVsCode.postMessage).not.toHaveBeenCalled();
   });
 
   it("shows collapsed icon when collapsed", () => {
@@ -269,8 +268,8 @@ describe("WorktreeNode", () => {
     expect(screen.getByText(/▾/)).toBeTruthy();
   });
 
-  it("row click calls onSetExplorerWorktree", () => {
-    const onSetExplorerWorktree = vi.fn();
+  it("context menu posts select worktree", () => {
+    const mockVsCode = createMockVsCode();
     renderWithVsCode(
       <WorktreeNode
         repoLabel="project.git"
@@ -279,11 +278,16 @@ describe("WorktreeNode", () => {
         onToggle={vi.fn()}
         onCreateTerminal={vi.fn()}
         loading={false}
-        onSetExplorerWorktree={onSetExplorerWorktree}
+        onSetExplorerWorktree={vi.fn()}
       />,
+      mockVsCode,
     );
-    fireEvent.click(screen.getByText(/feat-login/));
-    expect(onSetExplorerWorktree).toHaveBeenCalledWith("/tmp/feat-login");
+    fireEvent.contextMenu(screen.getByText(/feat-login/));
+    fireEvent.click(screen.getByText("Select Worktree"));
+    expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+      type: "setExplorerWorktree",
+      path: "/tmp/feat-login",
+    });
   });
 
   it("workspace folder row click only toggles and skips explorer selection", () => {

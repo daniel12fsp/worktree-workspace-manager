@@ -27,9 +27,7 @@ export class WorktreeNode extends vscode.TreeItem {
     this.iconPath = dotIcon(worktree.color);
     this.tooltip = worktree.path;
     this.resourceUri = vscode.Uri.file(worktree.path);
-    this.checkboxState = checked
-      ? vscode.TreeItemCheckboxState.Checked
-      : vscode.TreeItemCheckboxState.Unchecked;
+    void checked;
   }
 }
 

@@ -44,6 +44,7 @@
     "onCommand:worktreeManager.showMenu",
     "onCommand:worktreeManager.cloneBareRepository",
     "onCommand:worktreeManager.addExistingBareRepository",
+    "onCommand:worktreeManager.transformInBareGit",
     "onCommand:worktreeManager.addWorktree",
     "onCommand:worktreeManager.removeBareRepository",
     "onCommand:worktreeManager.copyRepositoryPath",
@@ -100,7 +101,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Bare git repositories to manage. Leading ~ is expanded; environment variables are not."
+          "description": "Git repositories to manage. Leading ~ is expanded; environment variables are not."
         },
         "worktreeManager.terminalShell": {
           "type": "string",
@@ -170,19 +171,23 @@
       },
       {
         "command": "worktreeManager.cloneBareRepository",
-        "title": "Clone Bare Repository…"
+        "title": "Clone Git Repository…"
       },
       {
         "command": "worktreeManager.addExistingBareRepository",
-        "title": "Add Existing Bare Repository…"
+        "title": "Add Existing Git Repository…"
       },
       {
         "command": "worktreeManager.addWorktree",
         "title": "Add Worktree…"
       },
       {
+        "command": "worktreeManager.transformInBareGit",
+        "title": "Transform in Bare Git"
+      },
+      {
         "command": "worktreeManager.copyRepositoryPath",
-        "title": "Copy Bare Repository Path"
+        "title": "Copy Git Repository Path"
       },
       {
         "command": "worktreeManager.copyWorktreePath",
@@ -194,7 +199,7 @@
       },
       {
         "command": "worktreeManager.checkWorktree",
-        "title": "Check Worktree"
+        "title": "Select Worktree"
       },
       {
         "command": "worktreeManager.openTerminalHere",
@@ -210,7 +215,7 @@
       },
       {
         "command": "worktreeManager.removeBareRepository",
-        "title": "Remove Bare Repository"
+        "title": "Remove Git Repository"
       },
       {
         "command": "worktreeManager.fetch",

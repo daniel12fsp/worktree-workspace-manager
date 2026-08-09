@@ -269,11 +269,6 @@ body {
 }
 
 .terminalCommand {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .terminalCommand.running {
@@ -304,6 +299,7 @@ body {
   cursor: pointer;
   opacity: 0.75;
   padding: 1px 5px;
+  flex-shrink: 0;
 }
 
 .addTerminal:hover,

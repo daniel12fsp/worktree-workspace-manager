@@ -265,13 +265,13 @@ describe("removeRepositoryFromConfigValues", () => {
 describe("menuItems", () => {
   it("returns worktree-first order when worktree selected", () => {
     const items = menuItems(true);
-    expect(items[0].label).toBe("Check Worktree");
+    expect(items[0].label).toBe("Select Worktree");
     expect(items.some((i) => i.label === "Fetch")).toBe(true);
   });
 
   it("returns repo-first order when no worktree selected", () => {
     const items = menuItems(false);
-    expect(items[0].label).toBe("Clone Bare Repository…");
+    expect(items[0].label).toBe("Clone Git Repository…");
     expect(items.some((i) => i.label === "Fetch")).toBe(true);
   });
 
@@ -279,7 +279,7 @@ describe("menuItems", () => {
     const items = menuItems(true);
     const labels = items.map((i) => i.label);
     expect(labels).toContain("Add Worktree…");
-    expect(labels).toContain("Remove Bare Repository");
+    expect(labels).toContain("Remove Git Repository");
     expect(labels).toContain("Fetch");
     expect(labels).toContain("Prune Stale");
     expect(labels).toContain("Refresh");

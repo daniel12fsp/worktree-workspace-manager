@@ -22,6 +22,10 @@ export function RepoNode({ repo, collapsed, onToggle }: Props) {
         repo.kind === "workspaceFolder"
           ? [
               {
+                label: "Transform in Bare Git",
+                message: { type: "transformInBareGit", path: repo.path },
+              },
+              {
                 label: "Copy Folder Path",
                 message: { type: "copyWorkspaceFolderPath", path: repo.path },
               },
@@ -36,11 +40,11 @@ export function RepoNode({ repo, collapsed, onToggle }: Props) {
                 message: { type: "addWorktree", path: repo.path },
               },
               {
-                label: "Copy Bare Repository Path",
+                label: "Copy Git Repository Path",
                 message: { type: "copyRepoPath", path: repo.path },
               },
               {
-                label: "Remove Bare Repository",
+                label: "Remove Git Repository",
                 message: { type: "removeBareRepository", path: repo.path },
               },
               {

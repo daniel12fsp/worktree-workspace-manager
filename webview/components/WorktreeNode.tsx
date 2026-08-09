@@ -27,12 +27,8 @@ export function WorktreeNode({
     (e: React.MouseEvent) => {
       e.stopPropagation();
       onToggle();
-      if (worktree.kind !== "workspaceFolder") {
-        onSetExplorerWorktree(worktree.path);
-        vscode.postMessage({ type: "collapseAll" });
-      }
     },
-    [onSetExplorerWorktree, onToggle, vscode, worktree.kind, worktree.path],
+    [onToggle],
   );
 
   const handleContextMenu = useCallback(
@@ -53,6 +49,10 @@ export function WorktreeNode({
               },
             ]
           : [
+              {
+                label: "Select Worktree",
+                message: { type: "setExplorerWorktree", path: worktree.path },
+              },
               {
                 label: "Remove Worktree",
                 message: { type: "removeWorktree", path: worktree.path },
@@ -78,6 +78,8 @@ export function WorktreeNode({
     },
     [worktree.kind, worktree.path, vscode],
   );
+
+  void onSetExplorerWorktree;
 
   const handleAdd = useCallback(
     (e: React.MouseEvent) => {

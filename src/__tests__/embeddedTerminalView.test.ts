@@ -1213,6 +1213,36 @@ describe("EmbeddedTerminalViewProvider", () => {
     await messageHandler!({ type: "copyRepoPath", path: "/repos/nonexistent" });
   });
 
+  it("handleWebviewMessage transformInBareGit executes command", async () => {
+    let messageHandler: ((msg: any) => void) | undefined;
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    const mockView = {
+      visible: true,
+      webview: mockWebview,
+    } as any;
+    provider.resolveWebviewView(mockView);
+
+    await messageHandler!({
+      type: "transformInBareGit",
+      path: "/repos/project",
+    });
+
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      "worktreeManager.transformInBareGit",
+      "/repos/project",
+    );
+  });
+
   it("handleWebviewMessage removeWorktree not found", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
