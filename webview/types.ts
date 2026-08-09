@@ -1,3 +1,5 @@
+export type TerminalsLayoutOrder = "terminalFirst" | "selectorFirst";
+
 export interface RepoData {
   label: string;
   path: string;
@@ -32,6 +34,7 @@ export interface StateMessage {
   activeOutput: string;
   hasWorkspace: boolean;
   home: string;
+  terminalsLayoutOrder?: TerminalsLayoutOrder;
 }
 
 export interface OutputMessage {

@@ -102,6 +102,10 @@ export function activate(context: vscode.ExtensionContext): void {
         refreshAll();
         refreshTerminalsUnlessSuppressed();
       } else if (
+        event.affectsConfiguration("worktreeManager.terminalsLayoutOrder")
+      ) {
+        refreshTerminalsUnlessSuppressed();
+      } else if (
         event.affectsConfiguration("files.exclude") ||
         event.affectsConfiguration("search.exclude")
       ) {

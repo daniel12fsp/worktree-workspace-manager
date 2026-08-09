@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import { useVsCode } from "./hooks/useVsCode";
 import { useTerminal } from "./hooks/useTerminal";
-import type { RepoData, SessionData } from "./types";
+import type { RepoData, SessionData, TerminalsLayoutOrder } from "./types";
 import { RepoNode } from "./components/RepoNode";
 import { WorktreeNode } from "./components/WorktreeNode";
 import { TerminalLeaf } from "./components/TerminalLeaf";
@@ -16,6 +16,7 @@ export interface AppState {
   hasWorkspace: boolean;
   home: string;
   loadingWorktrees: Set<string>;
+  terminalsLayoutOrder?: TerminalsLayoutOrder;
 }
 
 interface Props {
@@ -116,7 +117,10 @@ export function App({ initialState }: Props) {
       const updateWidth = (clientX: number) => {
         const rect = container.getBoundingClientRect();
         if (rect.width <= 0) return;
-        const rawPercent = ((clientX - rect.left) / rect.width) * 100;
+        const rawPercent =
+          layoutOrder(state.terminalsLayoutOrder) === "terminalFirst"
+            ? ((clientX - rect.left) / rect.width) * 100
+            : ((rect.right - clientX) / rect.width) * 100;
         const nextPercent = Math.min(85, Math.max(25, rawPercent));
         setTerminalPanePercent(nextPercent);
         requestAnimationFrame(() => terminalApi?.resize());
@@ -137,7 +141,7 @@ export function App({ initialState }: Props) {
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
     },
-    [terminalApi],
+    [state.terminalsLayoutOrder, terminalApi],
   );
 
   const handleSetExplorerWorktree = useCallback(
@@ -213,6 +217,7 @@ export function App({ initialState }: Props) {
           hasWorkspace: Boolean(message.hasWorkspace),
           home: message.home || "",
           loadingWorktrees: prev.loadingWorktrees,
+          terminalsLayoutOrder: layoutOrder(message.terminalsLayoutOrder),
         }));
       } else if (
         message.type === "output" &&
@@ -271,80 +276,98 @@ export function App({ initialState }: Props) {
     );
   }
 
+  const terminalPane = (
+    <section
+      className="terminalPane"
+      aria-label="Terminal panel"
+      style={{ flex: `0 0 ${terminalPanePercent}%` }}
+    >
+      <TerminalEmbed
+        activeSessionId={state.activeSessionId}
+        containerRef={terminalContainerRef}
+        terminalApi={terminalApi}
+      />
+    </section>
+  );
+  const resizeHandle = (
+    <div
+      className="resizeHandle"
+      role="separator"
+      aria-label="Resize terminal and tree panels"
+      aria-orientation="vertical"
+      onMouseDown={handleResizeMouseDown}
+      style={{ flex: "0 0 6px" }}
+    />
+  );
+  const selectorPane = (
+    <div className="sidebar" id="list" style={{ flex: "1 1 220px" }}>
+      {state.repos.map((repo) => {
+        const isRepoCollapsed = collapsedReposRef.current.has(repo.label);
+        return (
+          <div key={repo.label}>
+            <RepoNode
+              repo={repo}
+              collapsed={isRepoCollapsed}
+              onToggle={() => toggleRepo(repo.label)}
+            />
+            {!isRepoCollapsed &&
+              repo.worktrees.map((wt) => {
+                const worktreeKey = `${repo.label}:${wt.path}`;
+                const isWtCollapsed =
+                  collapsedWorktreesRef.current.has(worktreeKey);
+                return (
+                  <div key={wt.path}>
+                    <WorktreeNode
+                      repoLabel={repo.label}
+                      worktree={wt}
+                      collapsed={isWtCollapsed}
+                      onToggle={() => toggleWorktree(repo.label, wt.path)}
+                      onCreateTerminal={(path) =>
+                        handleCreateTerminal(repo.label, path)
+                      }
+                      loading={state.loadingWorktrees.has(wt.path)}
+                      onSetExplorerWorktree={handleSetExplorerWorktree}
+                    />
+                    {!isWtCollapsed &&
+                      wt.sessions.map((session) => (
+                        <TerminalLeaf
+                          key={session.id}
+                          session={session}
+                          isActive={session.id === state.activeSessionId}
+                          onSelect={handleSelect}
+                          onReorder={handleReorder}
+                          onDragStartSession={handleDragStartSession}
+                          getDraggedSessionId={getDraggedSessionId}
+                          clearDraggedSession={clearDraggedSession}
+                        />
+                      ))}
+                  </div>
+                );
+              })}
+          </div>
+        );
+      })}
+    </div>
+  );
+  const panes =
+    layoutOrder(state.terminalsLayoutOrder) === "terminalFirst"
+      ? [terminalPane, resizeHandle, selectorPane]
+      : [selectorPane, resizeHandle, terminalPane];
+
   return (
     <div className="root">
       <FindBox />
       <div ref={splitContainerRef} className="splitLayout">
-        <section
-          className="terminalPane"
-          aria-label="Terminal panel"
-          style={{ flex: `0 0 ${terminalPanePercent}%` }}
-        >
-          <TerminalEmbed
-            activeSessionId={state.activeSessionId}
-            containerRef={terminalContainerRef}
-            terminalApi={terminalApi}
-          />
-        </section>
-        <div
-          className="resizeHandle"
-          role="separator"
-          aria-label="Resize terminal and tree panels"
-          aria-orientation="vertical"
-          onMouseDown={handleResizeMouseDown}
-          style={{ flex: "0 0 6px" }}
-        />
-        <div className="sidebar" id="list" style={{ flex: "1 1 220px" }}>
-          {state.repos.map((repo) => {
-            const isRepoCollapsed = collapsedReposRef.current.has(repo.label);
-            return (
-              <div key={repo.label}>
-                <RepoNode
-                  repo={repo}
-                  collapsed={isRepoCollapsed}
-                  onToggle={() => toggleRepo(repo.label)}
-                />
-                {!isRepoCollapsed &&
-                  repo.worktrees.map((wt) => {
-                    const worktreeKey = `${repo.label}:${wt.path}`;
-                    const isWtCollapsed =
-                      collapsedWorktreesRef.current.has(worktreeKey);
-                    return (
-                      <div key={wt.path}>
-                        <WorktreeNode
-                          repoLabel={repo.label}
-                          worktree={wt}
-                          collapsed={isWtCollapsed}
-                          onToggle={() => toggleWorktree(repo.label, wt.path)}
-                          onCreateTerminal={(path) =>
-                            handleCreateTerminal(repo.label, path)
-                          }
-                          loading={state.loadingWorktrees.has(wt.path)}
-                          onSetExplorerWorktree={handleSetExplorerWorktree}
-                        />
-                        {!isWtCollapsed &&
-                          wt.sessions.map((session) => (
-                            <TerminalLeaf
-                              key={session.id}
-                              session={session}
-                              isActive={session.id === state.activeSessionId}
-                              onSelect={handleSelect}
-                              onReorder={handleReorder}
-                              onDragStartSession={handleDragStartSession}
-                              getDraggedSessionId={getDraggedSessionId}
-                              clearDraggedSession={clearDraggedSession}
-                            />
-                          ))}
-                      </div>
-                    );
-                  })}
-              </div>
-            );
-          })}
-        </div>
+        {panes.map((pane, index) => React.cloneElement(pane, { key: index }))}
       </div>
     </div>
   );
+}
+
+function layoutOrder(
+  value: TerminalsLayoutOrder | undefined,
+): TerminalsLayoutOrder {
+  return value === "selectorFirst" ? "selectorFirst" : "terminalFirst";
 }
 
 function findSessionState(

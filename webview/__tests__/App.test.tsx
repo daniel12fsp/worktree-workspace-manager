@@ -317,6 +317,83 @@ describe("App", () => {
     rafSpy.mockRestore();
   });
 
+  it("can show terminals selector before terminal pane", () => {
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [],
+        },
+      ],
+      activeSessionId: undefined,
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+      terminalsLayoutOrder: "selectorFirst",
+    };
+
+    renderWithVsCode(state);
+
+    const split = document.querySelector(".splitLayout") as HTMLElement;
+    expect(split.children[0].className).toBe("sidebar");
+    expect(split.children[1].className).toBe("resizeHandle");
+    expect(split.children[2].className).toBe("terminalPane");
+  });
+
+  it("resizes terminal pane from the right when selector is first", () => {
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [],
+        },
+      ],
+      activeSessionId: undefined,
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+      terminalsLayoutOrder: "selectorFirst",
+    };
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        bottom: 400,
+        height: 400,
+        left: 0,
+        right: 1000,
+        top: 0,
+        width: 1000,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+    const rafSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 1;
+      });
+
+    renderWithVsCode(state);
+
+    const separator = screen.getByRole("separator", {
+      name: "Resize terminal and tree panels",
+    });
+    const split = separator.closest(".splitLayout") as HTMLElement;
+    const terminalPane = split.querySelector(".terminalPane") as HTMLElement;
+    fireEvent.mouseDown(separator, { clientX: 350 });
+    fireEvent.mouseMove(window, { clientX: 600 });
+    expect(terminalPane.style.flex).toBe("0 0 40%");
+
+    fireEvent.mouseUp(window);
+    rectSpy.mockRestore();
+    rafSpy.mockRestore();
+  });
+
   it("hydrates active terminal output only once", async () => {
     const state: AppState = {
       repos: [

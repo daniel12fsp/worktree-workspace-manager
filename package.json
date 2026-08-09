@@ -108,6 +108,19 @@
           "default": "",
           "description": "Optional shell executable path for terminals opened by Worktree Manager, for example /bin/zsh. Leave empty to use the environment/default shell."
         },
+        "worktreeManager.terminalsLayoutOrder": {
+          "type": "string",
+          "enum": [
+            "terminalFirst",
+            "selectorFirst"
+          ],
+          "default": "terminalFirst",
+          "enumDescriptions": [
+            "Show the embedded terminal before the terminals selector.",
+            "Show the terminals selector before the embedded terminal."
+          ],
+          "description": "Controls the left-to-right order of the embedded terminal and terminals selector in Terminals by Worktree."
+        },
         "worktreeManager.colors": {
           "type": "object",
           "default": {},

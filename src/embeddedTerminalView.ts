@@ -19,6 +19,7 @@ import { log, logError } from "./logger";
 import { stripTerminalControlSequences } from "./terminalControl";
 
 type TerminalActivityState = "idle" | "running" | "error";
+export type TerminalsLayoutOrder = "terminalFirst" | "selectorFirst";
 
 export interface EmbeddedSession {
   readonly id: string;
@@ -832,6 +833,7 @@ export class EmbeddedTerminalViewProvider
         activeOutput: active?.output.join("") ?? "",
         hasWorkspace,
         home: os.homedir(),
+        terminalsLayoutOrder: configuredTerminalsLayoutOrder(),
       };
       log("render Terminals by Worktree state", {
         hasWorkspace,
@@ -1304,6 +1306,13 @@ export function configuredTerminalShell(): string | undefined {
   }
   const value = rawValue.trim();
   return value || undefined;
+}
+
+export function configuredTerminalsLayoutOrder(): TerminalsLayoutOrder {
+  const rawValue = vscode.workspace
+    .getConfiguration("worktreeManager")
+    .get<unknown>("terminalsLayoutOrder", "terminalFirst");
+  return rawValue === "selectorFirst" ? "selectorFirst" : "terminalFirst";
 }
 
 export function validatedConfiguredTerminalShell(): string | undefined {

@@ -40,6 +40,7 @@ const initialState: AppState = {
   hasWorkspace: true,
   home: "",
   loadingWorktrees: new Set(),
+  terminalsLayoutOrder: "terminalFirst",
 };
 
 // Mount React

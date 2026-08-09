@@ -7,6 +7,7 @@ import {
   numberOrUndefined,
   defaultShell,
   configuredTerminalShell,
+  configuredTerminalsLayoutOrder,
   validatedConfiguredTerminalShell,
   terminalShell,
   fishQuote,
@@ -273,6 +274,17 @@ describe("defaultShell", () => {
     (vscode as any).__setConfig("worktreeManager.terminalShell", "   ");
     expect(configuredTerminalShell()).toBeUndefined();
     expect(typeof terminalShell()).toBe("string");
+  });
+
+  it("reads configured terminals layout order", () => {
+    expect(configuredTerminalsLayoutOrder()).toBe("terminalFirst");
+    (vscode as any).__setConfig(
+      "worktreeManager.terminalsLayoutOrder",
+      "selectorFirst",
+    );
+    expect(configuredTerminalsLayoutOrder()).toBe("selectorFirst");
+    (vscode as any).__setConfig("worktreeManager.terminalsLayoutOrder", 42);
+    expect(configuredTerminalsLayoutOrder()).toBe("terminalFirst");
   });
 });
 
@@ -1964,7 +1976,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     mockListAllWorktrees.mockResolvedValue(new Map());
     await messageHandler!({ type: "ready" });
     expect(mockWebview.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "state" }),
+      expect.objectContaining({
+        type: "state",
+        terminalsLayoutOrder: "terminalFirst",
+      }),
     );
   });
 
