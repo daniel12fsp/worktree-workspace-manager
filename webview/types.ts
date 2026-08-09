@@ -21,6 +21,7 @@ export interface SessionData {
   state: "idle" | "running" | "error";
   displayName: string;
   statusText: string;
+  commandText?: string;
   preview: string;
 }
 

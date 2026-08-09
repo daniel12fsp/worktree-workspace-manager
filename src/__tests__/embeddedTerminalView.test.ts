@@ -324,9 +324,11 @@ describe("bashActivityRc", () => {
     expect(rc).toContain('[[ "$__wtwm_in_prompt" == 1 ]] && return 0');
   });
 
-  it("preserves array PROMPT_COMMAND", () => {
+  it("preserves array PROMPT_COMMAND without reporting setup commands", () => {
     const rc = bashActivityRc();
-    expect(rc).toContain("grep -Eq '^declare -[^ ]*[aA]'");
+    expect(rc).toContain("__wtwm_prompt_decl");
+    expect(rc).toContain("__wtwm_in_prompt=1");
+    expect(rc).not.toContain("grep -Eq");
     expect(rc).toContain(
       'PROMPT_COMMAND=(__wtwm_prompt_start "${PROMPT_COMMAND[@]}" __wtwm_prompt_end)',
     );
@@ -390,6 +392,7 @@ describe("consumeActivityMarkers", () => {
     state: "idle",
     statusText: "idle",
     lastCommand: "",
+    lastCommandText: "",
     activityMarkerRemainder: "",
     wrapperCleanupPaths: [],
     ...overrides,
@@ -402,33 +405,50 @@ describe("consumeActivityMarkers", () => {
     expect(result.stateChanged).toBe(false);
   });
 
-  it("detects start marker and sets running state", () => {
+  it("detects start markers and sets running state", () => {
     const session = makeSession();
     const data = "\x1b]777;wtwm;start;npm run dev\x07";
     const result = consumeActivityMarkers(session, data);
     expect(session.state).toBe("running");
-    expect(session.statusText).toBe("npm run dev");
-    expect(session.lastCommand).toBe("npm run dev");
+    expect(session.statusText).toBe("npm");
+    expect(session.lastCommand).toBe("npm");
+    expect(session.lastCommandText).toBe("npm run dev");
+    expect(result.stateChanged).toBe(true);
+  });
+
+  it("shows only the command name before parameters and pipes", () => {
+    const session = makeSession();
+    const data =
+      "\x1b]777;wtwm;start;/usr/bin/python3 -m http.server | tee log\x07";
+    const result = consumeActivityMarkers(session, data);
+    expect(session.state).toBe("running");
+    expect(session.statusText).toBe("python3");
+    expect(session.lastCommand).toBe("python3");
+    expect(session.lastCommandText).toBe(
+      "/usr/bin/python3 -m http.server | tee log",
+    );
     expect(result.stateChanged).toBe(true);
   });
 
   it("detects idle marker and shows the last command when available", () => {
     const session = makeSession({
       state: "running",
-      statusText: "npm run dev",
-      lastCommand: "npm run dev",
+      statusText: "npm",
+      lastCommand: "npm",
+      lastCommandText: "npm run dev",
     });
     const data = "\x1b]777;wtwm;idle\x07";
     const result = consumeActivityMarkers(session, data);
     expect(session.state).toBe("idle");
-    expect(session.statusText).toBe("npm run dev");
+    expect(session.statusText).toBe("npm");
+    expect(session.lastCommandText).toBe("npm run dev");
     expect(result.stateChanged).toBe(true);
   });
 
   it("detects idle marker and falls back to idle text", () => {
     const session = makeSession({
       state: "running",
-      statusText: "npm run dev",
+      statusText: "npm",
     });
     const data = "\x1b]777;wtwm;idle\x07";
     const result = consumeActivityMarkers(session, data);
@@ -440,25 +460,28 @@ describe("consumeActivityMarkers", () => {
   it("detects error marker and shows the failed command from the marker", () => {
     const session = makeSession({
       state: "running",
-      statusText: "npm run dev",
+      statusText: "npm",
     });
     const data = "\x1b]777;wtwm;error;127;npm run dev\x07";
     const result = consumeActivityMarkers(session, data);
     expect(session.state).toBe("error");
-    expect(session.statusText).toBe("npm run dev failed (127)");
+    expect(session.statusText).toBe("npm failed (127)");
+    expect(session.lastCommandText).toBe("npm run dev");
     expect(result.stateChanged).toBe(true);
   });
 
   it("falls back to the last running command for old error markers", () => {
     const session = makeSession({
       state: "running",
-      statusText: "npm run dev",
-      lastCommand: "npm run dev",
+      statusText: "npm",
+      lastCommand: "npm",
+      lastCommandText: "npm run dev",
     });
     const data = "\x1b]777;wtwm;error;127\x07";
     const result = consumeActivityMarkers(session, data);
     expect(session.state).toBe("error");
-    expect(session.statusText).toBe("npm run dev failed (127)");
+    expect(session.statusText).toBe("npm failed (127)");
+    expect(session.lastCommandText).toBe("npm run dev");
     expect(result.stateChanged).toBe(true);
   });
 
@@ -2566,6 +2589,7 @@ function makeSession(
     state: "idle",
     statusText: "idle",
     lastCommand: "",
+    lastCommandText: "",
     activityMarkerRemainder: "",
     wrapperCleanupPaths: [],
     ...overrides,

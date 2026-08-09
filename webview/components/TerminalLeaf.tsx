@@ -109,12 +109,13 @@ export function TerminalLeaf({
       : session.state === "error"
         ? "Failed"
         : "Idle";
+  const titleCommand = session.commandText || session.statusText || "idle";
 
   return (
     <div
       className={`terminalLeaf${isActive ? " active" : ""}`}
       draggable
-      title={`${stateLabel}: ${terminalNumberLabel} - ${session.statusText || "idle"}`}
+      title={`${stateLabel}: ${terminalNumberLabel} - ${titleCommand}`}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onDragStart={handleDragStart}

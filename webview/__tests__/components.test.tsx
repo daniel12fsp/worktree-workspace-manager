@@ -460,7 +460,8 @@ describe("TerminalLeaf", () => {
     label: "terminal 1",
     state: "running",
     displayName: "terminal 1",
-    statusText: "npm run dev",
+    statusText: "npm",
+    commandText: "npm run dev | tee log",
     preview: "building...",
   };
 
@@ -476,9 +477,27 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    expect(screen.getByText("npm run dev")).toBeTruthy();
+    expect(screen.getByText("npm")).toBeTruthy();
+    expect(screen.queryByText("npm run dev | tee log")).toBeNull();
     expect(screen.queryByText("terminal 1")).toBeNull();
     expect(screen.queryByText("t1 - feat-login")).toBeNull();
+  });
+
+  it("shows the full command in the hover title", () => {
+    renderWithVsCode(
+      <TerminalLeaf
+        session={session}
+        isActive={false}
+        onSelect={vi.fn()}
+        onReorder={vi.fn()}
+        onDragStartSession={vi.fn()}
+        getDraggedSessionId={vi.fn()}
+        clearDraggedSession={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("npm").closest(".terminalLeaf")?.title).toBe(
+      "Running: terminal 1 - npm run dev | tee log",
+    );
   });
 
   it("shows active class when active", () => {
@@ -494,7 +513,7 @@ describe("TerminalLeaf", () => {
       />,
     );
     expect(
-      screen.getByText("npm run dev").closest(".terminalLeaf")?.className,
+      screen.getByText("npm").closest(".terminalLeaf")?.className,
     ).toContain("active");
   });
 
@@ -511,7 +530,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByText("npm run dev"));
+    fireEvent.click(screen.getByText("npm"));
     expect(onSelect).toHaveBeenCalledWith("s1");
   });
 
@@ -528,7 +547,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByText("npm run dev"));
+    fireEvent.click(screen.getByText("npm"));
     expect(onSelect).toHaveBeenCalledWith("s1");
   });
 
@@ -591,7 +610,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf");
+    const leaf = screen.getByText("npm").closest(".terminalLeaf");
     expect(leaf?.getAttribute("title")).toContain("Running");
   });
 
@@ -608,7 +627,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf");
+    const leaf = screen.getByText("npm").closest(".terminalLeaf");
     expect(leaf?.getAttribute("title")).toContain("Idle");
   });
 
@@ -647,7 +666,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm").closest(".terminalLeaf")!;
     const dragStartEvent = new Event("dragstart", { bubbles: true });
     Object.defineProperty(dragStartEvent, "dataTransfer", {
       value: { effectAllowed: "", setData: vi.fn() },
@@ -668,7 +687,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm").closest(".terminalLeaf")!;
     const dragOverEvent = new Event("dragover", { bubbles: true });
     Object.defineProperty(dragOverEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dragOverEvent, "currentTarget", { value: leaf });
@@ -687,7 +706,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm").closest(".terminalLeaf")!;
     const dragOverEvent = new Event("dragover", { bubbles: true });
     Object.defineProperty(dragOverEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dragOverEvent, "currentTarget", { value: leaf });
@@ -706,7 +725,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm").closest(".terminalLeaf")!;
     const dragOverEvent = new Event("dragover", { bubbles: true });
     Object.defineProperty(dragOverEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dragOverEvent, "currentTarget", { value: leaf });
@@ -726,7 +745,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm").closest(".terminalLeaf")!;
     const dropEvent = new Event("drop", { bubbles: true });
     Object.defineProperty(dropEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dropEvent, "stopPropagation", { value: vi.fn() });
@@ -751,7 +770,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm").closest(".terminalLeaf")!;
     const dropEvent = new Event("drop", { bubbles: true });
     Object.defineProperty(dropEvent, "preventDefault", { value: vi.fn() });
     Object.defineProperty(dropEvent, "stopPropagation", { value: vi.fn() });
@@ -775,7 +794,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm").closest(".terminalLeaf")!;
     const contextMenuEvent = new MouseEvent("contextmenu", {
       bubbles: true,
       clientX: 100,
@@ -799,7 +818,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm").closest(".terminalLeaf")!;
     const dragEndEvent = new Event("dragend", { bubbles: true });
     Object.defineProperty(dragEndEvent, "currentTarget", { value: leaf });
     leaf.dispatchEvent(dragEndEvent);
@@ -817,7 +836,7 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    const leaf = screen.getByText("npm run dev").closest(".terminalLeaf")!;
+    const leaf = screen.getByText("npm").closest(".terminalLeaf")!;
     leaf.classList.add("dragOver");
     const dragLeaveEvent = new Event("dragleave", { bubbles: true });
     Object.defineProperty(dragLeaveEvent, "currentTarget", { value: leaf });

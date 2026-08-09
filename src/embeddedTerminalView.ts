@@ -30,6 +30,7 @@ export interface EmbeddedSession {
   state: TerminalActivityState;
   statusText: string;
   lastCommand: string;
+  lastCommandText: string;
   activityMarkerRemainder: string;
   readonly wrapperCleanupPaths: string[];
 }
@@ -656,6 +657,7 @@ export class EmbeddedTerminalViewProvider
       state: "idle",
       statusText: "idle",
       lastCommand: "",
+      lastCommandText: "",
       activityMarkerRemainder: "",
       wrapperCleanupPaths: wrapper.cleanupPaths,
     };
@@ -906,6 +908,7 @@ export class EmbeddedTerminalViewProvider
       state: session.state,
       displayName: session.label,
       statusText: session.statusText,
+      commandText: session.lastCommandText,
       preview: outputPreview(session.output),
     }));
   }
@@ -1022,13 +1025,18 @@ export function consumeActivityMarkers(
     ) => {
       if (kind.startsWith("start;")) {
         const trimmedCommand = (command ?? "").trim();
+        const commandName = commandDisplayName(trimmedCommand);
         session.state = "running";
-        session.statusText = trimmedCommand || "running";
-        session.lastCommand = trimmedCommand;
+        session.statusText = commandName || "running";
+        session.lastCommand = commandName;
+        session.lastCommandText = trimmedCommand;
       } else if (kind.startsWith("error;")) {
         const trimmedExitCode = (exitCode ?? "").trim();
         const trimmedFailedCommand = (failedCommand ?? "").trim();
-        const commandText = trimmedFailedCommand || session.lastCommand;
+        const failedCommandName = commandDisplayName(trimmedFailedCommand);
+        const commandText = failedCommandName || session.lastCommand;
+        session.lastCommandText =
+          trimmedFailedCommand || session.lastCommandText;
         const failedText = commandText ? `${commandText} failed` : "failed";
         session.state = "error";
         session.statusText = trimmedExitCode
@@ -1043,6 +1051,43 @@ export function consumeActivityMarkers(
     },
   );
   return { visibleData, stateChanged };
+}
+
+function commandDisplayName(command: string): string {
+  const commandBeforePipe = command.split("|", 1)[0]?.trim() ?? "";
+  if (!commandBeforePipe) return "";
+
+  const token = firstShellToken(commandBeforePipe);
+  return token ? path.basename(token) : "";
+}
+
+function firstShellToken(command: string): string {
+  let token = "";
+  let quote: '"' | "'" | undefined;
+  let escaped = false;
+
+  for (const char of command) {
+    if (escaped) {
+      token += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\" && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+
+    if ((char === '"' || char === "'") && (!quote || quote === char)) {
+      quote = quote ? undefined : char;
+      continue;
+    }
+
+    if (!quote && /\s/.test(char)) break;
+    token += char;
+  }
+
+  return token;
 }
 
 interface ShellActivityWrapper {
@@ -1199,11 +1244,16 @@ fi
 
 # Mark prompt rendering so DEBUG does not report prompt commands as running.
 # Preserve both string and array PROMPT_COMMAND forms used by modern bash setups.
-if declare -p PROMPT_COMMAND 2>/dev/null | grep -Eq '^declare -[^ ]*[aA]'; then
+# Keep setup guarded too so shell startup helpers do not appear as commands.
+__wtwm_in_prompt=1
+__wtwm_prompt_decl="$(declare -p PROMPT_COMMAND 2>/dev/null || true)"
+if [[ "$__wtwm_prompt_decl" =~ ^declare[[:space:]]+-[^[:space:]]*[aA] ]]; then
   PROMPT_COMMAND=(__wtwm_prompt_start "\${PROMPT_COMMAND[@]}" __wtwm_prompt_end)
 else
   PROMPT_COMMAND="__wtwm_prompt_start\${PROMPT_COMMAND:+;$PROMPT_COMMAND};__wtwm_prompt_end"
 fi
+unset __wtwm_prompt_decl
+__wtwm_in_prompt=0
 `;
 }
 
