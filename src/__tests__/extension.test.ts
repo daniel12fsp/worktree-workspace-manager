@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   shellQuote,
   inferRepositoryRootName,
+  existingBareRepositoryScript,
   defaultWorktreeParent,
   workspaceFileParent,
   workspaceFileBaseName,
@@ -73,6 +74,48 @@ describe("shellQuote", () => {
 
   it("handles path with spaces", () => {
     expect(shellQuote("/path/to/my project")).toBe("'/path/to/my project'");
+  });
+});
+
+describe("existingBareRepositoryScript", () => {
+  it("generates conversion and workspace open instructions", () => {
+    expect(existingBareRepositoryScript("/tmp/express")).toBe(
+      [
+        "# 1. Copy and paste this code to terminal",
+        "cd '/tmp/express'",
+        "mv .git .bare",
+        "echo 'gitdir: .bare' > .git",
+        "git --git-dir=.bare config core.bare true",
+        "git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'",
+        "# 2. Create a VS Code workspace file",
+        "cat <<'EOF' > '/tmp/express.code-workspace'",
+        JSON.stringify(
+          {
+            folders: [
+              {
+                name: "express",
+                path: "/tmp/express",
+              },
+            ],
+          },
+          null,
+          2,
+        ),
+        "EOF",
+        "# 3. Open VS Code through the workspace",
+        "code '/tmp/express.code-workspace'",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("quotes paths with spaces in shell commands", () => {
+    const script = existingBareRepositoryScript("/tmp/my express");
+
+    expect(script).toContain("cd '/tmp/my express'");
+    expect(script).toContain("cat <<'EOF' > '/tmp/my express.code-workspace'");
+    expect(script).toContain('"path": "/tmp/my express"');
+    expect(script).toContain("code '/tmp/my express.code-workspace'");
   });
 });
 

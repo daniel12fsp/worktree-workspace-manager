@@ -580,16 +580,32 @@ function bareCloneSetupScript(remoteUrl: string, repoPath: string): string {
   ].join("\n");
 }
 
-function existingBareRepositoryScript(repoPath: string): string {
+export function existingBareRepositoryScript(repoPath: string): string {
+  const workspacePath = `${repoPath}.code-workspace`;
   return [
-    "# Copy and paste this code to terminal",
+    "# 1. Copy and paste this code to terminal",
     `cd ${shellQuote(repoPath)}`,
-    `mkdir .bare`,
-    `mv .git/* .bare/`,
-    `rm -rf .git`,
+    `mv .git .bare`,
     `echo 'gitdir: .bare' > .git`,
     `git --git-dir=.bare config core.bare true`,
     `git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'`,
+    "# 2. Create a VS Code workspace file",
+    `cat <<'EOF' > ${shellQuote(workspacePath)}`,
+    JSON.stringify(
+      {
+        folders: [
+          {
+            name: path.basename(repoPath),
+            path: repoPath,
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    "EOF",
+    "# 3. Open VS Code through the workspace",
+    `code ${shellQuote(workspacePath)}`,
     "",
   ].join("\n");
 }
