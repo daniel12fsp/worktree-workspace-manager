@@ -2,7 +2,7 @@
   "name": "worktree-workspace-manager",
   "displayName": "Worktree Workspace Manager",
   "description": "Group terminals by git worktree, switch branches in one click, and auto-tidy editors from a single tree — built for bare-repo + worktree workflows.",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "daniel12fsp",
   "author": "Daniel Pereira <daniel12fsp@yahoo.com.br>",
   "license": "MIT",
