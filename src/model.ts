@@ -92,22 +92,74 @@ export function resolveGitDir(fsPath: string): string {
   return path.isAbsolute(match[1]) ? match[1] : path.resolve(fsPath, match[1]);
 }
 
-export function getConfiguredRepositories(): BareRepository[] {
-  const values = vscode.workspace
-    .getConfiguration("worktreeManager")
-    .get<string[]>("repositories", []);
+export async function getWorkspaceRepositories(): Promise<BareRepository[]> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  log("workspace repository scan start", { count: folders.length });
 
-  const repos = values.map((configPath) => {
-    const fsPath = normalizeConfiguredRepositoryPath(expandHome(configPath));
-    return {
-      configPath,
-      fsPath,
-      gitDir: resolveGitDir(fsPath),
-      label: path.basename(fsPath),
-    };
-  });
-  log("configured repositories", { count: repos.length });
+  const entries = await Promise.all(
+    folders.map(async (folder) => {
+      const fsPath = normalizeConfiguredRepositoryPath(folder.uri.fsPath);
+      const gitDir = resolveGitDir(fsPath);
+      const label = folder.name || path.basename(fsPath);
+      log("workspace repository candidate", { label, fsPath, gitDir });
+
+      if (!(await isBareRepository(fsPath, gitDir))) {
+        log("workspace repository skipped: not bare", {
+          label,
+          fsPath,
+          gitDir,
+        });
+        return undefined;
+      }
+
+      log("workspace repository validated", { label, fsPath, gitDir });
+      return {
+        configPath: folder.uri.fsPath,
+        fsPath,
+        gitDir,
+        label,
+      } satisfies BareRepository;
+    }),
+  );
+
+  const repos: BareRepository[] = [];
+  const seen = new Set<string>();
+  for (const repo of entries) {
+    if (!repo) continue;
+    const key = path.resolve(repo.fsPath);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    repos.push(repo);
+  }
+  log("workspace repositories discovered", { count: repos.length });
   return repos;
+}
+
+async function isBareRepository(
+  fsPath: string,
+  gitDir: string,
+): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("git", [
+      `--git-dir=${gitDir}`,
+      "rev-parse",
+      "--is-bare-repository",
+    ]);
+    const bare = stdout.trim() === "true";
+    log("workspace repository bare validation result", {
+      fsPath,
+      gitDir,
+      bare,
+    });
+    return bare;
+  } catch (error) {
+    logError("workspace repository bare validation failed", {
+      fsPath,
+      gitDir,
+      error,
+    });
+    return false;
+  }
 }
 
 export function normalizeConfiguredRepositoryPath(fsPath: string): string {
@@ -145,7 +197,7 @@ export async function listWorktrees(repo: BareRepository): Promise<Worktree[]> {
 export async function listAllWorktrees(): Promise<
   Map<BareRepository, Worktree[]>
 > {
-  const repos = getConfiguredRepositories();
+  const repos = await getWorkspaceRepositories();
   const entries = await Promise.all(
     repos.map(async (repo) => {
       try {

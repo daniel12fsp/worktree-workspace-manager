@@ -95,14 +95,6 @@
     "configuration": {
       "title": "Worktree Manager",
       "properties": {
-        "worktreeManager.repositories": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "description": "Git repositories to manage. Leading ~ is expanded; environment variables are not."
-        },
         "worktreeManager.terminalShell": {
           "type": "string",
           "default": "",
@@ -240,7 +232,7 @@
       },
       {
         "command": "worktreeManager.configureRepositories",
-        "title": "Configure Repositories…"
+        "title": "Open Workspace File…"
       },
       {
         "command": "worktreeManager.closeRepoTerminals",

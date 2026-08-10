@@ -78,7 +78,7 @@ describe("App", () => {
     ).toBeTruthy();
   });
 
-  it("shows no repositories message when empty repos", () => {
+  it("shows no bare repository workspace folders message when empty repos", () => {
     const state: AppState = {
       repos: [],
       activeSessionId: undefined,
@@ -88,7 +88,9 @@ describe("App", () => {
       loadingWorktrees: new Set(),
     };
     renderWithVsCode(state);
-    expect(screen.getByText("No repositories configured yet.")).toBeTruthy();
+    expect(
+      screen.getByText("No bare repository workspace folders yet."),
+    ).toBeTruthy();
   });
 
   it("renders repos when present", () => {

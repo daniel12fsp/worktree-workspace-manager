@@ -271,7 +271,7 @@ export function App({ initialState }: Props) {
   if (!state.repos.length) {
     return (
       <div className="root">
-        <Welcome message="No repositories configured yet." />
+        <Welcome message="No bare repository workspace folders yet." />
       </div>
     );
   }

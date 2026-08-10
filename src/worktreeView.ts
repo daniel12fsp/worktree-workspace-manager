@@ -56,10 +56,7 @@ export class WorktreeProvider
   constructor() {
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (
-          event.affectsConfiguration("worktreeManager.repositories") ||
-          event.affectsConfiguration("worktreeManager.colors")
-        ) {
+        if (event.affectsConfiguration("worktreeManager.colors")) {
           this.refresh();
         }
       }),
@@ -93,13 +90,7 @@ export class WorktreeProvider
         nodes.push(new RepoNode(repo));
       }
       if (nodes.length === 0) {
-        const repos = vscode.workspace
-          .getConfiguration("worktreeManager")
-          .get<string[]>("repositories", []);
-        if (repos.length === 0) {
-          return [new EmptyNode("No repositories configured")];
-        }
-        return [new EmptyNode()];
+        return [new EmptyNode("No bare repository workspace folders")];
       }
       return nodes;
     } catch (error) {

@@ -22,7 +22,7 @@ Git worktrees are great for working on multiple branches at once, but VS Code ca
 - **Open scoped terminals** directly from a worktree.
 - **Create, remove, fetch, and prune** worktrees from VS Code.
 - **Color-code worktrees** automatically, with quick manual overrides.
-- **Configure repos from the UI** instead of hand-editing workspace settings.
+- **Detect bare repos from workspace folders** instead of hand-editing workspace settings.
 
 Built for the common bare-repo layout:
 
@@ -49,17 +49,9 @@ Requirements: VS Code 1.90+ and `git` on your `PATH`.
 4. Run the generated terminal commands when prompted.
 5. Use **Add Worktree…**, then select a worktree to focus it.
 
-Prefer manual setup? Add your repo roots to workspace settings:
+Prefer manual setup? Add your bare-repo root as a VS Code workspace folder.
 
-```jsonc
-{
-  "settings": {
-    "worktreeManager.repositories": ["~/code/my-project"]
-  }
-}
-```
-
-Supported paths:
+Supported workspace folder paths:
 
 - a project folder containing `.bare`
 - a direct bare repo folder such as `my-project.git`
@@ -85,7 +77,6 @@ Supported paths:
 
 | Setting | Description |
 | --- | --- |
-| `worktreeManager.repositories` | Repo roots to manage. `~` is expanded. |
 | `worktreeManager.terminalShell` | Optional shell path for extension terminals. |
 | `worktreeManager.terminalsLayoutOrder` | Order of terminal and selector in the terminal panel. |
 | `worktreeManager.colors` | Auto-managed worktree colors, editable from the UI. |

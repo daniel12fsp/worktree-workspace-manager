@@ -12,7 +12,7 @@ import {
   normalizeConfiguredRepositoryPath,
   configuredColors,
   configurationTarget,
-  getConfiguredRepositories,
+  getWorkspaceRepositories,
   listWorktrees,
   listAllWorktrees,
   ensureConfiguredColorsForWorktrees,
@@ -50,9 +50,14 @@ vi.mock("node:child_process", () => ({
   execFile: vi.fn(
     (
       _cmd: string,
-      _args: unknown,
+      args: unknown,
       cb: (err: Error | null, stdout: string, stderr: string) => void,
     ) => {
+      const values = Array.isArray(args) ? args.map(String) : [];
+      if (values.includes("--is-bare-repository")) {
+        cb(null, "true\n", "");
+        return;
+      }
       cb(
         null,
         "worktree /tmp/feat-login\nHEAD abc123\nbranch refs/heads/feat/login\n\n",
@@ -407,27 +412,30 @@ describe("configurationTarget", () => {
   });
 });
 
-describe("getConfiguredRepositories", () => {
+describe("getWorkspaceRepositories", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExistsSync.mockReturnValue(false);
+    (vscode.workspace as any).workspaceFolders = null;
     (vscode as any).__resetConfig();
   });
 
-  it("returns empty array when no repositories configured", () => {
-    const repos = getConfiguredRepositories();
+  it("returns empty array when no workspace folders exist", async () => {
+    (vscode.workspace as any).workspaceFolders = null;
+    const repos = await getWorkspaceRepositories();
     expect(Array.isArray(repos)).toBe(true);
+    expect(repos).toHaveLength(0);
   });
 
-  it("returns repos when configured", () => {
-    (vscode as any).__setConfig("worktreeManager.repositories", [
-      "/repos/project.git",
-    ]);
+  it("returns bare repos from workspace folders", async () => {
+    (vscode.workspace as any).workspaceFolders = [
+      { name: "project", uri: { fsPath: "/repos/project" } },
+    ];
     mockExistsSync.mockImplementation(
       (p: string) => p === "/repos/project/.bare",
     );
     mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
-    const repos = getConfiguredRepositories();
+    const repos = await getWorkspaceRepositories();
     expect(repos).toHaveLength(1);
     expect(repos[0].label).toBe("project");
   });
@@ -482,6 +490,7 @@ describe("listAllWorktrees", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExistsSync.mockReturnValue(false);
+    (vscode.workspace as any).workspaceFolders = null;
     (vscode as any).__resetConfig();
   });
 
@@ -491,9 +500,9 @@ describe("listAllWorktrees", () => {
   });
 
   it("handles error from listWorktrees gracefully", async () => {
-    (vscode as any).__setConfig("worktreeManager.repositories", [
-      "/repos/project.git",
-    ]);
+    (vscode.workspace as any).workspaceFolders = [
+      { name: "project", uri: { fsPath: "/repos/project" } },
+    ];
     mockExistsSync.mockImplementation(
       (p: string) => p === "/repos/project/.bare",
     );

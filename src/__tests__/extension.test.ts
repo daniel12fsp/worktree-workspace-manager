@@ -9,7 +9,6 @@ import {
   gitErrorMessage,
   expandMaybeHome,
   menuItems,
-  removeRepositoryFromConfigValues,
   workspaceFolderMatchesRepository,
   type BareRepository,
 } from "../extension";
@@ -21,7 +20,7 @@ vi.mock("../logger", () => ({
   disposeLogger: vi.fn(),
 }));
 vi.mock("../model", () => ({
-  getConfiguredRepositories: vi.fn(() => []),
+  getWorkspaceRepositories: vi.fn(() => []),
   listAllWorktrees: vi.fn(async () => new Map()),
   updateWorktreeColor: vi.fn(async () => {}),
   normalizeConfiguredRepositoryPath: vi.fn((p: string) => p),
@@ -83,10 +82,20 @@ describe("existingBareRepositoryScript", () => {
       [
         "# 1. Copy and paste this code to terminal",
         "cd '/tmp/express'",
+        'branch="$(git branch --show-current)"',
+        '[ -n "$branch" ] || branch="HEAD"',
+        'staging=".wtwm-main"',
+        '[ ! -e "$staging" ] || { echo "$staging already exists" >&2; exit 1; }',
+        'mkdir "$staging"',
+        'find . -mindepth 1 -maxdepth 1 ! -name \'.git\' ! -name "$staging" -exec mv {} "$staging"/ \\;',
         "mv .git .bare",
         "echo 'gitdir: .bare' > .git",
         "git --git-dir=.bare config core.bare true",
         "git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'",
+        'git --git-dir=.bare worktree add --no-checkout main "$branch"',
+        'find "$staging" -mindepth 1 -maxdepth 1 -exec mv {} main/ \\;',
+        'rmdir "$staging"',
+        "git -C main reset --mixed HEAD",
         "# 2. Create a VS Code workspace file",
         "cat <<'EOF' > '/tmp/express.code-workspace'",
         JSON.stringify(
@@ -114,7 +123,18 @@ describe("existingBareRepositoryScript", () => {
 
     expect(script).toContain("cd '/tmp/my express'");
     expect(script).toContain("cat <<'EOF' > '/tmp/my express.code-workspace'");
+    expect(script).toContain(
+      'git --git-dir=.bare worktree add --no-checkout main "$branch"',
+    );
+    expect(script).toContain(
+      'find . -mindepth 1 -maxdepth 1 ! -name \'.git\' ! -name "$staging" -exec mv {} "$staging"/ \\;',
+    );
+    expect(script).toContain(
+      'find "$staging" -mindepth 1 -maxdepth 1 -exec mv {} main/ \\;',
+    );
+    expect(script).toContain("git -C main reset --mixed HEAD");
     expect(script).toContain('"path": "/tmp/my express"');
+    expect(script).not.toContain("worktreeManager.repositories");
     expect(script).toContain("code '/tmp/my express.code-workspace'");
   });
 });
@@ -272,39 +292,6 @@ describe("workspaceFolderMatchesRepository", () => {
   });
 });
 
-describe("removeRepositoryFromConfigValues", () => {
-  const repo: BareRepository = {
-    configPath: "/repos/project",
-    fsPath: "/repos/project",
-    gitDir: "/repos/project/.bare",
-    label: "project",
-  };
-
-  it("removes matching configured repository path", () => {
-    expect(
-      removeRepositoryFromConfigValues(
-        ["/repos/project", "/repos/other"],
-        repo,
-      ),
-    ).toEqual(["/repos/other"]);
-  });
-
-  it("removes legacy .git config path for the repository", () => {
-    expect(
-      removeRepositoryFromConfigValues(
-        ["/repos/project.git", "/repos/other"],
-        repo,
-      ),
-    ).toEqual(["/repos/other"]);
-  });
-
-  it("keeps non-matching repositories", () => {
-    expect(removeRepositoryFromConfigValues(["/repos/other"], repo)).toEqual([
-      "/repos/other",
-    ]);
-  });
-});
-
 describe("menuItems", () => {
   it("returns worktree-first order when worktree selected", () => {
     const items = menuItems(true);
@@ -326,6 +313,6 @@ describe("menuItems", () => {
     expect(labels).toContain("Fetch");
     expect(labels).toContain("Prune Stale");
     expect(labels).toContain("Refresh");
-    expect(labels).toContain("Configure Repositories…");
+    expect(labels).toContain("Open Workspace File…");
   });
 });

@@ -171,7 +171,7 @@ describe("WorktreeProvider", () => {
     expect(children).toEqual([]);
   });
 
-  it("getChildren returns EmptyNode when repos configured but no worktrees", async () => {
+  it("getChildren returns EmptyNode when no bare repository workspace folders", async () => {
     mockListAllWorktrees.mockResolvedValue(new Map());
     const provider = new WorktreeProvider();
     const children = await provider.getChildren();

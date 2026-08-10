@@ -54,7 +54,6 @@ Remove keys related to the extension.
 For this project, likely remove:
 
 ```json
-  "worktreeManager.repositories": [],
   "worktreeManager.colors": {}
 ```
 

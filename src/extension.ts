@@ -9,10 +9,9 @@ import { disposeLogger, log, logError } from "./logger";
 import {
   BareRepository,
   Worktree,
-  getConfiguredRepositories,
+  getWorkspaceRepositories,
   listAllWorktrees,
   normalizeConfiguredRepositoryPath,
-  resolveGitDir,
   updateWorktreeColor,
 } from "./model";
 import {
@@ -95,10 +94,7 @@ export function activate(context: vscode.ExtensionContext): void {
       terminalProvider.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (
-        event.affectsConfiguration("worktreeManager.repositories") ||
-        event.affectsConfiguration("worktreeManager.colors")
-      ) {
+      if (event.affectsConfiguration("worktreeManager.colors")) {
         refreshAll();
         refreshTerminalsUnlessSuppressed();
       } else if (
@@ -282,10 +278,11 @@ async function updateWorktreeViewContexts(): Promise<void> {
     "worktreeManager.hasWorkspace",
     hasWorkspace,
   );
+  const repos = await getWorkspaceRepositories();
   await vscode.commands.executeCommand(
     "setContext",
     "worktreeManager.hasRepositories",
-    hasWorkspace && getConfiguredRepositories().length > 0,
+    hasWorkspace && repos.length > 0,
   );
 }
 
@@ -552,22 +549,6 @@ async function localBranchExists(
   }
 }
 
-async function isBareRepository(repoPath: string): Promise<boolean> {
-  const gitDir = resolveGitDir(repoPath);
-  try {
-    const { stdout } = await execFileAsync("git", [
-      "--git-dir",
-      gitDir,
-      "rev-parse",
-      "--is-bare-repository",
-    ]);
-    return stdout.trim() === "true";
-  } catch (error) {
-    logError("bare repository validation failed", { repoPath, gitDir, error });
-    return false;
-  }
-}
-
 function bareCloneSetupScript(remoteUrl: string, repoPath: string): string {
   return [
     "# Copy and paste this code to terminal",
@@ -585,10 +566,20 @@ export function existingBareRepositoryScript(repoPath: string): string {
   return [
     "# 1. Copy and paste this code to terminal",
     `cd ${shellQuote(repoPath)}`,
+    `branch="$(git branch --show-current)"`,
+    `[ -n "$branch" ] || branch="HEAD"`,
+    `staging=".wtwm-main"`,
+    `[ ! -e "$staging" ] || { echo "$staging already exists" >&2; exit 1; }`,
+    `mkdir "$staging"`,
+    `find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name "$staging" -exec mv {} "$staging"/ \\;`,
     `mv .git .bare`,
     `echo 'gitdir: .bare' > .git`,
     `git --git-dir=.bare config core.bare true`,
     `git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'`,
+    `git --git-dir=.bare worktree add --no-checkout main "$branch"`,
+    `find "$staging" -mindepth 1 -maxdepth 1 -exec mv {} main/ \\;`,
+    `rmdir "$staging"`,
+    `git -C main reset --mixed HEAD`,
     "# 2. Create a VS Code workspace file",
     `cat <<'EOF' > ${shellQuote(workspacePath)}`,
     JSON.stringify(
@@ -643,9 +634,6 @@ async function createAndOpenWorkspaceIfNeeded(
   );
   const workspace = {
     folders: [{ name: repoLabel, path: repoPath }],
-    settings: {
-      "worktreeManager.repositories": [repoPath],
-    },
   };
 
   await fs.promises.writeFile(
@@ -709,30 +697,6 @@ async function addFolderToWorkspace(folderPath: string): Promise<void> {
   }
 }
 
-async function addRepositoryToConfig(repoPath: string): Promise<void> {
-  const config = vscode.workspace.getConfiguration("worktreeManager");
-  const target = configurationTarget();
-  const repositories = config.get<string[]>("repositories", []);
-  const normalizedRepoPath = path.resolve(repoPath);
-  const legacyGitPath = path.resolve(`${repoPath}.git`);
-  const next = repositories.filter(
-    (value) => path.resolve(expandMaybeHome(value)) !== legacyGitPath,
-  );
-  if (
-    !next.some(
-      (value) => path.resolve(expandMaybeHome(value)) === normalizedRepoPath,
-    )
-  ) {
-    next.push(repoPath);
-  }
-  if (
-    next.length !== repositories.length ||
-    next.some((value, index) => value !== repositories[index])
-  ) {
-    await config.update("repositories", next, target);
-  }
-}
-
 async function removeBareRepository(repo?: BareRepository): Promise<void> {
   repo = repo ?? (await pickRepo());
   if (!repo) return;
@@ -741,27 +705,19 @@ async function removeBareRepository(repo?: BareRepository): Promise<void> {
     `Remove git repository ${repo.label} from Worktree Manager?`,
     {
       modal: true,
-      detail: `This removes it from configuration and the Explorer workspace folders. It does not delete files.\n${repo.fsPath}`,
+      detail: `This removes it from Explorer workspace folders. It does not delete files.\n${repo.fsPath}`,
     },
     "Remove",
   );
   if (confirmed !== "Remove") return;
 
-  const config = vscode.workspace.getConfiguration("worktreeManager");
-  const target = configurationTarget();
-  const repositories = config.get<string[]>("repositories", []);
-  const next = removeRepositoryFromConfigValues(repositories, repo);
   await closeEditorsForRepository(repo);
   const removedFromExplorer = removeBareRepositoryFromExplorer(repo);
-  if (next.length === repositories.length && !removedFromExplorer) {
+  if (!removedFromExplorer) {
     void vscode.window.showInformationMessage(
-      `${repo.label} was not configured`,
+      `${repo.label} was not a workspace folder`,
     );
     return;
-  }
-
-  if (next.length !== repositories.length) {
-    await config.update("repositories", next, target);
   }
   void vscode.window.showInformationMessage(
     `Removed ${repo.label} from Worktree Manager`,
@@ -794,21 +750,6 @@ export function workspaceFolderMatchesRepository(
     targets.has(expanded) ||
     normalizeConfiguredRepositoryPath(expanded) === repo.fsPath
   );
-}
-
-export function removeRepositoryFromConfigValues(
-  repositories: readonly string[],
-  repo: BareRepository,
-): string[] {
-  const targets = repositoryPathTargets(repo);
-
-  return repositories.filter((value) => {
-    const expanded = path.resolve(expandMaybeHome(value));
-    return (
-      !targets.has(expanded) &&
-      normalizeConfiguredRepositoryPath(expanded) !== repo.fsPath
-    );
-  });
 }
 
 function repositoryPathTargets(repo: BareRepository): Set<string> {
@@ -921,7 +862,7 @@ async function runGit(args: string[], success: string): Promise<void> {
 }
 
 async function pickRepo(): Promise<BareRepository | undefined> {
-  const repos = getConfiguredRepositories();
+  const repos = await getWorkspaceRepositories();
   const choice = await vscode.window.showQuickPick(
     repos.map((repo) => ({
       label: repo.label,
@@ -989,7 +930,7 @@ export function menuItems(
     { label: "Prune Stale", command: "worktreeManager.pruneStale" },
     { label: "Refresh", command: "worktreeManager.refresh" },
     {
-      label: "Configure Repositories…",
+      label: "Open Workspace File…",
       command: "worktreeManager.configureRepositories",
     },
   ];
@@ -999,9 +940,9 @@ export function menuItems(
 }
 
 async function updateStatus(status: vscode.StatusBarItem): Promise<void> {
-  const repos = getConfiguredRepositories();
+  const repos = await getWorkspaceRepositories();
   if (!repos.length) {
-    status.text = "🌳 Worktrees: configure repos";
+    status.text = "🌳 Worktrees: add bare repo folder";
     return;
   }
 
