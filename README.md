@@ -39,8 +39,6 @@ my-project/
 
 ## Quick start
 
-![How to use Worktree Workspace Manager](assets/how-to-use.gif)
-
 Requirements: VS Code 1.90+ and `git` on your `PATH`.
 
 1. Open a `.code-workspace` workspace.
@@ -56,30 +54,73 @@ Supported workspace folder paths:
 - a project folder containing `.bare`
 - a direct bare repo folder such as `my-project.git`
 
+## How to configure an existing git repo as a bare repo
+
+![git-repo-to-bare-git-repo.](assets/git-repo-to-bare-git-repo.gif)
+
+Replace `/path/to/my-project` with your repository path.
+
+```sh
+# 1. Copy and paste this code to terminal
+
+cd '/path/to/my-project'
+branch="$(git branch --show-current)"
+[ -n "$branch" ] || branch="HEAD"
+staging=".wtwm-main"
+[ ! -e "$staging" ] || { echo "$staging already exists" >&2; exit 1; }
+mkdir "$staging"
+find . -mindepth 1 -maxdepth 1 ! -name '.git' ! -name "$staging" -exec mv {} "$staging"/ \;
+mv .git .bare
+echo 'gitdir: .bare' > .git
+git --git-dir=.bare config core.bare true
+git --git-dir=.bare config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+git --git-dir=.bare worktree add --no-checkout main "$branch"
+find "$staging" -mindepth 1 -maxdepth 1 -exec mv {} main/ \;
+rmdir "$staging"
+git -C main reset --mixed HEAD
+
+# 2. Create a VS Code workspace file
+
+cat <<'EOF' > '/path/to/my-project.code-workspace'
+{
+  "folders": [
+    {
+      "name": "my-project",
+      "path": "/path/to/my-project"
+    }
+  ]
+}
+EOF
+
+# 3. Open VS Code through the workspace
+
+code '/path/to/my-project.code-workspace'
+```
+
 ---
 
 ## Main commands
 
-| Command | Purpose |
-| --- | --- |
-| **Clone Git Repository…** | Create the bare-repo worktree layout from a remote. |
-| **Add Existing Git Repository…** | Register or convert an existing repository. |
-| **Add Worktree…** | Create a branch worktree. |
-| **Select Worktree** | Focus one worktree and hide the rest. |
-| **Open Terminal Here** | Start a terminal scoped to that worktree. |
-| **Change Worktree Color…** | Customize a worktree color. |
-| **Remove Worktree** | Run `git worktree remove`. |
-| **Fetch / Prune Stale** | Keep repository metadata current. |
+| Command                          | Purpose                                             |
+| -------------------------------- | --------------------------------------------------- |
+| **Clone Git Repository…**        | Create the bare-repo worktree layout from a remote. |
+| **Add Existing Git Repository…** | Register or convert an existing repository.         |
+| **Add Worktree…**                | Create a branch worktree.                           |
+| **Select Worktree**              | Focus one worktree and hide the rest.               |
+| **Open Terminal Here**           | Start a terminal scoped to that worktree.           |
+| **Change Worktree Color…**       | Customize a worktree color.                         |
+| **Remove Worktree**              | Run `git worktree remove`.                          |
+| **Fetch / Prune Stale**          | Keep repository metadata current.                   |
 
 ---
 
 ## Settings
 
-| Setting | Description |
-| --- | --- |
-| `worktreeManager.terminalShell` | Optional shell path for extension terminals. |
+| Setting                                | Description                                           |
+| -------------------------------------- | ----------------------------------------------------- |
+| `worktreeManager.terminalShell`        | Optional shell path for extension terminals.          |
 | `worktreeManager.terminalsLayoutOrder` | Order of terminal and selector in the terminal panel. |
-| `worktreeManager.colors` | Auto-managed worktree colors, editable from the UI. |
+| `worktreeManager.colors`               | Auto-managed worktree colors, editable from the UI.   |
 
 ---
 
