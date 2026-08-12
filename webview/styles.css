@@ -103,6 +103,12 @@ body {
   position: relative;
   margin-left: 22px;
   color: var(--vscode-foreground);
+  border: 1px solid transparent;
+}
+
+.terminalLeaf.active {
+  border-color: var(--vscode-terminal-ansiGreen, #2ea043);
+  border-style: dashed;
 }
 
 .terminalLeaf[draggable="true"] {
