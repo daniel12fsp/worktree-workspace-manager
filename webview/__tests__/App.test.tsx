@@ -178,6 +178,125 @@ describe("App", () => {
     expect(screen.getByText("npm run dev")).toBeTruthy();
   });
 
+  it("renders workspace folder sessions directly under folder label", () => {
+    const state: AppState = {
+      repos: [
+        {
+          label: "project (main)",
+          path: "/workspace/project",
+          kind: "workspaceFolder",
+          worktrees: [
+            {
+              name: "project",
+              branch: "main",
+              path: "/workspace/project",
+              color: "#808080",
+              kind: "workspaceFolder",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "idle",
+                  displayName: "terminal 1",
+                  statusText: "idle",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: undefined,
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+    renderWithVsCode(state);
+    expect(screen.getByText(/project \(main\)/)).toBeTruthy();
+    expect(screen.queryByText("project")).toBeNull();
+    expect(screen.getByText("idle")).toBeTruthy();
+  });
+
+  it("creates terminal from workspace folder plus button", () => {
+    const mockVsCode = createMockVsCode();
+    const state: AppState = {
+      repos: [
+        {
+          label: "project (main)",
+          path: "/workspace/project",
+          kind: "workspaceFolder",
+          worktrees: [
+            {
+              name: "project",
+              branch: "main",
+              path: "/workspace/project",
+              color: "#808080",
+              kind: "workspaceFolder",
+              activeInExplorer: true,
+              sessions: [],
+            },
+          ],
+        },
+      ],
+      activeSessionId: undefined,
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+    renderWithVsCode(state, mockVsCode);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "New terminal in project (main)" }),
+    );
+
+    expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+      type: "create",
+      path: "/workspace/project",
+    });
+  });
+
+  it("shows plus button for plain workspace folders", () => {
+    const mockVsCode = createMockVsCode();
+    const state: AppState = {
+      repos: [
+        {
+          label: "docs",
+          path: "/workspace/docs",
+          kind: "workspaceFolder",
+          worktrees: [
+            {
+              name: "docs",
+              branch: "",
+              path: "/workspace/docs",
+              color: "#808080",
+              kind: "workspaceFolder",
+              activeInExplorer: true,
+              sessions: [],
+            },
+          ],
+        },
+      ],
+      activeSessionId: undefined,
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+    renderWithVsCode(state, mockVsCode);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "New terminal in docs" }),
+    );
+
+    expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+      type: "create",
+      path: "/workspace/docs",
+    });
+  });
+
   it("renders collapsed repos with expand icon", () => {
     const state: AppState = {
       repos: [

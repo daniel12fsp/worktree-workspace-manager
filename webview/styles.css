@@ -67,10 +67,19 @@ body {
 }
 
 .repo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 8px 0 4px;
+  padding: 0 6px 0 0;
   font-weight: 600;
   cursor: pointer;
   user-select: none;
+}
+
+.repoLabel {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .wt,
@@ -288,6 +297,12 @@ body {
   opacity: 0.75;
   padding: 1px 5px;
   flex-shrink: 0;
+}
+
+.repo .addTerminal {
+  position: static;
+  margin-left: auto;
+  transform: none;
 }
 
 .addTerminal:hover,

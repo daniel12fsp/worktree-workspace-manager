@@ -154,6 +154,23 @@ describe("RepoNode", () => {
     expect(screen.getByText("Transform in Bare Git")).toBeTruthy();
     expect(screen.getByText("Copy Folder Path")).toBeTruthy();
   });
+
+  it("renders plus button for workspace folder repos", () => {
+    const onCreateTerminal = vi.fn();
+    renderWithVsCode(
+      <RepoNode
+        repo={{ ...repo, kind: "workspaceFolder", label: "test" }}
+        collapsed={false}
+        onToggle={vi.fn()}
+        onCreateTerminal={onCreateTerminal}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "New terminal in test" });
+    expect(button.textContent?.trim()).toBe("+");
+    fireEvent.click(button);
+    expect(onCreateTerminal).toHaveBeenCalledWith("/repos/project");
+  });
 });
 
 describe("WorktreeNode", () => {

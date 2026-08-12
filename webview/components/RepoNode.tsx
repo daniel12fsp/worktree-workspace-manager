@@ -6,14 +6,28 @@ interface Props {
   repo: RepoData;
   collapsed: boolean;
   onToggle: () => void;
+  onCreateTerminal?: (path: string) => void;
 }
 
-export function RepoNode({ repo, collapsed, onToggle }: Props) {
+export function RepoNode({
+  repo,
+  collapsed,
+  onToggle,
+  onCreateTerminal,
+}: Props) {
   const vscode = useVsCode();
 
   const handleClick = useCallback(() => {
     onToggle();
   }, [onToggle]);
+
+  const handleAdd = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onCreateTerminal?.(repo.path);
+    },
+    [repo.path, onCreateTerminal],
+  );
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
@@ -62,7 +76,19 @@ export function RepoNode({ repo, collapsed, onToggle }: Props) {
       onClick={handleClick}
       onContextMenu={handleContextMenu}
     >
-      {(collapsed ? "\u25b8 " : "\u25be ") + repo.label}
+      <span className="repoLabel">
+        {(collapsed ? "\u25b8 " : "\u25be ") + repo.label}
+      </span>
+      {onCreateTerminal && (
+        <button
+          className="addTerminal"
+          title="New terminal here"
+          aria-label={`New terminal in ${repo.label}`}
+          onClick={handleAdd}
+        >
+          +
+        </button>
+      )}
     </div>
   );
 }

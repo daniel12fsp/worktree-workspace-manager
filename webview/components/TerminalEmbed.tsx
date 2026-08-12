@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 
 interface Props {
   activeSessionId: string | undefined;
@@ -42,6 +42,10 @@ export function TerminalEmbed({
     };
   }, [activeSessionId, terminalApi]);
 
+  const handleFocusTerminal = useCallback(() => {
+    terminalApi?.focus();
+  }, [terminalApi]);
+
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -61,7 +65,12 @@ export function TerminalEmbed({
   if (!activeSessionId) return null;
 
   return (
-    <div ref={wrapperRef} className="terminalInline active">
+    <div
+      ref={wrapperRef}
+      className="terminalInline active"
+      onMouseDown={handleFocusTerminal}
+      onClick={handleFocusTerminal}
+    >
       <div ref={containerRef} id="terminal" style={{ height: "100%" }} />
     </div>
   );

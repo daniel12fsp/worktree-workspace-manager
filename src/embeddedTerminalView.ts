@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import * as pty from "node-pty";
 import * as vscode from "vscode";
 import { closeEditorsOutsideWorktree } from "./editorTabs";
@@ -20,6 +22,9 @@ import { stripTerminalControlSequences } from "./terminalControl";
 
 type TerminalActivityState = "idle" | "running" | "error";
 export type TerminalsLayoutOrder = "terminalFirst" | "selectorFirst";
+
+const execFileAsync = promisify(execFile);
+const workspaceFolderBranchByPath = new Map<string, string | undefined>();
 
 export interface EmbeddedSession {
   readonly id: string;
@@ -787,6 +792,7 @@ export class EmbeddedTerminalViewProvider
       );
       const all = await listAllWorktrees();
       const activeWorkspaceFolders = await getCheckedWorktreePaths();
+      const unmanagedWorkspaceFolders = await workspaceFolderRepos(all);
       const repos = [
         ...[...all].map(([repo, worktrees]) => ({
           label: repo.label,
@@ -804,8 +810,8 @@ export class EmbeddedTerminalViewProvider
             sessions: this.sessionsForWorktree(worktree.path),
           })),
         })),
-        ...workspaceFolderRepos(all).map(({ repo, worktree }) => ({
-          label: repo.label,
+        ...unmanagedWorkspaceFolders.map(({ repo, worktree }) => ({
+          label: workspaceFolderDisplayName(repo.label, worktree.branch),
           path: repo.fsPath,
           kind: "workspaceFolder" as const,
           worktrees: [
@@ -921,7 +927,7 @@ export class EmbeddedTerminalViewProvider
         .find(
           (worktree) => path.resolve(worktree.path) === path.resolve(fsPath),
         ) ??
-      workspaceFolderRepos(all)
+      (await workspaceFolderRepos(all))
         .map(({ worktree }) => worktree)
         .find(
           (worktree) => path.resolve(worktree.path) === path.resolve(fsPath),
@@ -958,9 +964,9 @@ export class EmbeddedTerminalViewProvider
   }
 }
 
-function workspaceFolderRepos(
+async function workspaceFolderRepos(
   all: Map<BareRepository, Worktree[]>,
-): Array<{ repo: BareRepository; worktree: Worktree }> {
+): Promise<Array<{ repo: BareRepository; worktree: Worktree }>> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   const managedPaths = new Set<string>();
   for (const [repo, worktrees] of all) {
@@ -971,26 +977,63 @@ function workspaceFolderRepos(
     }
   }
 
-  return folders
-    .filter((folder) => !managedPaths.has(path.resolve(folder.uri.fsPath)))
-    .map((folder) => {
+  const unmanagedFolders = folders.filter(
+    (folder) => !managedPaths.has(path.resolve(folder.uri.fsPath)),
+  );
+
+  return Promise.all(
+    unmanagedFolders.map(async (folder) => {
       const repo: BareRepository = {
         configPath: folder.uri.fsPath,
         fsPath: folder.uri.fsPath,
         gitDir: folder.uri.fsPath,
         label: folder.name || path.basename(folder.uri.fsPath),
       };
+      const branch = await workspaceFolderBranch(folder.uri.fsPath);
       const worktree: Worktree = {
         repo,
         path: folder.uri.fsPath,
         name: repo.label,
-        branch: undefined,
+        branch,
         head: undefined,
         color: "#808080",
         colorKey: `workspaceFolder/${repo.label}`,
       };
       return { repo, worktree };
-    });
+    }),
+  );
+}
+
+function workspaceFolderDisplayName(
+  name: string,
+  branch: string | undefined,
+): string {
+  return branch ? `${name} (${branch})` : name;
+}
+
+async function workspaceFolderBranch(
+  fsPath: string,
+): Promise<string | undefined> {
+  const key = path.resolve(fsPath);
+  if (workspaceFolderBranchByPath.has(key)) {
+    return workspaceFolderBranchByPath.get(key);
+  }
+
+  try {
+    const { stdout } = await execFileAsync("git", [
+      "-C",
+      fsPath,
+      "branch",
+      "--show-current",
+    ]);
+    const branch = stdout.trim();
+    const result = branch && branch !== "HEAD" ? branch : undefined;
+    workspaceFolderBranchByPath.set(key, result);
+    return result;
+  } catch {
+    workspaceFolderBranchByPath.set(key, undefined);
+    return undefined;
+  }
 }
 
 const activityMarkerPrefix = "\x1b]777;wtwm;";

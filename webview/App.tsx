@@ -302,48 +302,69 @@ export function App({ initialState }: Props) {
   const selectorPane = (
     <div className="sidebar" id="list" style={{ flex: "1 1 220px" }}>
       {state.repos.map((repo) => {
+        console.log({ repo });
         const isRepoCollapsed = collapsedReposRef.current.has(repo.label);
+        const workspaceFolderWorktree =
+          repo.kind === "workspaceFolder" ? repo.worktrees[0] : undefined;
         return (
           <div key={repo.label}>
             <RepoNode
               repo={repo}
               collapsed={isRepoCollapsed}
               onToggle={() => toggleRepo(repo.label)}
+              onCreateTerminal={
+                repo.kind === "workspaceFolder"
+                  ? (repoPath) => handleCreateTerminal(repo.label, repoPath)
+                  : undefined
+              }
             />
-            {!isRepoCollapsed &&
-              repo.worktrees.map((wt) => {
-                const worktreeKey = `${repo.label}:${wt.path}`;
-                const isWtCollapsed =
-                  collapsedWorktreesRef.current.has(worktreeKey);
-                return (
-                  <div key={wt.path}>
-                    <WorktreeNode
-                      repoLabel={repo.label}
-                      worktree={wt}
-                      collapsed={isWtCollapsed}
-                      onToggle={() => toggleWorktree(repo.label, wt.path)}
-                      onCreateTerminal={(path) =>
-                        handleCreateTerminal(repo.label, path)
-                      }
-                      loading={state.loadingWorktrees.has(wt.path)}
-                      onSetExplorerWorktree={handleSetExplorerWorktree}
-                    />
-                    {!isWtCollapsed &&
-                      wt.sessions.map((session) => (
-                        <TerminalLeaf
-                          key={session.id}
-                          session={session}
-                          isActive={session.id === state.activeSessionId}
-                          onSelect={handleSelect}
-                          onReorder={handleReorder}
-                          onDragStartSession={handleDragStartSession}
-                          getDraggedSessionId={getDraggedSessionId}
-                          clearDraggedSession={clearDraggedSession}
-                        />
-                      ))}
-                  </div>
-                );
-              })}
+            {!isRepoCollapsed && workspaceFolderWorktree
+              ? workspaceFolderWorktree.sessions.map((session) => (
+                  <TerminalLeaf
+                    key={session.id}
+                    session={session}
+                    isActive={session.id === state.activeSessionId}
+                    onSelect={handleSelect}
+                    onReorder={handleReorder}
+                    onDragStartSession={handleDragStartSession}
+                    getDraggedSessionId={getDraggedSessionId}
+                    clearDraggedSession={clearDraggedSession}
+                  />
+                ))
+              : !isRepoCollapsed &&
+                repo.worktrees.map((wt) => {
+                  const worktreeKey = `${repo.label}:${wt.path}`;
+                  const isWtCollapsed =
+                    collapsedWorktreesRef.current.has(worktreeKey);
+                  return (
+                    <div key={wt.path}>
+                      <WorktreeNode
+                        repoLabel={repo.label}
+                        worktree={wt}
+                        collapsed={isWtCollapsed}
+                        onToggle={() => toggleWorktree(repo.label, wt.path)}
+                        onCreateTerminal={(path) =>
+                          handleCreateTerminal(repo.label, path)
+                        }
+                        loading={state.loadingWorktrees.has(wt.path)}
+                        onSetExplorerWorktree={handleSetExplorerWorktree}
+                      />
+                      {!isWtCollapsed &&
+                        wt.sessions.map((session) => (
+                          <TerminalLeaf
+                            key={session.id}
+                            session={session}
+                            isActive={session.id === state.activeSessionId}
+                            onSelect={handleSelect}
+                            onReorder={handleReorder}
+                            onDragStartSession={handleDragStartSession}
+                            getDraggedSessionId={getDraggedSessionId}
+                            clearDraggedSession={clearDraggedSession}
+                          />
+                        ))}
+                    </div>
+                  );
+                })}
           </div>
         );
       })}
