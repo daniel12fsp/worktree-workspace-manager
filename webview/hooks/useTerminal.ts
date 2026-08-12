@@ -101,6 +101,13 @@ export function useTerminal(
           }
           return false;
         }
+        const navigationInput = terminalNavigationInputSequence(event);
+        if (navigationInput) {
+          event.preventDefault();
+          event.stopPropagation();
+          onDataRef.current(navigationInput);
+          return false;
+        }
         return true;
       });
 
@@ -292,6 +299,36 @@ export class TerminalControlSanitizer {
 
 export function stripTerminalQueryResponses(data: string): string {
   return sanitizeTerminalStream(data, shouldStripQueryResponse).output;
+}
+
+export function terminalNavigationInputSequence(
+  event: Pick<
+    KeyboardEvent,
+    "type" | "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+  >,
+): string | undefined {
+  if (
+    event.type !== "keydown" ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey ||
+    event.shiftKey
+  ) {
+    return undefined;
+  }
+
+  switch (event.key) {
+    case "Home":
+      return "\x1b[H";
+    case "End":
+      return "\x1b[F";
+    case "PageUp":
+      return "\x1b[5~";
+    case "PageDown":
+      return "\x1b[6~";
+    default:
+      return undefined;
+  }
 }
 
 export function stripTerminalGeneratedInput(

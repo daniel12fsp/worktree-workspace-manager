@@ -11,6 +11,7 @@ import {
   sanitizeReplayedTerminalOutput,
   TerminalControlSanitizer,
   TerminalInputSanitizer,
+  terminalNavigationInputSequence,
 } from "../hooks/useTerminal";
 
 describe("trimTerminalLink", () => {
@@ -247,6 +248,59 @@ describe("stripTerminalGeneratedInput", () => {
 
   it("preserves keyboard input sequences while idle", () => {
     expect(stripTerminalGeneratedInput("a\x1b[Ab", "idle")).toBe("a\x1b[Ab");
+  });
+});
+
+describe("terminalNavigationInputSequence", () => {
+  it.each([
+    ["Home", "\x1b[H"],
+    ["End", "\x1b[F"],
+    ["PageUp", "\x1b[5~"],
+    ["PageDown", "\x1b[6~"],
+  ])("maps %s to a terminal input sequence", (key, expected) => {
+    expect(
+      terminalNavigationInputSequence({
+        type: "keydown",
+        key,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBe(expected);
+  });
+
+  it("ignores keyup and modified navigation shortcuts", () => {
+    expect(
+      terminalNavigationInputSequence({
+        type: "keyup",
+        key: "Home",
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBeUndefined();
+    expect(
+      terminalNavigationInputSequence({
+        type: "keydown",
+        key: "PageUp",
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        shiftKey: true,
+      }),
+    ).toBeUndefined();
+    expect(
+      terminalNavigationInputSequence({
+        type: "keydown",
+        key: "End",
+        ctrlKey: true,
+        metaKey: false,
+        altKey: false,
+        shiftKey: false,
+      }),
+    ).toBeUndefined();
   });
 });
 
