@@ -498,7 +498,11 @@ function shouldStripQueryResponse(sequence: string): boolean {
 }
 
 function shouldStripReplayedOutput(sequence: string): boolean {
-  return isTerminalQuery(sequence) || isInputModeEnable(sequence);
+  return (
+    isTerminalQuery(sequence) ||
+    isInputModeEnable(sequence) ||
+    isCursorVisibilityControl(sequence)
+  );
 }
 
 function isTerminalQuery(sequence: string): boolean {
@@ -562,6 +566,10 @@ function isInputModeEnable(sequence: string): boolean {
     /^\x1b\[\?\d+(?:;\d+)*h$/.test(sequence) &&
     containsTerminalInputMode(sequence)
   );
+}
+
+function isCursorVisibilityControl(sequence: string): boolean {
+  return /^\x1b\[\?25[hl]$/.test(sequence) || /^\x9b\?25[hl]$/.test(sequence);
 }
 
 function containsTerminalInputMode(sequence: string): boolean {

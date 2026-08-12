@@ -316,8 +316,13 @@ describe("sanitizeReplayedTerminalOutput", () => {
   });
 
   it("preserves normal text, colors, and non-input terminal modes", () => {
-    const input = "\x1b[31mred\x1b[0m\x1b[?25h";
+    const input = "\x1b[31mred\x1b[0m\x1b[?7h";
     expect(sanitizeReplayedTerminalOutput(input)).toBe(input);
+  });
+
+  it("removes replayed cursor visibility controls so the caret cannot stay hidden", () => {
+    expect(sanitizeReplayedTerminalOutput("a\x1b[?25lb\x1b[?25hc")).toBe("abc");
+    expect(sanitizeReplayedTerminalOutput("a\x9b?25lb\x9b?25hc")).toBe("abc");
   });
 
   it("removes replayed terminal size and DEC mode queries", () => {
