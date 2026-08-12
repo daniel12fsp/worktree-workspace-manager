@@ -110,12 +110,14 @@ export function TerminalLeaf({
         ? "Failed"
         : "Idle";
   const titleCommand = session.commandText || session.statusText || "idle";
+  const tooltipText = `${stateLabel}: ${terminalNumberLabel} - ${titleCommand}`;
+  const tooltipId = `terminal-tooltip-${session.id.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 
   return (
     <div
       className={`terminalLeaf${isActive ? " active" : ""}`}
       draggable
-      title={`${stateLabel}: ${terminalNumberLabel} - ${titleCommand}`}
+      aria-describedby={tooltipId}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onDragStart={handleDragStart}
@@ -124,14 +126,17 @@ export function TerminalLeaf({
       onDrop={handleDrop}
       onDragEnd={handleDragEnd}
     >
-      <span className={`terminalStatus ${session.state}`} title={stateLabel} />
+      <span
+        className={`terminalStatus ${session.state}`}
+        aria-label={stateLabel}
+      />
       <span className={`terminalCommand ${session.state}`}>
         {session.statusText || "idle"}
       </span>
       <span className="terminalActions">
         <button
           className="terminalAction"
-          title="Close terminal"
+          aria-label="Close terminal"
           onClick={(e) => {
             e.stopPropagation();
             vscode.postMessage({ type: "closeSession", id: session.id });
@@ -139,6 +144,9 @@ export function TerminalLeaf({
         >
           ×
         </button>
+      </span>
+      <span id={tooltipId} className="terminalTooltip" role="tooltip">
+        {tooltipText}
       </span>
     </div>
   );

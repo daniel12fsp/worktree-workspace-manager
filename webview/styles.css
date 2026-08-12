@@ -100,6 +100,7 @@ body {
 }
 
 .terminalLeaf {
+  position: relative;
   margin-left: 22px;
   color: var(--vscode-foreground);
 }
@@ -278,6 +279,37 @@ body {
 .terminalCommand.error {
   color: var(--vscode-terminal-ansiRed);
   font-weight: 600;
+}
+
+.terminalTooltip {
+  position: absolute;
+  left: 6px;
+  bottom: calc(100% + 4px);
+  z-index: 20;
+  display: none;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 4px 8px;
+  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+  border-radius: 3px;
+  background: var(
+    --vscode-editorHoverWidget-background,
+    var(--vscode-menu-background)
+  );
+  color: var(
+    --vscode-editorHoverWidget-foreground,
+    var(--vscode-menu-foreground)
+  );
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  font-weight: 400;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  white-space: normal;
+}
+
+.terminalLeaf:hover .terminalTooltip,
+.terminalLeaf:focus-within .terminalTooltip {
+  display: block;
 }
 
 .terminalActions {

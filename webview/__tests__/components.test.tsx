@@ -505,7 +505,7 @@ describe("TerminalLeaf", () => {
     expect(screen.queryByText("t1 - feat-login")).toBeNull();
   });
 
-  it("shows the full command in the hover title", () => {
+  it("shows the full command in a custom hover tooltip", () => {
     renderWithVsCode(
       <TerminalLeaf
         session={session}
@@ -517,7 +517,9 @@ describe("TerminalLeaf", () => {
         clearDraggedSession={vi.fn()}
       />,
     );
-    expect(screen.getByText("npm").closest(".terminalLeaf")?.title).toBe(
+    const leaf = screen.getByText("npm").closest(".terminalLeaf");
+    expect(leaf?.hasAttribute("title")).toBe(false);
+    expect(screen.getByRole("tooltip").textContent).toBe(
       "Running: terminal 1 - npm run dev | tee log",
     );
   });
@@ -620,7 +622,7 @@ describe("TerminalLeaf", () => {
     expect(screen.getByText("idle")).toBeTruthy();
   });
 
-  it("shows running title when running", () => {
+  it("shows running state in the custom tooltip", () => {
     renderWithVsCode(
       <TerminalLeaf
         session={session}
@@ -633,10 +635,11 @@ describe("TerminalLeaf", () => {
       />,
     );
     const leaf = screen.getByText("npm").closest(".terminalLeaf");
-    expect(leaf?.getAttribute("title")).toContain("Running");
+    expect(leaf?.hasAttribute("title")).toBe(false);
+    expect(screen.getByRole("tooltip").textContent).toContain("Running");
   });
 
-  it("shows idle title when idle", () => {
+  it("shows idle state in the custom tooltip", () => {
     const idleSession = { ...session, state: "idle" as const };
     renderWithVsCode(
       <TerminalLeaf
@@ -650,10 +653,11 @@ describe("TerminalLeaf", () => {
       />,
     );
     const leaf = screen.getByText("npm").closest(".terminalLeaf");
-    expect(leaf?.getAttribute("title")).toContain("Idle");
+    expect(leaf?.hasAttribute("title")).toBe(false);
+    expect(screen.getByRole("tooltip").textContent).toContain("Idle");
   });
 
-  it("shows failed title when error", () => {
+  it("shows failed state in the custom tooltip", () => {
     const errorSession = {
       ...session,
       state: "error" as const,
@@ -671,7 +675,8 @@ describe("TerminalLeaf", () => {
       />,
     );
     const leaf = screen.getByText("error (1)").closest(".terminalLeaf");
-    expect(leaf?.getAttribute("title")).toContain("Failed");
+    expect(leaf?.hasAttribute("title")).toBe(false);
+    expect(screen.getByRole("tooltip").textContent).toContain("Failed");
     expect(document.querySelector(".terminalStatus.error")).toBeTruthy();
   });
 
