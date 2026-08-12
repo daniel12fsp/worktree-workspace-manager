@@ -13,8 +13,7 @@ export function RepoNode({ repo, collapsed, onToggle }: Props) {
 
   const handleClick = useCallback(() => {
     onToggle();
-    vscode.postMessage({ type: "collapseAll" });
-  }, [onToggle, vscode]);
+  }, [onToggle]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {

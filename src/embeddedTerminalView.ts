@@ -185,13 +185,11 @@ export class EmbeddedTerminalViewProvider
       this.activeSessionId = String(message.id);
       this.renderSessions();
     } else if (message?.type === "collapse") {
-      if (this.activeSessionId === String(message.id)) {
-        this.activeSessionId = undefined;
-        this.renderSessions();
-      }
+      log("ignored embedded terminal collapse message", {
+        id: String(message.id),
+      });
     } else if (message?.type === "collapseAll") {
-      this.activeSessionId = undefined;
-      this.renderSessions();
+      log("ignored embedded terminal collapse all message");
     } else if (message?.type === "input") {
       this.writeInput(String(message.id), String(message.data));
     } else if (message?.type === "closeSession") {

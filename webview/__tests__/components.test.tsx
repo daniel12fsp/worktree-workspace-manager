@@ -85,13 +85,18 @@ describe("RepoNode", () => {
     expect(screen.getByText(/▾/)).toBeTruthy();
   });
 
-  it("calls onToggle when clicked", () => {
+  it("calls onToggle without deactivating terminals when clicked", () => {
+    const mockVsCode = createMockVsCode();
     const onToggle = vi.fn();
     renderWithVsCode(
       <RepoNode repo={repo} collapsed={true} onToggle={onToggle} />,
+      mockVsCode,
     );
     fireEvent.click(screen.getByText(/project\.git/));
     expect(onToggle).toHaveBeenCalled();
+    expect(mockVsCode.postMessage).not.toHaveBeenCalledWith({
+      type: "collapseAll",
+    });
   });
 
   it("shows context menu on right click", () => {
