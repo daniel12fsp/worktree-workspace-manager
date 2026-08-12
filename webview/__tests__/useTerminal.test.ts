@@ -12,6 +12,7 @@ import {
   TerminalControlSanitizer,
   TerminalInputSanitizer,
   terminalNavigationInputSequence,
+  detectTerminalLinksInBuffer,
 } from "../hooks/useTerminal";
 
 describe("trimTerminalLink", () => {
@@ -407,7 +408,9 @@ describe("collectMatches activate/hover", () => {
       1,
     );
     expect(links.length).toBe(1);
-    links[0].activate();
+    links[0].activate(new MouseEvent("click"));
+    expect(mockPostMessage).not.toHaveBeenCalled();
+    links[0].activate(new MouseEvent("click", { ctrlKey: true }));
     expect(mockPostMessage).toHaveBeenCalledWith({
       type: "openExternalLink",
       href: "https://example.com",
@@ -431,10 +434,36 @@ describe("collectMatches activate/hover", () => {
       1,
     );
     expect(links.length).toBeGreaterThan(0);
-    links[0].activate();
+    links[0].activate(new MouseEvent("click"));
+    expect(mockPostMessage).not.toHaveBeenCalled();
+    links[0].activate(new MouseEvent("click", { ctrlKey: true }));
     expect(mockPostMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "openTerminalFileLink" }),
     );
+    delete (window as any).WorktreeTerminals;
+  });
+
+  it("activate opens when meta key is pressed", () => {
+    const mockPostMessage = vi.fn();
+    (window as any).WorktreeTerminals = {
+      vscodeApi: { postMessage: mockPostMessage },
+    };
+    const links: any[] = [];
+    const occupied: Array<{ start: number; end: number }> = [];
+    collectMatches(
+      "visit https://example.com",
+      /\bhttps?:\/\/[^\s<>"'`]+/g,
+      "url",
+      links,
+      occupied,
+      1,
+    );
+    expect(links.length).toBe(1);
+    links[0].activate(new MouseEvent("click", { metaKey: true }));
+    expect(mockPostMessage).toHaveBeenCalledWith({
+      type: "openExternalLink",
+      href: "https://example.com",
+    });
     delete (window as any).WorktreeTerminals;
   });
 
@@ -452,7 +481,7 @@ describe("collectMatches activate/hover", () => {
     expect(links.length).toBe(1);
     const target = { title: "" };
     links[0].hover({ target });
-    expect(target.title).toBe("Open link");
+    expect(target.title).toBe("Ctrl/Cmd+Click to open link");
   });
 
   it("hover sets file title for file links", () => {
@@ -469,7 +498,39 @@ describe("collectMatches activate/hover", () => {
     expect(links.length).toBeGreaterThan(0);
     const target = { title: "" };
     links[0].hover({ target });
-    expect(target.title).toBe("Open file");
+    expect(target.title).toBe("Ctrl/Cmd+Click to open file");
+  });
+
+  it("detects file paths wrapped across terminal rows", () => {
+    const lines = [
+      { isWrapped: false, text: "error /tmp/project/src/very/long/" },
+      { isWrapped: true, text: "wrapped/file.ts:12:3 failed" },
+    ];
+    const term = {
+      buffer: {
+        active: {
+          getLine(index: number) {
+            const line = lines[index];
+            return line
+              ? {
+                  isWrapped: line.isWrapped,
+                  translateToString: () => line.text,
+                }
+              : undefined;
+          },
+        },
+      },
+    };
+
+    const links = detectTerminalLinksInBuffer(term, 2);
+    expect(links).toBeTruthy();
+    expect(links![0].text).toBe(
+      "/tmp/project/src/very/long/wrapped/file.ts:12:3",
+    );
+    expect(links![0].range).toEqual({
+      start: { x: 7, y: 1 },
+      end: { x: 21, y: 2 },
+    });
   });
 });
 

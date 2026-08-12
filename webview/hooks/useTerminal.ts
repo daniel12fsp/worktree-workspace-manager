@@ -605,9 +605,7 @@ function registerTerminalLinkProvider(term: any) {
       callback: (links: any[] | undefined) => void,
     ) {
       try {
-        const line = term.buffer.active.getLine(bufferLineNumber - 1);
-        const text = line?.translateToString(true) || "";
-        callback(detectTerminalLinks(text, bufferLineNumber));
+        callback(detectTerminalLinksInBuffer(term, bufferLineNumber));
       } catch {
         callback(undefined);
       }
@@ -615,7 +613,22 @@ function registerTerminalLinkProvider(term: any) {
   });
 }
 
-export function detectTerminalLinks(text: string, bufferLineNumber: number) {
+export function detectTerminalLinksInBuffer(
+  term: any,
+  bufferLineNumber: number,
+) {
+  const logicalLine = readWrappedTerminalLine(term, bufferLineNumber);
+  if (!logicalLine.text) return undefined;
+  return detectTerminalLinks(logicalLine.text, bufferLineNumber, (start, end) =>
+    mapTerminalLinkRange(logicalLine.rows, start, end),
+  );
+}
+
+export function detectTerminalLinks(
+  text: string,
+  bufferLineNumber: number,
+  mapRange?: (start: number, end: number) => any,
+) {
   const links: any[] = [];
   const occupied: Array<{ start: number; end: number }> = [];
 
@@ -626,6 +639,7 @@ export function detectTerminalLinks(text: string, bufferLineNumber: number) {
     links,
     occupied,
     bufferLineNumber,
+    mapRange,
   );
   collectMatches(
     text,
@@ -634,6 +648,7 @@ export function detectTerminalLinks(text: string, bufferLineNumber: number) {
     links,
     occupied,
     bufferLineNumber,
+    mapRange,
   );
 
   return links.length ? links : undefined;
@@ -646,6 +661,7 @@ export function collectMatches(
   links: any[],
   occupied: Array<{ start: number; end: number }>,
   bufferLineNumber: number,
+  mapRange?: (start: number, end: number) => any,
 ) {
   for (const match of text.matchAll(regex)) {
     const raw = match[0];
@@ -659,13 +675,14 @@ export function collectMatches(
     const parsed = kind === "file" ? parseFileLink(trimmed.text) : undefined;
     const linkText = parsed?.path ?? trimmed.text;
     links.push({
-      range: {
+      range: mapRange?.(start, end) ?? {
         start: { x: start + 1, y: bufferLineNumber },
         end: { x: end + 1, y: bufferLineNumber },
       },
       text: trimmed.text,
       decorations: { pointerCursor: true, underline: true },
-      activate() {
+      activate(event: MouseEvent) {
+        if (!event?.ctrlKey && !event?.metaKey) return;
         const vscode = (window as any).WorktreeTerminals?.vscodeApi;
         if (kind === "url") {
           vscode?.postMessage({ type: "openExternalLink", href: trimmed.text });
@@ -680,10 +697,67 @@ export function collectMatches(
       },
       hover(event: any) {
         if (event?.target)
-          event.target.title = kind === "url" ? "Open link" : "Open file";
+          event.target.title =
+            kind === "url"
+              ? "Ctrl/Cmd+Click to open link"
+              : "Ctrl/Cmd+Click to open file";
       },
     });
   }
+}
+
+function readWrappedTerminalLine(term: any, bufferLineNumber: number) {
+  const buffer = term.buffer.active;
+  let startLineNumber = bufferLineNumber;
+  while (startLineNumber > 1) {
+    const line = buffer.getLine(startLineNumber - 1);
+    if (!line?.isWrapped) break;
+    startLineNumber -= 1;
+  }
+
+  const rows: Array<{
+    lineNumber: number;
+    text: string;
+    start: number;
+    end: number;
+  }> = [];
+  let lineNumber = startLineNumber;
+  let text = "";
+  for (;;) {
+    const line = buffer.getLine(lineNumber - 1);
+    if (!line) break;
+    const rowText = line.translateToString(true) || "";
+    const start = text.length;
+    text += rowText;
+    rows.push({ lineNumber, text: rowText, start, end: text.length });
+
+    const nextLine = buffer.getLine(lineNumber);
+    if (!nextLine?.isWrapped) break;
+    lineNumber += 1;
+  }
+
+  return { text, rows };
+}
+
+function mapTerminalLinkRange(
+  rows: Array<{ lineNumber: number; text: string; start: number; end: number }>,
+  start: number,
+  end: number,
+) {
+  const startPosition = mapTerminalPosition(rows, start);
+  const endPosition = mapTerminalPosition(rows, end);
+  return { start: startPosition, end: endPosition };
+}
+
+function mapTerminalPosition(
+  rows: Array<{ lineNumber: number; text: string; start: number; end: number }>,
+  offset: number,
+) {
+  const row =
+    rows.find(
+      (candidate) => offset >= candidate.start && offset <= candidate.end,
+    ) ?? rows[rows.length - 1];
+  return { x: offset - row.start + 1, y: row.lineNumber };
 }
 
 export function trimTerminalLink(value: string) {
