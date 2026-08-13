@@ -100,6 +100,18 @@ export function useTerminal(
           }
           return false;
         }
+        if (event.type === "keydown" && event.key === "Escape") {
+          if (hideTerminalFindBox()) {
+            event.preventDefault();
+            event.stopPropagation();
+            focusTerminalNow(
+              termRef.current,
+              activeSessionIdRef.current,
+              hasFocusRef,
+            );
+            return false;
+          }
+        }
         const navigationInput = terminalNavigationInputSequence(event);
         if (navigationInput) {
           event.preventDefault();
@@ -584,6 +596,13 @@ export function updateFocusClasses(focused: boolean) {
   if (!inline) return;
   inline.classList.toggle("focused", focused);
   inline.classList.toggle("lostFocus", !focused);
+}
+
+export function hideTerminalFindBox(): boolean {
+  const findBox = document.getElementById("findBox");
+  if (!findBox?.classList.contains("visible")) return false;
+  findBox.classList.remove("visible");
+  return true;
 }
 
 function focusTerminalNow(

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef } from "react";
+import { hideTerminalFindBox } from "../hooks/useTerminal";
 
 interface Props {
   activeSessionId: string | undefined;
@@ -48,14 +49,10 @@ export function TerminalEmbed({
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        const findBox = document.getElementById("findBox");
-        if (findBox && findBox.classList.contains("visible")) {
-          e.preventDefault();
-          e.stopPropagation();
-          findBox.classList.remove("visible");
-          terminalApi?.focus();
-        }
+      if (e.key === "Escape" && hideTerminalFindBox()) {
+        e.preventDefault();
+        e.stopPropagation();
+        terminalApi?.focus();
       }
     };
     window.addEventListener("keydown", handleKeydown);

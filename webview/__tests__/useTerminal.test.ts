@@ -14,6 +14,7 @@ import {
   terminalMouseResetSequence,
   terminalNavigationInputSequence,
   detectTerminalLinksInBuffer,
+  hideTerminalFindBox,
 } from "../hooks/useTerminal";
 
 describe("trimTerminalLink", () => {
@@ -400,6 +401,27 @@ describe("updateFocusClasses", () => {
   it("does nothing when no element found", () => {
     document.body.innerHTML = "";
     expect(() => updateFocusClasses(true)).not.toThrow();
+  });
+});
+
+describe("hideTerminalFindBox", () => {
+  it("hides the visible find box", () => {
+    document.body.innerHTML =
+      '<div id="findBox" class="findBox visible"></div>';
+    expect(hideTerminalFindBox()).toBe(true);
+    expect(
+      document.getElementById("findBox")?.classList.contains("visible"),
+    ).toBe(false);
+  });
+
+  it("returns false when the find box is already hidden", () => {
+    document.body.innerHTML = '<div id="findBox" class="findBox"></div>';
+    expect(hideTerminalFindBox()).toBe(false);
+  });
+
+  it("returns false when the find box is missing", () => {
+    document.body.innerHTML = "";
+    expect(hideTerminalFindBox()).toBe(false);
   });
 });
 
