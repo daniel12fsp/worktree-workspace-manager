@@ -12,6 +12,8 @@ import {
   TerminalControlSanitizer,
   TerminalInputSanitizer,
   terminalMouseResetSequence,
+  terminalCursorShowSequence,
+  lastCursorVisibilityControl,
   terminalNavigationInputSequence,
   terminalClipboardShortcutAction,
   detectTerminalLinksInBuffer,
@@ -478,6 +480,17 @@ describe("sanitizeReplayedTerminalOutput", () => {
     expect(terminalMouseResetSequence()).toBe(
       "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
     );
+  });
+
+  it("exports the expected cursor show sequence", () => {
+    expect(terminalCursorShowSequence()).toBe("\x1b[?25h");
+  });
+
+  it("finds the last cursor visibility control in terminal output", () => {
+    expect(lastCursorVisibilityControl("a\x1b[?25lb")).toBe("hide");
+    expect(lastCursorVisibilityControl("a\x1b[?25l\x1b[?25hc")).toBe("show");
+    expect(lastCursorVisibilityControl("a\x9b?25lc")).toBe("hide");
+    expect(lastCursorVisibilityControl("plain text")).toBeUndefined();
   });
 });
 

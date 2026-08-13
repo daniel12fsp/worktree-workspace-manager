@@ -8,6 +8,8 @@ export type TerminalInputEncoding = "text" | "binary";
 
 const TERMINAL_MOUSE_RESET =
   "\x1b[?1000l" + "\x1b[?1002l" + "\x1b[?1003l" + "\x1b[?1006l" + "\x1b[?1016l";
+const TERMINAL_CURSOR_SHOW = "\x1b[?25h";
+const CURSOR_RESTORE_DELAY_MS = 250;
 
 type ClipboardShortcutAction = "copy" | "paste";
 
@@ -23,6 +25,9 @@ export function useTerminal(
   const hasFocusRef = useRef(false);
   const previousSessionIdRef = useRef<string | undefined>(activeSessionId);
   const replayDepthRef = useRef(0);
+  const cursorRestoreTimerRef = useRef<
+    ReturnType<typeof setTimeout> | undefined
+  >(undefined);
 
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
@@ -226,19 +231,29 @@ export function useTerminal(
     const replaySafeData = sanitizeReplayedTerminalOutput(data);
     if (!replaySafeData) {
       replayDepthRef.current = Math.max(0, replayDepthRef.current - 1);
+      writeTerminalCursorShow(termRef.current);
       return;
     }
     termRef.current.write(replaySafeData, () => {
       replayDepthRef.current = Math.max(0, replayDepthRef.current - 1);
+      writeTerminalCursorShow(termRef.current);
     });
   }, []);
 
   const write = useCallback((data: string) => {
-    if (termRef.current) termRef.current.write(data);
+    if (!termRef.current) return;
+    termRef.current.write(data);
+    updateTerminalCursorRestoreTimer(
+      data,
+      termRef.current,
+      cursorRestoreTimerRef,
+    );
   }, []);
 
   const clear = useCallback(() => {
-    if (termRef.current) termRef.current.clear();
+    if (!termRef.current) return;
+    termRef.current.clear();
+    writeTerminalCursorShow(termRef.current);
   }, []);
 
   const resize = useCallback(() => {
@@ -273,6 +288,7 @@ export function useTerminal(
     const previousSessionId = previousSessionIdRef.current;
     if (term && previousSessionId !== activeSessionId) {
       writeTerminalMouseReset(term);
+      writeTerminalCursorShow(term);
       if (!activeSessionId) term.clear();
     }
     previousSessionIdRef.current = activeSessionId;
@@ -287,8 +303,13 @@ export function useTerminal(
 
   useEffect(
     () => () => {
+      if (cursorRestoreTimerRef.current) {
+        clearTimeout(cursorRestoreTimerRef.current);
+        cursorRestoreTimerRef.current = undefined;
+      }
       if (termRef.current) {
         writeTerminalMouseReset(termRef.current);
+        writeTerminalCursorShow(termRef.current);
         termRef.current.dispose?.();
         termRef.current = null;
       }
@@ -424,8 +445,53 @@ export function terminalMouseResetSequence(): string {
   return TERMINAL_MOUSE_RESET;
 }
 
+export function terminalCursorShowSequence(): string {
+  return TERMINAL_CURSOR_SHOW;
+}
+
 function writeTerminalMouseReset(term: { write(data: string): void }) {
   term.write(TERMINAL_MOUSE_RESET);
+}
+
+function writeTerminalCursorShow(term: { write(data: string): void } | null) {
+  term?.write(TERMINAL_CURSOR_SHOW);
+}
+
+function updateTerminalCursorRestoreTimer(
+  data: string,
+  term: { write(data: string): void },
+  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | undefined>,
+) {
+  const visibility = lastCursorVisibilityControl(data);
+  if (!visibility) return;
+  if (timerRef.current) {
+    clearTimeout(timerRef.current);
+    timerRef.current = undefined;
+  }
+  if (visibility === "show") return;
+  timerRef.current = setTimeout(() => {
+    timerRef.current = undefined;
+    writeTerminalCursorShow(term);
+  }, CURSOR_RESTORE_DELAY_MS);
+}
+
+export function lastCursorVisibilityControl(
+  data: string,
+): "hide" | "show" | undefined {
+  let visibility: "hide" | "show" | undefined;
+  let index = 0;
+  while (index < data.length) {
+    const sequence = readTerminalSequence(data, index);
+    if (!sequence) {
+      index += 1;
+      continue;
+    }
+    if (!sequence.complete) break;
+    if (isCursorVisibilityHide(sequence.value)) visibility = "hide";
+    if (isCursorVisibilityShow(sequence.value)) visibility = "show";
+    index = sequence.end;
+  }
+  return visibility;
 }
 
 async function writeTerminalSelectionToClipboard(term: {
@@ -646,7 +712,15 @@ function isMouseReport(sequence: string): boolean {
 }
 
 function isCursorVisibilityControl(sequence: string): boolean {
-  return /^\x1b\[\?25[hl]$/.test(sequence) || /^\x9b\?25[hl]$/.test(sequence);
+  return isCursorVisibilityHide(sequence) || isCursorVisibilityShow(sequence);
+}
+
+function isCursorVisibilityHide(sequence: string): boolean {
+  return /^\x1b\[\?25l$/.test(sequence) || /^\x9b\?25l$/.test(sequence);
+}
+
+function isCursorVisibilityShow(sequence: string): boolean {
+  return /^\x1b\[\?25h$/.test(sequence) || /^\x9b\?25h$/.test(sequence);
 }
 
 export function updateFocusClasses(focused: boolean) {
