@@ -145,6 +145,11 @@ describe("outputPreview", () => {
     const output = ["hello ", "world\n"];
     expect(outputPreview(output)).toBe("hello world");
   });
+
+  it("keeps the last non-empty line even with long history", () => {
+    const output = ["one\n", "two\n", "three\n"];
+    expect(outputPreview(output)).toBe("three");
+  });
 });
 
 describe("resolveTerminalFilePath", () => {
@@ -428,6 +433,8 @@ describe("consumeActivityMarkers", () => {
     worktree: {} as any,
     process: {} as any,
     output: [],
+    outputCharCount: 0,
+    preview: "",
     state: "idle",
     statusText: "idle",
     lastCommand: "",
@@ -884,6 +891,48 @@ describe("EmbeddedTerminalViewProvider", () => {
     mockListAllWorktrees.mockResolvedValueOnce(new Map());
     await messageHandler!({ type: "ready" });
     expect(mockWebview.postMessage).toHaveBeenCalled();
+  });
+
+  it("handleWebviewMessage ready posts replay for active session", async () => {
+    let messageHandler: ((msg: any) => void) | undefined;
+    const onDataCallbacks: Array<(data: string) => void> = [];
+    mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
+      onDataCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    }) as any);
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    const mockView = {
+      visible: true,
+      webview: mockWebview,
+    } as any;
+    provider.resolveWebviewView(mockView);
+    const worktree = {
+      name: "feat-login",
+      path: "/tmp/feat-login",
+      color: "#fff",
+      branch: "main",
+      repo: { label: "project.git", fsPath: "/repos/project" },
+    } as any;
+    await provider.openTerminal(worktree);
+    onDataCallbacks[0]?.("hello");
+    mockWebview.postMessage.mockClear();
+    mockListAllWorktrees.mockResolvedValue(new Map());
+
+    await messageHandler!({ type: "ready" });
+
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "replay", data: "hello" }),
+    );
   });
 
   it("handleWebviewMessage select sets active session", async () => {
@@ -2682,6 +2731,8 @@ function makeSession(
     worktree: {} as any,
     process: {} as any,
     output: [],
+    outputCharCount: 0,
+    preview: "",
     state: "idle",
     statusText: "idle",
     lastCommand: "",

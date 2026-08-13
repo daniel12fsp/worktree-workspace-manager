@@ -25,6 +25,7 @@ export type TerminalsLayoutOrder = "terminalFirst" | "selectorFirst";
 
 const execFileAsync = promisify(execFile);
 const workspaceFolderBranchByPath = new Map<string, string | undefined>();
+const MAX_SESSION_OUTPUT_CHARS = 200_000;
 
 export interface EmbeddedSession {
   readonly id: string;
@@ -33,6 +34,8 @@ export interface EmbeddedSession {
   readonly worktree: Worktree;
   readonly process: pty.IPty;
   readonly output: string[];
+  outputCharCount: number;
+  preview: string;
   state: TerminalActivityState;
   statusText: string;
   lastCommand: string;
@@ -54,6 +57,7 @@ export class EmbeddedTerminalViewProvider
   private webviewReady = false;
   private fallbackRendered = false;
   private readonly terminalOrder = new Map<string, number>();
+  private readonly sessionIdsByWorktree = new Map<string, Set<string>>();
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -160,6 +164,7 @@ export class EmbeddedTerminalViewProvider
         sessionCount: this.sessions.size,
       });
       await this.renderSessions();
+      await this.postActiveSessionReplay();
     } else if (message?.type === "webviewBootstrap") {
       this.webviewReady = true;
       this.fallbackRendered = false;
@@ -188,7 +193,8 @@ export class EmbeddedTerminalViewProvider
       await vscode.commands.executeCommand("worktreeManager.showMenu");
     } else if (message?.type === "select") {
       this.activeSessionId = String(message.id);
-      this.renderSessions();
+      await this.renderSessions();
+      await this.postActiveSessionReplay();
     } else if (message?.type === "collapse") {
       log("ignored embedded terminal collapse message", {
         id: String(message.id),
@@ -205,6 +211,7 @@ export class EmbeddedTerminalViewProvider
       const closed = this.closeSessionById(String(message.id));
       if (closed) {
         await this.renderSessions();
+        await this.postActiveSessionReplay();
       }
     } else if (message?.type === "setTerminalAlias") {
       await this.setTerminalAliasForSession(String(message.id));
@@ -470,6 +477,7 @@ export class EmbeddedTerminalViewProvider
     const matches = [...this.sessions.values()].filter(predicate);
     for (const session of matches) {
       this.sessions.delete(session.id);
+      this.removeSessionFromWorktreeIndex(session);
       this.terminalOrder.delete(session.id);
       session.process.kill();
       cleanupShellWrapper(session);
@@ -478,7 +486,7 @@ export class EmbeddedTerminalViewProvider
     if (this.activeSessionId && !this.sessions.has(this.activeSessionId)) {
       this.activeSessionId = this.nextSessionId();
     }
-    void this.renderSessions();
+    void this.renderSessions().then(() => this.postActiveSessionReplay());
     return matches.length;
   }
 
@@ -486,6 +494,7 @@ export class EmbeddedTerminalViewProvider
     const session = this.sessions.get(id);
     if (!session) return false;
     this.sessions.delete(id);
+    this.removeSessionFromWorktreeIndex(session);
     this.terminalOrder.delete(id);
     session.process.kill();
     cleanupShellWrapper(session);
@@ -539,8 +548,20 @@ export class EmbeddedTerminalViewProvider
     }
 
     session.output.splice(0, session.output.length);
+    session.outputCharCount = 0;
+    session.preview = "";
     this.view?.webview.postMessage({ type: "clear", id });
     await this.renderSessions();
+  }
+
+  private async postActiveSessionReplay(): Promise<void> {
+    if (!this.view || !this.activeSessionId) return;
+    const session = this.sessions.get(this.activeSessionId);
+    await this.view.webview.postMessage({
+      type: "replay",
+      id: this.activeSessionId,
+      data: session?.output.join("") ?? "",
+    });
   }
 
   private async setTerminalAliasForSession(id: string): Promise<void> {
@@ -662,6 +683,8 @@ export class EmbeddedTerminalViewProvider
       worktree,
       process: proc,
       output: [],
+      outputCharCount: 0,
+      preview: "",
       state: "idle",
       statusText: "idle",
       lastCommand: "",
@@ -676,10 +699,7 @@ export class EmbeddedTerminalViewProvider
         data,
       );
       if (visibleData) {
-        session.output.push(visibleData);
-        if (session.output.length > 500) {
-          session.output.splice(0, session.output.length - 500);
-        }
+        appendOutputChunk(session, visibleData);
         this.view?.webview.postMessage({
           type: "output",
           id,
@@ -695,14 +715,16 @@ export class EmbeddedTerminalViewProvider
         signal: event.signal,
       });
       this.sessions.delete(id);
+      this.removeSessionFromWorktreeIndex(session);
       this.terminalOrder.delete(id);
       cleanupShellWrapper(session);
       if (this.activeSessionId === id) {
         this.activeSessionId = this.nextSessionId();
       }
-      this.renderSessions();
+      void this.renderSessions().then(() => this.postActiveSessionReplay());
     });
     this.sessions.set(id, session);
+    this.addSessionToWorktreeIndex(session);
     return session;
   }
 
@@ -838,14 +860,11 @@ export class EmbeddedTerminalViewProvider
           ],
         })),
       ];
-      const active = this.activeSessionId
-        ? this.sessions.get(this.activeSessionId)
-        : undefined;
       const state = {
         type: "state",
         repos,
         activeSessionId: this.activeSessionId,
-        activeOutput: active?.output.join("") ?? "",
+        activeOutput: "",
         hasWorkspace,
         home: os.homedir(),
         terminalsLayoutOrder: configuredTerminalsLayoutOrder(),
@@ -914,20 +933,41 @@ export class EmbeddedTerminalViewProvider
   }
 
   private sessionsForWorktree(worktreePath: string) {
-    return this.orderedSessions(
-      [...this.sessions.values()].filter(
-        (session) =>
-          path.resolve(session.worktree.path) === path.resolve(worktreePath),
-      ),
-    ).map((session) => ({
+    const sessionIds = this.sessionIdsByWorktree.get(
+      path.resolve(worktreePath),
+    );
+    const sessions = [...(sessionIds ?? [])]
+      .map((sessionId) => this.sessions.get(sessionId))
+      .filter((session): session is EmbeddedSession => Boolean(session));
+    return this.orderedSessions(sessions).map((session) => ({
       id: session.id,
       label: session.label,
       state: session.state,
       displayName: session.label,
       statusText: session.statusText,
       commandText: session.lastCommandText,
-      preview: outputPreview(session.output),
+      preview: session.preview,
     }));
+  }
+
+  private addSessionToWorktreeIndex(session: EmbeddedSession): void {
+    const key = path.resolve(session.worktree.path);
+    const existing = this.sessionIdsByWorktree.get(key);
+    if (existing) {
+      existing.add(session.id);
+      return;
+    }
+    this.sessionIdsByWorktree.set(key, new Set([session.id]));
+  }
+
+  private removeSessionFromWorktreeIndex(session: EmbeddedSession): void {
+    const key = path.resolve(session.worktree.path);
+    const existing = this.sessionIdsByWorktree.get(key);
+    if (!existing) return;
+    existing.delete(session.id);
+    if (existing.size === 0) {
+      this.sessionIdsByWorktree.delete(key);
+    }
   }
 
   private async findWorktree(fsPath: string): Promise<Worktree | undefined> {
@@ -1519,4 +1559,15 @@ export function outputPreview(output: string[]): string {
     .filter(Boolean)
     .slice(-1)[0];
   return text?.slice(0, 140) ?? "";
+}
+
+function appendOutputChunk(session: EmbeddedSession, chunk: string): void {
+  session.output.push(chunk);
+  session.outputCharCount += chunk.length;
+  while (session.outputCharCount > MAX_SESSION_OUTPUT_CHARS) {
+    const removed = session.output.shift();
+    if (!removed) break;
+    session.outputCharCount -= removed.length;
+  }
+  session.preview = outputPreview(session.output);
 }

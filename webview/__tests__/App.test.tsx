@@ -864,7 +864,15 @@ describe("App", () => {
       loadingWorktrees: new Set(),
     };
 
-    renderWithVsCode(state);
+    renderWithVsCode({ ...state, activeOutput: "" });
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "replay", id: "s1", data: "hello" },
+        }),
+      );
+    });
 
     await waitFor(() => {
       const term = vi.mocked(Terminal).mock.results[0]?.value;
@@ -1023,7 +1031,7 @@ describe("App", () => {
         },
       ],
       activeSessionId: "s1",
-      activeOutput: "first",
+      activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
       loadingWorktrees: new Set(),
@@ -1032,7 +1040,7 @@ describe("App", () => {
     const next: AppState = {
       ...first,
       activeSessionId: "s2",
-      activeOutput: "second",
+      activeOutput: "",
     };
 
     renderWithVsCode(first);
@@ -1058,6 +1066,18 @@ describe("App", () => {
       expect(term.write).toHaveBeenCalledWith(
         "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
       );
+    });
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "replay", id: "s2", data: "second" },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(term.write).toHaveBeenCalledWith("second", expect.any(Function));
     });
   });
 

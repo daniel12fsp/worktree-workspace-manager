@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useMemo } from "react";
 import { useVsCode } from "./hooks/useVsCode";
 import { useTerminal } from "./hooks/useTerminal";
 import type { TerminalInputEncoding } from "./hooks/useTerminal";
@@ -198,9 +198,12 @@ export function App({ initialState }: Props) {
 
   React.useEffect(() => {
     if (!state.activeSessionId) return;
-    if (replayedSessionIdRef.current !== state.activeSessionId) {
+    if (
+      replayedSessionIdRef.current !== state.activeSessionId &&
+      state.activeOutput
+    ) {
       replayedSessionIdRef.current = state.activeSessionId;
-      terminalApi?.clearAndWrite(state.activeOutput || "");
+      terminalApi?.clearAndWrite(state.activeOutput);
     }
     terminalApi?.resize();
   }, [
@@ -223,12 +226,22 @@ export function App({ initialState }: Props) {
         setState((prev) => ({
           repos: message.repos || [],
           activeSessionId: message.activeSessionId,
-          activeOutput: message.activeOutput || "",
+          activeOutput:
+            prev.activeSessionId !== message.activeSessionId
+              ? ""
+              : message.activeOutput || "",
           hasWorkspace: Boolean(message.hasWorkspace),
           home: message.home || "",
           loadingWorktrees: prev.loadingWorktrees,
           terminalsLayoutOrder: layoutOrder(message.terminalsLayoutOrder),
         }));
+      } else if (
+        message.type === "replay" &&
+        message.id === state.activeSessionId
+      ) {
+        replayedSessionIdRef.current = message.id;
+        setState((prev) => ({ ...prev, activeOutput: message.data || "" }));
+        terminalApi?.clearAndWrite(message.data || "");
       } else if (
         message.type === "output" &&
         message.id === state.activeSessionId
@@ -251,14 +264,18 @@ export function App({ initialState }: Props) {
     return () => window.removeEventListener("message", handler);
   }, [state.activeSessionId, terminalApi]);
 
-  const renderSummary = {
-    repoCount: state.repos.length,
-    worktreeCount: state.repos.reduce((c, r) => c + r.worktrees.length, 0),
-    sessionCount: state.repos.reduce(
-      (c, r) => c + r.worktrees.reduce((ic, wt) => ic + wt.sessions.length, 0),
-      0,
-    ),
-  };
+  const renderSummary = useMemo(
+    () => ({
+      repoCount: state.repos.length,
+      worktreeCount: state.repos.reduce((c, r) => c + r.worktrees.length, 0),
+      sessionCount: state.repos.reduce(
+        (c, r) =>
+          c + r.worktrees.reduce((ic, wt) => ic + wt.sessions.length, 0),
+        0,
+      ),
+    }),
+    [state.repos],
+  );
 
   React.useEffect(() => {
     vscode.postMessage({

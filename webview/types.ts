@@ -43,6 +43,12 @@ export interface OutputMessage {
   data: string;
 }
 
+export interface ReplayMessage {
+  type: "replay";
+  id: string;
+  data: string;
+}
+
 export interface ClearMessage {
   type: "clear";
   id: string;
@@ -56,6 +62,7 @@ export interface LoadingDoneMessage {
 export type WebviewMessage =
   | StateMessage
   | OutputMessage
+  | ReplayMessage
   | ClearMessage
   | LoadingDoneMessage;
 
