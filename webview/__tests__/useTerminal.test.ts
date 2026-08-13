@@ -11,6 +11,7 @@ import {
   sanitizeReplayedTerminalOutput,
   TerminalControlSanitizer,
   TerminalInputSanitizer,
+  terminalMouseResetSequence,
   terminalNavigationInputSequence,
   detectTerminalLinksInBuffer,
 } from "../hooks/useTerminal";
@@ -247,6 +248,13 @@ describe("stripTerminalGeneratedInput", () => {
     expect(output).toBe("AB");
   });
 
+  it("reset clears pending partial escape sequences", () => {
+    const sanitizer = new TerminalInputSanitizer();
+    expect(sanitizer.write("A\x1b", "idle")).toBe("A");
+    sanitizer.reset();
+    expect(sanitizer.write("[<35;10;5MB", "idle")).toBe("[<35;10;5MB");
+  });
+
   it("preserves keyboard input sequences while idle", () => {
     expect(stripTerminalGeneratedInput("a\x1b[Ab", "idle")).toBe("a\x1b[Ab");
   });
@@ -329,6 +337,12 @@ describe("sanitizeReplayedTerminalOutput", () => {
   it("removes replayed terminal size and DEC mode queries", () => {
     const input = "a\x1b[18t\x1b[?2004$pb";
     expect(sanitizeReplayedTerminalOutput(input)).toBe("ab");
+  });
+
+  it("exports the expected mouse reset sequence", () => {
+    expect(terminalMouseResetSequence()).toBe(
+      "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
+    );
   });
 });
 

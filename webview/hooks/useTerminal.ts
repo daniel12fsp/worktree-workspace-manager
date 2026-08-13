@@ -8,6 +8,9 @@ type TerminalActivityState = "idle" | "running" | "error";
 
 export type TerminalInputEncoding = "text" | "binary";
 
+const TERMINAL_MOUSE_RESET =
+  "\x1b[?1000l" + "\x1b[?1002l" + "\x1b[?1003l" + "\x1b[?1006l" + "\x1b[?1016l";
+
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   activeSessionId: string | undefined,
@@ -20,6 +23,7 @@ export function useTerminal(
   const fitAddonRef = useRef<any>(null);
   const hasFocusRef = useRef(false);
   const inputSanitizerRef = useRef(new TerminalInputSanitizer());
+  const previousSessionIdRef = useRef<string | undefined>(activeSessionId);
 
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
@@ -204,7 +208,9 @@ export function useTerminal(
 
   const clearAndWrite = useCallback((data: string) => {
     if (!termRef.current) return;
+    inputSanitizerRef.current.reset();
     termRef.current.clear();
+    writeTerminalMouseReset(termRef.current);
     const replaySafeData = sanitizeReplayedTerminalOutput(data);
     if (replaySafeData) termRef.current.write(replaySafeData);
   }, []);
@@ -245,11 +251,34 @@ export function useTerminal(
   }, [initTerminal, attachExistingTerminal, activeSessionId]);
 
   useEffect(() => {
+    const term = termRef.current;
+    const previousSessionId = previousSessionIdRef.current;
+    if (term && previousSessionId !== activeSessionId) {
+      inputSanitizerRef.current.reset();
+      writeTerminalMouseReset(term);
+      if (!activeSessionId) term.clear();
+    }
+    previousSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
+
+  useEffect(() => {
     if (!containerRef.current) return;
     const ro = new ResizeObserver(() => resize());
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, [containerRef, resize, activeSessionId]);
+
+  useEffect(
+    () => () => {
+      inputSanitizerRef.current.reset();
+      if (termRef.current) {
+        writeTerminalMouseReset(termRef.current);
+        termRef.current.dispose?.();
+        termRef.current = null;
+      }
+    },
+    [],
+  );
 
   return useMemo(
     () => ({
@@ -285,6 +314,10 @@ export class TerminalInputSanitizer {
     const pending = this.pending;
     this.pending = "";
     return pending;
+  }
+
+  reset(): void {
+    this.pending = "";
   }
 }
 
@@ -358,6 +391,14 @@ export function stripMouseReports(data: string): string {
 
 export function sanitizeReplayedTerminalOutput(data: string): string {
   return sanitizeTerminalStream(data, shouldStripReplayedOutput).output;
+}
+
+export function terminalMouseResetSequence(): string {
+  return TERMINAL_MOUSE_RESET;
+}
+
+function writeTerminalMouseReset(term: { write(data: string): void }) {
+  term.write(TERMINAL_MOUSE_RESET);
 }
 
 function sanitizeTerminalStream(

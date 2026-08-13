@@ -631,7 +631,11 @@ describe("App", () => {
         write: ReturnType<typeof vi.fn>;
       };
       expect(term.clear).toHaveBeenCalledTimes(1);
-      expect(term.write).toHaveBeenCalledTimes(1);
+      expect(term.write).toHaveBeenCalledTimes(2);
+      expect(term.write).toHaveBeenNthCalledWith(
+        1,
+        "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
+      );
       expect(term.write).toHaveBeenCalledWith("prompt > ");
     });
   });
@@ -818,6 +822,51 @@ describe("App", () => {
     window.dispatchEvent(event);
   });
 
+  it("writes mouse reset before replaying active session output", async () => {
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "idle",
+                  displayName: "terminal 1",
+                  statusText: "idle",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: "s1",
+      activeOutput: "hello",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+
+    renderWithVsCode(state);
+
+    await waitFor(() => {
+      const term = vi.mocked(Terminal).mock.results[0]?.value;
+      expect(term.write).toHaveBeenCalledWith(
+        "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
+      );
+      expect(term.write).toHaveBeenCalledWith("hello");
+    });
+  });
+
   it("handles clear message for active session", () => {
     const state: AppState = {
       repos: [],
@@ -924,6 +973,78 @@ describe("App", () => {
       },
     });
     window.dispatchEvent(event);
+  });
+
+  it("writes mouse reset when the active session changes", async () => {
+    const first: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "idle",
+                  displayName: "terminal 1",
+                  statusText: "idle",
+                  preview: "",
+                },
+                {
+                  id: "s2",
+                  label: "terminal 2",
+                  state: "idle",
+                  displayName: "terminal 2",
+                  statusText: "idle",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: "s1",
+      activeOutput: "first",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+
+    const next: AppState = {
+      ...first,
+      activeSessionId: "s2",
+      activeOutput: "second",
+    };
+
+    renderWithVsCode(first);
+    const term = vi.mocked(Terminal).mock.results[0]?.value;
+    vi.mocked(term.write).mockClear();
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: {
+          type: "state",
+          repos: next.repos,
+          activeSessionId: next.activeSessionId,
+          activeOutput: next.activeOutput,
+          hasWorkspace: next.hasWorkspace,
+          home: next.home,
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(term.write).toHaveBeenCalledWith(
+        "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
+      );
+    });
   });
 
   it("handles clear message for non-active session", () => {
