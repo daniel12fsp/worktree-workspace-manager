@@ -196,7 +196,11 @@ export class EmbeddedTerminalViewProvider
     } else if (message?.type === "collapseAll") {
       log("ignored embedded terminal collapse all message");
     } else if (message?.type === "input") {
-      this.writeInput(String(message.id), String(message.data));
+      if (message.encoding === "binary") {
+        this.writeBinaryInput(String(message.id), String(message.data));
+      } else {
+        this.writeInput(String(message.id), String(message.data));
+      }
     } else if (message?.type === "closeSession") {
       const closed = this.closeSessionById(String(message.id));
       if (closed) {
@@ -776,6 +780,13 @@ export class EmbeddedTerminalViewProvider
     if (!session) return;
 
     session.process.write(data);
+  }
+
+  private writeBinaryInput(id: string, data: string): void {
+    const session = this.sessions.get(id);
+    if (!session) return;
+
+    session.process.write(Buffer.from(data, "binary"));
   }
 
   private async renderSessions(): Promise<void> {

@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import { useVsCode } from "./hooks/useVsCode";
 import { useTerminal } from "./hooks/useTerminal";
+import type { TerminalInputEncoding } from "./hooks/useTerminal";
 import type { RepoData, SessionData, TerminalsLayoutOrder } from "./types";
 import { RepoNode } from "./components/RepoNode";
 import { WorktreeNode } from "./components/WorktreeNode";
@@ -34,9 +35,14 @@ export function App({ initialState }: Props) {
   const [, forceRender] = useState(0);
 
   const handleTerminalData = useCallback(
-    (data: string) => {
+    (data: string, encoding: TerminalInputEncoding = "text") => {
       if (state.activeSessionId) {
-        vscode.postMessage({ type: "input", id: state.activeSessionId, data });
+        vscode.postMessage({
+          type: "input",
+          id: state.activeSessionId,
+          data,
+          encoding,
+        });
       }
     },
     [state.activeSessionId, vscode],

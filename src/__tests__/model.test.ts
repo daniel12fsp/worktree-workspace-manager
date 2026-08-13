@@ -455,14 +455,29 @@ describe("resolveGitDir", () => {
 
   it("returns parsed gitdir from .git file", () => {
     mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
-    mockStatSync.mockReturnValue({ isFile: () => true } as any);
+    mockStatSync.mockReturnValue({
+      isDirectory: () => false,
+      isFile: () => true,
+    } as any);
     mockReadFileSync.mockReturnValue("gitdir: /other/location/.git\n");
     expect(resolveGitDir("/repos/project")).toBe("/other/location/.git");
   });
 
+  it("returns .git dir when it exists as a directory", () => {
+    mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
+    mockStatSync.mockReturnValue({
+      isDirectory: () => true,
+      isFile: () => false,
+    } as any);
+    expect(resolveGitDir("/repos/project")).toBe("/repos/project/.git");
+  });
+
   it("resolves relative gitdir", () => {
     mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
-    mockStatSync.mockReturnValue({ isFile: () => true } as any);
+    mockStatSync.mockReturnValue({
+      isDirectory: () => false,
+      isFile: () => true,
+    } as any);
     mockReadFileSync.mockReturnValue("gitdir: ../sibling/.git\n");
     expect(resolveGitDir("/repos/project")).toContain("sibling/.git");
   });
@@ -474,13 +489,19 @@ describe("resolveGitDir", () => {
 
   it("returns fsPath when .git exists but is not a file", () => {
     mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
-    mockStatSync.mockReturnValue({ isFile: () => false } as any);
+    mockStatSync.mockReturnValue({
+      isDirectory: () => false,
+      isFile: () => false,
+    } as any);
     expect(resolveGitDir("/repos/project")).toBe("/repos/project");
   });
 
   it("returns fsPath when .git file has no gitdir line", () => {
     mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
-    mockStatSync.mockReturnValue({ isFile: () => true } as any);
+    mockStatSync.mockReturnValue({
+      isDirectory: () => false,
+      isFile: () => true,
+    } as any);
     mockReadFileSync.mockReturnValue("some other content\n");
     expect(resolveGitDir("/repos/project")).toBe("/repos/project");
   });

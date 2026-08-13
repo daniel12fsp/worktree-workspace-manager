@@ -7,6 +7,9 @@ export class Terminal {
   onData(_callback: (data: string) => void) {
     return { dispose: () => {} };
   }
+  onBinary(_callback: (data: string) => void) {
+    return { dispose: () => {} };
+  }
   onFocus(_callback: () => void) {
     return { dispose: () => {} };
   }

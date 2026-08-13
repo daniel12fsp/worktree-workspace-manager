@@ -6,11 +6,13 @@ import { FitAddon } from "@xterm/addon-fit";
 
 type TerminalActivityState = "idle" | "running" | "error";
 
+export type TerminalInputEncoding = "text" | "binary";
+
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   activeSessionId: string | undefined,
   activeSessionState: TerminalActivityState | undefined,
-  onData: (data: string) => void,
+  onData: (data: string, encoding?: TerminalInputEncoding) => void,
   onResize: (cols: number, rows: number) => void,
 ) {
   const termRef = useRef<any>(null);
@@ -142,6 +144,16 @@ export function useTerminal(
           activeSessionStateRef.current,
         );
         if (sanitized) onDataRef.current(sanitized);
+      });
+
+      term.onBinary((data: string) => {
+        const sid = activeSessionIdRef.current;
+        if (!sid) return;
+        const sanitized = inputSanitizerRef.current.write(
+          data,
+          activeSessionStateRef.current,
+        );
+        if (sanitized) onDataRef.current(sanitized, "binary");
       });
 
       term.element?.addEventListener("focus", () => {

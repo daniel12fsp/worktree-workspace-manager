@@ -25,14 +25,20 @@ import type { EmbeddedSession } from "../embeddedTerminalView";
 import * as vscode from "vscode";
 import * as pty from "node-pty";
 
+const mockPtyOnData = vi.fn(() => ({ dispose: vi.fn() }));
+const mockPtyOnExit = vi.fn(() => ({ dispose: vi.fn() }));
+const mockPtyWrite = vi.fn();
+const mockPtyKill = vi.fn();
+const mockPtyResize = vi.fn();
+
 vi.mock("vscode", () => import("../__mocks__/vscode"));
 vi.mock("node-pty", () => ({
   spawn: vi.fn(() => ({
-    onData: vi.fn(() => ({ dispose: vi.fn() })),
-    onExit: vi.fn(() => ({ dispose: vi.fn() })),
-    write: vi.fn(),
-    kill: vi.fn(),
-    resize: vi.fn(),
+    onData: mockPtyOnData,
+    onExit: mockPtyOnExit,
+    write: mockPtyWrite,
+    kill: mockPtyKill,
+    resize: mockPtyResize,
   })),
 }));
 vi.mock("../logger", () => ({
@@ -46,32 +52,39 @@ vi.mock("../model", () => ({
   listAllWorktrees: vi.fn(async () => new Map()),
   updateWorktreeColor: vi.fn(async () => {}),
 }));
-const mockCheckWorktree = vi.fn(async () => "updated");
+const mockCheckWorktree = vi.fn(async (..._args: any[]) => "updated");
 
 vi.mock("../workspaceFile", () => ({
-  checkWorktreeInLiveWorkspace: (...args: any[]) => mockCheckWorktree(...args),
+  checkWorktreeInLiveWorkspace: (...args: any[]) => mockCheckWorktree(args[0]),
   getCheckedWorktreePaths: vi.fn(async () => new Set()),
   normalizePath: vi.fn((p: string) => p),
 }));
 
-const mockMkdtempSync = vi.fn(() => "/tmp/test-dir");
-const mockWriteFileSync = vi.fn();
-const mockExistsSync = vi.fn(() => false);
-const mockStatSync = vi.fn(() => ({ mode: 0o644 }));
+const mockMkdtempSync = vi.fn((_prefix?: string) => "/tmp/test-dir");
+const mockWriteFileSync = vi.fn(
+  (_path?: string, _data?: string, _options?: any) => {},
+);
+const mockExistsSync = vi.fn((_path?: string) => false);
+const mockStatSync = vi.fn(
+  (_path?: string) =>
+    ({ mode: 0o644 }) as { mode: number; isFile?: () => boolean },
+);
 
 vi.mock("node:fs", () => ({
-  mkdtempSync: (...args: any[]) => mockMkdtempSync(...args),
-  writeFileSync: (...args: any[]) => mockWriteFileSync(...args),
-  existsSync: (...args: any[]) => mockExistsSync(...args),
-  statSync: (...args: any[]) => mockStatSync(...args),
+  mkdtempSync: (prefix: string) => mockMkdtempSync(prefix),
+  writeFileSync: (path: string, data: string, options?: any) =>
+    mockWriteFileSync(path, data, options),
+  existsSync: (path: string) => mockExistsSync(path),
+  statSync: (path: string) => mockStatSync(path),
   chmodSync: vi.fn(),
   unlinkSync: vi.fn(),
   rmSync: vi.fn(),
   default: {
-    mkdtempSync: (...args: any[]) => mockMkdtempSync(...args),
-    writeFileSync: (...args: any[]) => mockWriteFileSync(...args),
-    existsSync: (...args: any[]) => mockExistsSync(...args),
-    statSync: (...args: any[]) => mockStatSync(...args),
+    mkdtempSync: (prefix: string) => mockMkdtempSync(prefix),
+    writeFileSync: (path: string, data: string, options?: any) =>
+      mockWriteFileSync(path, data, options),
+    existsSync: (path: string) => mockExistsSync(path),
+    statSync: (path: string) => mockStatSync(path),
     chmodSync: vi.fn(),
     unlinkSync: vi.fn(),
     rmSync: vi.fn(),
@@ -79,6 +92,14 @@ vi.mock("node:fs", () => ({
 }));
 
 describe("sanitizedOutputForEditor", () => {
+  beforeEach(() => {
+    mockPtyOnData.mockClear();
+    mockPtyOnExit.mockClear();
+    mockPtyWrite.mockClear();
+    mockPtyKill.mockClear();
+    mockPtyResize.mockClear();
+  });
+
   it("removes terminal color and control sequences", () => {
     const output = [
       "\x1b[31mred\x1b[0m\n",
@@ -222,7 +243,7 @@ describe("defaultShell", () => {
 
   it("reads configured terminal shell", () => {
     mockExistsSync.mockReturnValue(true);
-    mockStatSync.mockReturnValue({ mode: 0o755, isFile: () => true });
+    mockStatSync.mockReturnValue({ mode: 0o755, isFile: () => true } as any);
     (vscode as any).__setConfig("worktreeManager.terminalShell", " /bin/zsh ");
     expect(configuredTerminalShell()).toBe("/bin/zsh");
     expect(validatedConfiguredTerminalShell()).toBe("/bin/zsh");
@@ -231,7 +252,10 @@ describe("defaultShell", () => {
 
   it("ignores configured terminal shell when it is a directory", () => {
     mockExistsSync.mockReturnValueOnce(true);
-    mockStatSync.mockReturnValueOnce({ mode: 0o755, isFile: () => false });
+    mockStatSync.mockReturnValueOnce({
+      mode: 0o755,
+      isFile: () => false,
+    } as any);
     (vscode as any).__setConfig(
       "worktreeManager.terminalShell",
       "/usr/share/zsh",
@@ -251,7 +275,10 @@ describe("defaultShell", () => {
 
   it("ignores configured terminal shell when path is not executable", () => {
     mockExistsSync.mockReturnValueOnce(true);
-    mockStatSync.mockReturnValueOnce({ mode: 0o644, isFile: () => true });
+    mockStatSync.mockReturnValueOnce({
+      mode: 0o644,
+      isFile: () => true,
+    } as any);
     (vscode as any).__setConfig("worktreeManager.terminalShell", "/bin/zsh");
     expect(validatedConfiguredTerminalShell()).toBeUndefined();
   });
@@ -681,7 +708,10 @@ describe("EmbeddedTerminalViewProvider", () => {
 
   it("openTerminal uses configured terminal shell", async () => {
     mockExistsSync.mockReturnValueOnce(true);
-    mockStatSync.mockReturnValueOnce({ mode: 0o755, isFile: () => true });
+    mockStatSync.mockReturnValueOnce({
+      mode: 0o755,
+      isFile: () => true,
+    } as any);
     (vscode as any).__setConfig("worktreeManager.terminalShell", "/bin/zsh");
     const worktree = {
       repo: {
@@ -775,7 +805,10 @@ describe("EmbeddedTerminalViewProvider", () => {
 
   it("openNativeTerminalForPath uses configured terminal shell", async () => {
     mockExistsSync.mockReturnValueOnce(true);
-    mockStatSync.mockReturnValueOnce({ mode: 0o755, isFile: () => true });
+    mockStatSync.mockReturnValueOnce({
+      mode: 0o755,
+      isFile: () => true,
+    } as any);
     (vscode as any).__setConfig("worktreeManager.terminalShell", "/bin/zsh");
     const worktree = {
       repo: {
@@ -1155,6 +1188,54 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     await messageHandler!({ type: "input", id: "nonexistent", data: "ls\n" });
+  });
+
+  it("handleWebviewMessage binary input writes buffer to session", async () => {
+    let messageHandler: ((msg: any) => void) | undefined;
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    const mockView = {
+      visible: true,
+      webview: mockWebview,
+    } as any;
+    provider.resolveWebviewView(mockView);
+
+    const worktree = {
+      repo: {
+        fsPath: "/repos/project",
+        gitDir: "/repos/project/.bare",
+        label: "project.git",
+        configPath: "/repos/project.git",
+      },
+      path: "/tmp/feat-login",
+      name: "feat-login",
+      branch: "feat/login",
+      head: "abc123",
+      color: "#ff0000",
+      colorKey: "project.git/feat-login",
+    } as any;
+
+    await provider.openTerminal(worktree);
+    const sessionId = (provider as any).activeSessionId;
+    await messageHandler!({
+      type: "input",
+      id: sessionId,
+      data: "\u001b[M`p!",
+      encoding: "binary",
+    });
+
+    expect(mockPtyWrite).toHaveBeenCalledWith(
+      Buffer.from("\u001b[M`p!", "binary"),
+    );
   });
 
   it("handleWebviewMessage create opens terminal for path", async () => {

@@ -77,7 +77,16 @@ export function resolveGitDir(fsPath: string): string {
   }
 
   const gitFile = path.join(fsPath, ".git");
-  if (!fs.existsSync(gitFile) || !fs.statSync(gitFile).isFile()) {
+  if (!fs.existsSync(gitFile)) {
+    return fsPath;
+  }
+
+  const gitStat = fs.statSync(gitFile);
+  if (gitStat.isDirectory()) {
+    return gitFile;
+  }
+
+  if (!gitStat.isFile()) {
     return fsPath;
   }
 

@@ -18,6 +18,7 @@ vi.mock("@xterm/xterm", () => ({
     focus: vi.fn(),
     resize: vi.fn(),
     onData: vi.fn(() => ({ dispose: vi.fn() })),
+    onBinary: vi.fn(() => ({ dispose: vi.fn() })),
     onFocus: vi.fn(() => ({ dispose: vi.fn() })),
     onBlur: vi.fn(() => ({ dispose: vi.fn() })),
     loadAddon: vi.fn(),

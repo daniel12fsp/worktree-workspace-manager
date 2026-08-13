@@ -5,6 +5,9 @@ import { Terminal } from "@xterm/xterm";
 import { App, AppState } from "../App";
 import { VsCodeContext, VsCodeApi } from "../hooks/useVsCode";
 
+const mockTerminalOnData = vi.fn();
+const mockTerminalOnBinary = vi.fn();
+
 vi.mock("@xterm/xterm", () => ({
   Terminal: vi.fn().mockImplementation(() => ({
     open: vi.fn(),
@@ -12,7 +15,8 @@ vi.mock("@xterm/xterm", () => ({
     clear: vi.fn(),
     focus: vi.fn(),
     resize: vi.fn(),
-    onData: vi.fn(() => ({ dispose: vi.fn() })),
+    onData: mockTerminalOnData,
+    onBinary: mockTerminalOnBinary,
     onFocus: vi.fn(() => ({ dispose: vi.fn() })),
     onBlur: vi.fn(() => ({ dispose: vi.fn() })),
     loadAddon: vi.fn(),
@@ -61,6 +65,13 @@ describe("App", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.innerHTML = "";
+    mockTerminalOnData.mockImplementation(() => ({ dispose: vi.fn() }));
+    mockTerminalOnBinary.mockImplementation(() => ({ dispose: vi.fn() }));
+    (globalThis as any).ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
   });
 
   it("shows welcome message when no workspace", () => {
@@ -139,6 +150,64 @@ describe("App", () => {
     renderWithVsCode(state);
     expect(screen.getByText(/feat-login/)).toBeTruthy();
     expect(screen.getByText(/feat\/login/)).toBeTruthy();
+  });
+
+  it("posts binary terminal input with binary encoding", async () => {
+    let onBinaryCallback: ((data: string) => void) | undefined;
+    mockTerminalOnBinary.mockImplementation(
+      (callback: (data: string) => void) => {
+        onBinaryCallback = callback;
+        return { dispose: vi.fn() };
+      },
+    );
+
+    const mockVsCode = createMockVsCode();
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "running",
+                  displayName: "terminal 1",
+                  statusText: "npm run dev",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: "s1",
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+
+    renderWithVsCode(state, mockVsCode);
+
+    expect(onBinaryCallback).toBeTypeOf("function");
+    onBinaryCallback!("\u001b[M`p!");
+
+    await waitFor(() => {
+      expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+        type: "input",
+        id: "s1",
+        data: "\u001b[M`p!",
+        encoding: "binary",
+      });
+    });
   });
 
   it("renders sessions under worktrees", () => {
