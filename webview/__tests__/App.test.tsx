@@ -917,6 +917,88 @@ describe("App", () => {
     });
   });
 
+  it("clears terminal output when switching to a session with empty history", async () => {
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "idle",
+                  displayName: "terminal 1",
+                  statusText: "idle",
+                  preview: "",
+                },
+                {
+                  id: "s2",
+                  label: "terminal 2",
+                  state: "idle",
+                  displayName: "terminal 2",
+                  statusText: "idle",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: "s1",
+      activeOutput: "old output",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+
+    renderWithVsCode(state);
+
+    const term = vi.mocked(Terminal).mock.results[0]?.value as {
+      reset: ReturnType<typeof vi.fn>;
+      write: ReturnType<typeof vi.fn>;
+    };
+
+    await waitFor(() => {
+      expect(term.write).toHaveBeenCalledWith(
+        "old output",
+        expect.any(Function),
+      );
+    });
+    term.reset.mockClear();
+    term.write.mockClear();
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: "state",
+            repos: state.repos,
+            activeSessionId: "s2",
+            activeOutput: "",
+            hasWorkspace: true,
+            home: "/home/user",
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(term.reset).toHaveBeenCalledTimes(1);
+    });
+    expect(term.write).not.toHaveBeenCalledWith(
+      "old output",
+      expect.any(Function),
+    );
+  });
+
   it("renders app root", () => {
     const state: AppState = {
       repos: [],
@@ -1136,6 +1218,9 @@ describe("App", () => {
     };
 
     renderWithVsCode({ ...state, activeOutput: "" });
+    const term = vi.mocked(Terminal).mock.results[0]?.value;
+    vi.mocked(term.reset).mockClear();
+    vi.mocked(term.write).mockClear();
 
     act(() => {
       window.dispatchEvent(
@@ -1146,7 +1231,6 @@ describe("App", () => {
     });
 
     await waitFor(() => {
-      const term = vi.mocked(Terminal).mock.results[0]?.value;
       expect(term.reset).toHaveBeenCalledTimes(1);
       expect(term.write).toHaveBeenCalledWith("hello", expect.any(Function));
     });

@@ -200,10 +200,7 @@ export function App({ initialState }: Props) {
 
   React.useEffect(() => {
     if (!state.activeSessionId) return;
-    if (
-      replayedSessionIdRef.current !== state.activeSessionId &&
-      state.activeOutput
-    ) {
+    if (replayedSessionIdRef.current !== state.activeSessionId) {
       replayedSessionIdRef.current = state.activeSessionId;
       terminalApi?.clearAndWrite(state.activeOutput);
     }
