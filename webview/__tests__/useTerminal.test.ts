@@ -13,6 +13,7 @@ import {
   TerminalInputSanitizer,
   terminalMouseResetSequence,
   terminalNavigationInputSequence,
+  terminalClipboardShortcutAction,
   detectTerminalLinksInBuffer,
   hideTerminalFindBox,
 } from "../hooks/useTerminal";
@@ -308,6 +309,141 @@ describe("terminalNavigationInputSequence", () => {
         altKey: false,
         shiftKey: false,
       }),
+    ).toBeUndefined();
+  });
+});
+
+describe("terminalClipboardShortcutAction", () => {
+  it("copies on macOS cmd+c when selection exists", () => {
+    expect(
+      terminalClipboardShortcutAction(
+        {
+          type: "keydown",
+          key: "c",
+          ctrlKey: false,
+          metaKey: true,
+          altKey: false,
+          shiftKey: false,
+        },
+        true,
+        "MacIntel",
+      ),
+    ).toBe("copy");
+  });
+
+  it("does not steal macOS cmd+c without selection", () => {
+    expect(
+      terminalClipboardShortcutAction(
+        {
+          type: "keydown",
+          key: "c",
+          ctrlKey: false,
+          metaKey: true,
+          altKey: false,
+          shiftKey: false,
+        },
+        false,
+        "MacIntel",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("pastes on macOS cmd+v", () => {
+    expect(
+      terminalClipboardShortcutAction(
+        {
+          type: "keydown",
+          key: "v",
+          ctrlKey: false,
+          metaKey: true,
+          altKey: false,
+          shiftKey: false,
+        },
+        false,
+        "MacIntel",
+      ),
+    ).toBe("paste");
+  });
+
+  it("copies on Linux ctrl+shift+c when selection exists", () => {
+    expect(
+      terminalClipboardShortcutAction(
+        {
+          type: "keydown",
+          key: "c",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: true,
+        },
+        true,
+        "Linux x86_64",
+      ),
+    ).toBe("copy");
+  });
+
+  it("pastes on Linux ctrl+shift+v", () => {
+    expect(
+      terminalClipboardShortcutAction(
+        {
+          type: "keydown",
+          key: "v",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: true,
+        },
+        false,
+        "Linux x86_64",
+      ),
+    ).toBe("paste");
+  });
+
+  it("does not steal plain linux ctrl+v", () => {
+    expect(
+      terminalClipboardShortcutAction(
+        {
+          type: "keydown",
+          key: "v",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+        },
+        false,
+        "Linux x86_64",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("does not steal escape or terminal control keys", () => {
+    expect(
+      terminalClipboardShortcutAction(
+        {
+          type: "keydown",
+          key: "Escape",
+          ctrlKey: false,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+        },
+        false,
+        "MacIntel",
+      ),
+    ).toBeUndefined();
+    expect(
+      terminalClipboardShortcutAction(
+        {
+          type: "keydown",
+          key: "c",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+        },
+        true,
+        "Linux x86_64",
+      ),
     ).toBeUndefined();
   });
 });

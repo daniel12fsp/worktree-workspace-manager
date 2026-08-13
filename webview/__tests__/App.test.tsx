@@ -30,6 +30,8 @@ vi.mock("@xterm/xterm", () => ({
     registerLinkProvider: vi.fn(),
     buffer: { active: { getLine: vi.fn() } },
     attachCustomKeyEventHandler: vi.fn(),
+    hasSelection: vi.fn(() => false),
+    getSelection: vi.fn(() => ""),
     element: document.createElement("div"),
     dispose: vi.fn(),
   })),
@@ -72,6 +74,13 @@ describe("App", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     document.body.innerHTML = "";
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        readText: vi.fn(async () => ""),
+        writeText: vi.fn(async () => undefined),
+      },
+      configurable: true,
+    });
     mockTerminalOnData.mockImplementation(() => ({ dispose: vi.fn() }));
     mockTerminalOnBinary.mockImplementation(() => ({ dispose: vi.fn() }));
     (globalThis as any).ResizeObserver = class {
@@ -315,6 +324,167 @@ describe("App", () => {
         data: "\u001b[M`p!",
         encoding: "binary",
       });
+    });
+  });
+
+  it("copies selected text on macOS cmd+c without sending input", async () => {
+    const originalPlatform = navigator.platform;
+    Object.defineProperty(navigator, "platform", {
+      value: "MacIntel",
+      configurable: true,
+    });
+
+    const mockVsCode = createMockVsCode();
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "running",
+                  displayName: "terminal 1",
+                  statusText: "npm run dev",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: "s1",
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+
+    renderWithVsCode(state, mockVsCode);
+
+    const term = vi.mocked(Terminal).mock.results.at(-1)?.value as {
+      attachCustomKeyEventHandler: ReturnType<typeof vi.fn>;
+      hasSelection: ReturnType<typeof vi.fn>;
+      getSelection: ReturnType<typeof vi.fn>;
+    };
+    const handler = vi.mocked(term.attachCustomKeyEventHandler).mock
+      .calls[0]?.[0];
+    term.hasSelection.mockReturnValue(true);
+    term.getSelection.mockReturnValue("copied text");
+
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+    const result = handler({
+      type: "keydown",
+      key: "c",
+      ctrlKey: false,
+      metaKey: true,
+      altKey: false,
+      shiftKey: false,
+      preventDefault,
+      stopPropagation,
+    });
+
+    expect(result).toBe(false);
+    expect(preventDefault).toHaveBeenCalled();
+    expect(stopPropagation).toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith("copied text");
+    });
+    expect(mockVsCode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "input" }),
+    );
+
+    Object.defineProperty(navigator, "platform", {
+      value: originalPlatform,
+      configurable: true,
+    });
+  });
+
+  it("pastes clipboard text on Linux ctrl+shift+v", async () => {
+    vi.mocked(navigator.clipboard.readText).mockResolvedValue("pasted text");
+    const originalPlatform = navigator.platform;
+    Object.defineProperty(navigator, "platform", {
+      value: "Linux x86_64",
+      configurable: true,
+    });
+
+    const mockVsCode = createMockVsCode();
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "running",
+                  displayName: "terminal 1",
+                  statusText: "npm run dev",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: "s1",
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+
+    renderWithVsCode(state, mockVsCode);
+
+    const term = vi.mocked(Terminal).mock.results.at(-1)?.value as {
+      attachCustomKeyEventHandler: ReturnType<typeof vi.fn>;
+    };
+    const handler = vi.mocked(term.attachCustomKeyEventHandler).mock
+      .calls[0]?.[0];
+
+    const result = handler({
+      type: "keydown",
+      key: "v",
+      ctrlKey: true,
+      metaKey: false,
+      altKey: false,
+      shiftKey: true,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    });
+
+    expect(result).toBe(false);
+
+    await waitFor(() => {
+      expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+        type: "input",
+        id: "s1",
+        data: "pasted text",
+        encoding: "text",
+      });
+    });
+
+    Object.defineProperty(navigator, "platform", {
+      value: originalPlatform,
+      configurable: true,
     });
   });
 

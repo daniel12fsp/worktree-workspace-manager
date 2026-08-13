@@ -9,6 +9,8 @@ export type TerminalInputEncoding = "text" | "binary";
 const TERMINAL_MOUSE_RESET =
   "\x1b[?1000l" + "\x1b[?1002l" + "\x1b[?1003l" + "\x1b[?1006l" + "\x1b[?1016l";
 
+type ClipboardShortcutAction = "copy" | "paste";
+
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   activeSessionId: string | undefined,
@@ -81,6 +83,20 @@ export function useTerminal(
       });
 
       term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+        const clipboardAction = terminalClipboardShortcutAction(
+          event,
+          term.hasSelection?.() ?? false,
+        );
+        if (clipboardAction) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (clipboardAction === "copy") {
+            void writeTerminalSelectionToClipboard(term);
+          } else {
+            void readClipboardToTerminal(onDataRef.current);
+          }
+          return false;
+        }
         if (
           event.type === "keydown" &&
           (event.ctrlKey || event.metaKey) &&
@@ -363,6 +379,32 @@ export function terminalNavigationInputSequence(
   }
 }
 
+export function terminalClipboardShortcutAction(
+  event: Pick<
+    KeyboardEvent,
+    "type" | "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+  >,
+  hasSelection: boolean,
+  platform = navigator.platform,
+): ClipboardShortcutAction | undefined {
+  if (event.type !== "keydown" || event.altKey) return undefined;
+
+  const key = event.key.toLowerCase();
+  const isMac = /mac/i.test(platform);
+
+  if (isMac) {
+    if (event.ctrlKey || event.shiftKey || !event.metaKey) return undefined;
+    if (key === "c") return hasSelection ? "copy" : undefined;
+    if (key === "v") return "paste";
+    return undefined;
+  }
+
+  if (event.metaKey || !event.ctrlKey || !event.shiftKey) return undefined;
+  if (key === "c") return hasSelection ? "copy" : undefined;
+  if (key === "v") return "paste";
+  return undefined;
+}
+
 export function stripTerminalGeneratedInput(
   data: string,
   _activeSessionState?: unknown,
@@ -384,6 +426,22 @@ export function terminalMouseResetSequence(): string {
 
 function writeTerminalMouseReset(term: { write(data: string): void }) {
   term.write(TERMINAL_MOUSE_RESET);
+}
+
+async function writeTerminalSelectionToClipboard(term: {
+  getSelection?: () => string;
+}) {
+  const selection = term.getSelection?.() ?? "";
+  if (!selection) return;
+  await navigator.clipboard.writeText(selection);
+}
+
+async function readClipboardToTerminal(
+  onData: (data: string, encoding?: TerminalInputEncoding) => void,
+) {
+  const text = await navigator.clipboard.readText();
+  if (!text) return;
+  onData(text);
 }
 
 function sanitizeTerminalStream(
