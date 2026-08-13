@@ -4,8 +4,6 @@ import { Terminal } from "@xterm/xterm";
 import { SearchAddon } from "@xterm/addon-search";
 import { FitAddon } from "@xterm/addon-fit";
 
-type TerminalActivityState = "idle" | "running" | "error";
-
 export type TerminalInputEncoding = "text" | "binary";
 
 const TERMINAL_MOUSE_RESET =
@@ -14,7 +12,6 @@ const TERMINAL_MOUSE_RESET =
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   activeSessionId: string | undefined,
-  activeSessionState: TerminalActivityState | undefined,
   onData: (data: string, encoding?: TerminalInputEncoding) => void,
   onResize: (cols: number, rows: number) => void,
 ) {
@@ -22,14 +19,11 @@ export function useTerminal(
   const searchAddonRef = useRef<any>(null);
   const fitAddonRef = useRef<any>(null);
   const hasFocusRef = useRef(false);
-  const inputSanitizerRef = useRef(new TerminalInputSanitizer());
   const previousSessionIdRef = useRef<string | undefined>(activeSessionId);
+  const replayDepthRef = useRef(0);
 
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
-
-  const activeSessionStateRef = useRef(activeSessionState);
-  activeSessionStateRef.current = activeSessionState;
 
   const onDataRef = useRef(onData);
   onDataRef.current = onData;
@@ -59,7 +53,6 @@ export function useTerminal(
     try {
       const term = new Terminal({
         allowProposedApi: true,
-        convertEol: true,
         cursorBlink: true,
         fontFamily: "monospace",
         theme: { background: "#000000" },
@@ -142,22 +135,14 @@ export function useTerminal(
 
       term.onData((data: string) => {
         const sid = activeSessionIdRef.current;
-        if (!sid) return;
-        const sanitized = inputSanitizerRef.current.write(
-          data,
-          activeSessionStateRef.current,
-        );
-        if (sanitized) onDataRef.current(sanitized);
+        if (!sid || replayDepthRef.current > 0) return;
+        onDataRef.current(data);
       });
 
       term.onBinary((data: string) => {
         const sid = activeSessionIdRef.current;
-        if (!sid) return;
-        const sanitized = inputSanitizerRef.current.write(
-          data,
-          activeSessionStateRef.current,
-        );
-        if (sanitized) onDataRef.current(sanitized, "binary");
+        if (!sid || replayDepthRef.current > 0) return;
+        onDataRef.current(data, "binary");
       });
 
       term.element?.addEventListener("focus", () => {
@@ -208,11 +193,16 @@ export function useTerminal(
 
   const clearAndWrite = useCallback((data: string) => {
     if (!termRef.current) return;
-    inputSanitizerRef.current.reset();
-    termRef.current.clear();
-    writeTerminalMouseReset(termRef.current);
+    replayDepthRef.current += 1;
+    termRef.current.reset();
     const replaySafeData = sanitizeReplayedTerminalOutput(data);
-    if (replaySafeData) termRef.current.write(replaySafeData);
+    if (!replaySafeData) {
+      replayDepthRef.current = Math.max(0, replayDepthRef.current - 1);
+      return;
+    }
+    termRef.current.write(replaySafeData, () => {
+      replayDepthRef.current = Math.max(0, replayDepthRef.current - 1);
+    });
   }, []);
 
   const write = useCallback((data: string) => {
@@ -254,7 +244,6 @@ export function useTerminal(
     const term = termRef.current;
     const previousSessionId = previousSessionIdRef.current;
     if (term && previousSessionId !== activeSessionId) {
-      inputSanitizerRef.current.reset();
       writeTerminalMouseReset(term);
       if (!activeSessionId) term.clear();
     }
@@ -270,7 +259,6 @@ export function useTerminal(
 
   useEffect(
     () => () => {
-      inputSanitizerRef.current.reset();
       if (termRef.current) {
         writeTerminalMouseReset(termRef.current);
         termRef.current.dispose?.();
@@ -297,28 +285,15 @@ export function useTerminal(
 }
 
 export class TerminalInputSanitizer {
-  private pending = "";
-
-  write(
-    data: string,
-    activeSessionState: TerminalActivityState | undefined,
-  ): string {
-    const result = sanitizeTerminalStream(this.pending + data, (sequence) =>
-      shouldStripGeneratedInput(sequence, activeSessionState),
-    );
-    this.pending = result.pending;
-    return result.output;
+  write(data: string): string {
+    return data;
   }
 
   flush(): string {
-    const pending = this.pending;
-    this.pending = "";
-    return pending;
+    return "";
   }
 
-  reset(): void {
-    this.pending = "";
-  }
+  reset(): void {}
 }
 
 export class TerminalControlSanitizer {
@@ -378,11 +353,9 @@ export function terminalNavigationInputSequence(
 
 export function stripTerminalGeneratedInput(
   data: string,
-  activeSessionState: TerminalActivityState | undefined,
+  _activeSessionState?: unknown,
 ): string {
-  return sanitizeTerminalStream(data, (sequence) =>
-    shouldStripGeneratedInput(sequence, activeSessionState),
-  ).output;
+  return data;
 }
 
 export function stripMouseReports(data: string): string {
@@ -531,14 +504,6 @@ function readStringControl(
   return { value: data.slice(start), end: data.length, complete: false };
 }
 
-function shouldStripGeneratedInput(
-  sequence: string,
-  activeSessionState: TerminalActivityState | undefined,
-): boolean {
-  if (shouldStripQueryResponse(sequence)) return true;
-  return activeSessionState !== "running" && isMouseReport(sequence);
-}
-
 function shouldStripQueryResponse(sequence: string): boolean {
   return (
     isPrimaryDeviceAttributesReply(sequence) ||
@@ -551,11 +516,7 @@ function shouldStripQueryResponse(sequence: string): boolean {
 }
 
 function shouldStripReplayedOutput(sequence: string): boolean {
-  return (
-    isTerminalQuery(sequence) ||
-    isInputModeEnable(sequence) ||
-    isCursorVisibilityControl(sequence)
-  );
+  return isTerminalQuery(sequence) || isCursorVisibilityControl(sequence);
 }
 
 function isTerminalQuery(sequence: string): boolean {
@@ -614,21 +575,8 @@ function isMouseReport(sequence: string): boolean {
   );
 }
 
-function isInputModeEnable(sequence: string): boolean {
-  return (
-    /^\x1b\[\?\d+(?:;\d+)*h$/.test(sequence) &&
-    containsTerminalInputMode(sequence)
-  );
-}
-
 function isCursorVisibilityControl(sequence: string): boolean {
   return /^\x1b\[\?25[hl]$/.test(sequence) || /^\x9b\?25[hl]$/.test(sequence);
-}
-
-function containsTerminalInputMode(sequence: string): boolean {
-  return /(?:^|[?;])(?:1000|1002|1003|1004|1005|1006|1015)(?:[;h]|$)/.test(
-    sequence,
-  );
 }
 
 export function updateFocusClasses(focused: boolean) {

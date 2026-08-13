@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import { Terminal } from "@xterm/xterm";
 import { App, AppState } from "../App";
 import { VsCodeContext, VsCodeApi } from "../hooks/useVsCode";
@@ -12,6 +18,7 @@ vi.mock("@xterm/xterm", () => ({
   Terminal: vi.fn().mockImplementation(() => ({
     open: vi.fn(),
     write: vi.fn(),
+    reset: vi.fn(),
     clear: vi.fn(),
     focus: vi.fn(),
     resize: vi.fn(),
@@ -627,16 +634,15 @@ describe("App", () => {
 
     await waitFor(() => {
       const term = vi.mocked(Terminal).mock.results[0]?.value as {
-        clear: ReturnType<typeof vi.fn>;
+        reset: ReturnType<typeof vi.fn>;
         write: ReturnType<typeof vi.fn>;
       };
-      expect(term.clear).toHaveBeenCalledTimes(1);
-      expect(term.write).toHaveBeenCalledTimes(2);
-      expect(term.write).toHaveBeenNthCalledWith(
-        1,
-        "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
+      expect(term.reset).toHaveBeenCalledTimes(1);
+      expect(term.write).toHaveBeenCalledTimes(1);
+      expect(term.write).toHaveBeenCalledWith(
+        "prompt > ",
+        expect.any(Function),
       );
-      expect(term.write).toHaveBeenCalledWith("prompt > ");
     });
   });
 
@@ -796,7 +802,9 @@ describe("App", () => {
         loadingWorktrees: new Set(),
       },
     });
-    window.dispatchEvent(event);
+    act(() => {
+      window.dispatchEvent(event);
+    });
     // State update is async, just verify no error
     expect(true).toBeTruthy();
   });
@@ -860,10 +868,8 @@ describe("App", () => {
 
     await waitFor(() => {
       const term = vi.mocked(Terminal).mock.results[0]?.value;
-      expect(term.write).toHaveBeenCalledWith(
-        "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
-      );
-      expect(term.write).toHaveBeenCalledWith("hello");
+      expect(term.reset).toHaveBeenCalledTimes(1);
+      expect(term.write).toHaveBeenCalledWith("hello", expect.any(Function));
     });
   });
 
@@ -884,7 +890,9 @@ describe("App", () => {
         id: "s1",
       },
     });
-    window.dispatchEvent(event);
+    act(() => {
+      window.dispatchEvent(event);
+    });
   });
 
   it("handles loadingDone message", () => {
@@ -903,7 +911,9 @@ describe("App", () => {
         type: "loadingDone",
       },
     });
-    window.dispatchEvent(event);
+    act(() => {
+      window.dispatchEvent(event);
+    });
   });
 
   it("loadingDone clears loading state for worktree path", () => {
@@ -942,7 +952,9 @@ describe("App", () => {
         path: worktreePath,
       },
     });
-    window.dispatchEvent(event);
+    act(() => {
+      window.dispatchEvent(event);
+    });
 
     // After loadingDone, loading indicator should disappear
     return new Promise<void>((resolve) => {
@@ -1027,18 +1039,20 @@ describe("App", () => {
     const term = vi.mocked(Terminal).mock.results[0]?.value;
     vi.mocked(term.write).mockClear();
 
-    window.dispatchEvent(
-      new MessageEvent("message", {
-        data: {
-          type: "state",
-          repos: next.repos,
-          activeSessionId: next.activeSessionId,
-          activeOutput: next.activeOutput,
-          hasWorkspace: next.hasWorkspace,
-          home: next.home,
-        },
-      }),
-    );
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: "state",
+            repos: next.repos,
+            activeSessionId: next.activeSessionId,
+            activeOutput: next.activeOutput,
+            hasWorkspace: next.hasWorkspace,
+            home: next.home,
+          },
+        }),
+      );
+    });
 
     await waitFor(() => {
       expect(term.write).toHaveBeenCalledWith(

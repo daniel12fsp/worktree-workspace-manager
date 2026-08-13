@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef } from "react";
 import { useVsCode } from "./hooks/useVsCode";
 import { useTerminal } from "./hooks/useTerminal";
 import type { TerminalInputEncoding } from "./hooks/useTerminal";
-import type { RepoData, SessionData, TerminalsLayoutOrder } from "./types";
+import type { RepoData, TerminalsLayoutOrder } from "./types";
 import { RepoNode } from "./components/RepoNode";
 import { WorktreeNode } from "./components/WorktreeNode";
 import { TerminalLeaf } from "./components/TerminalLeaf";
@@ -33,6 +33,7 @@ export function App({ initialState }: Props) {
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const [terminalPanePercent, setTerminalPanePercent] = useState(65);
   const [, forceRender] = useState(0);
+  const replayedSessionIdRef = useRef<string | undefined>(undefined);
 
   const handleTerminalData = useCallback(
     (data: string, encoding: TerminalInputEncoding = "text") => {
@@ -63,14 +64,9 @@ export function App({ initialState }: Props) {
   );
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
-  const activeSessionState = findSessionState(
-    state.repos,
-    state.activeSessionId,
-  );
   const terminalApi = useTerminal(
     terminalContainerRef,
     state.activeSessionId,
-    activeSessionState,
     handleTerminalData,
     handleTerminalResize,
   );
@@ -202,7 +198,10 @@ export function App({ initialState }: Props) {
 
   React.useEffect(() => {
     if (!state.activeSessionId) return;
-    terminalApi?.clearAndWrite(state.activeOutput || "");
+    if (replayedSessionIdRef.current !== state.activeSessionId) {
+      replayedSessionIdRef.current = state.activeSessionId;
+      terminalApi?.clearAndWrite(state.activeOutput || "");
+    }
     terminalApi?.resize();
   }, [
     state.activeSessionId,
@@ -210,6 +209,11 @@ export function App({ initialState }: Props) {
     terminalApi?.clearAndWrite,
     terminalApi?.resize,
   ]);
+
+  React.useEffect(() => {
+    if (state.activeSessionId) return;
+    replayedSessionIdRef.current = undefined;
+  }, [state.activeSessionId]);
 
   // Handle messages from extension host
   React.useEffect(() => {
@@ -308,7 +312,6 @@ export function App({ initialState }: Props) {
   const selectorPane = (
     <div className="sidebar" id="list" style={{ flex: "1 1 220px" }}>
       {state.repos.map((repo) => {
-        console.log({ repo });
         const isRepoCollapsed = collapsedReposRef.current.has(repo.label);
         const workspaceFolderWorktree =
           repo.kind === "workspaceFolder" ? repo.worktrees[0] : undefined;
@@ -395,20 +398,4 @@ function layoutOrder(
   value: TerminalsLayoutOrder | undefined,
 ): TerminalsLayoutOrder {
   return value === "selectorFirst" ? "selectorFirst" : "terminalFirst";
-}
-
-function findSessionState(
-  repos: RepoData[],
-  activeSessionId: string | undefined,
-): SessionData["state"] | undefined {
-  if (!activeSessionId) return undefined;
-  for (const repo of repos) {
-    for (const worktree of repo.worktrees) {
-      const session = worktree.sessions.find(
-        ({ id }) => id === activeSessionId,
-      );
-      if (session) return session.state;
-    }
-  }
-  return undefined;
 }

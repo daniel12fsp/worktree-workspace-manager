@@ -216,43 +216,41 @@ describe("stripTerminalQueryResponses", () => {
 });
 
 describe("stripTerminalGeneratedInput", () => {
-  it("covers Repro A by removing leaked device attribute responses", () => {
-    expect(stripTerminalGeneratedInput("\x1b[>0;276;0c", "idle")).toBe("");
+  it("preserves terminal query replies so live negotiation reaches the PTY", () => {
+    expect(stripTerminalGeneratedInput("\x1b[>0;276;0c", "idle")).toBe(
+      "\x1b[>0;276;0c",
+    );
     expect(stripTerminalGeneratedInput("echo hi\x1b[>0;276;0c\r", "idle")).toBe(
-      "echo hi\r",
+      "echo hi\x1b[>0;276;0c\r",
     );
   });
 
-  it("removes mouse reports while the active session is idle", () => {
+  it("preserves mouse reports regardless of UI activity state", () => {
     const input = "a\x1b[<35;10;5M\x1b[<35;11;5mb";
-    expect(stripTerminalGeneratedInput(input, "idle")).toBe("ab");
-  });
-
-  it("preserves mouse reports while the active session is running", () => {
-    const input = "a\x1b[<35;10;5Mb";
     expect(stripTerminalGeneratedInput(input, "running")).toBe(input);
+    expect(stripTerminalGeneratedInput(input, "idle")).toBe(input);
   });
 
   it("removes x10 mouse reports while idle", () => {
     expect(stripMouseReports("a\x1b[M !!b")).toBe("ab");
   });
 
-  it("handles leaked DA2 split across chunks", () => {
+  it("passes through terminal query replies split across chunks", () => {
     const sanitizer = new TerminalInputSanitizer();
     const output = [
-      sanitizer.write("A\x1b", "idle"),
-      sanitizer.write("[>", "idle"),
-      sanitizer.write("0;276;", "idle"),
-      sanitizer.write("0cB", "idle"),
+      sanitizer.write("A\x1b"),
+      sanitizer.write("[>"),
+      sanitizer.write("0;276;"),
+      sanitizer.write("0cB"),
     ].join("");
-    expect(output).toBe("AB");
+    expect(output).toBe("A\x1b[>0;276;0cB");
   });
 
-  it("reset clears pending partial escape sequences", () => {
+  it("reset is a no-op for transparent passthrough", () => {
     const sanitizer = new TerminalInputSanitizer();
-    expect(sanitizer.write("A\x1b", "idle")).toBe("A");
+    expect(sanitizer.write("A\x1b")).toBe("A\x1b");
     sanitizer.reset();
-    expect(sanitizer.write("[<35;10;5MB", "idle")).toBe("[<35;10;5MB");
+    expect(sanitizer.write("[<35;10;5MB")).toBe("[<35;10;5MB");
   });
 
   it("preserves keyboard input sequences while idle", () => {
@@ -319,9 +317,9 @@ describe("sanitizeReplayedTerminalOutput", () => {
     expect(sanitizeReplayedTerminalOutput(input)).toBe("ab");
   });
 
-  it("covers Repro B by removing replayed stale mouse tracking enables", () => {
+  it("preserves replayed mouse tracking enables", () => {
     const input = "a\x1b[?1003h\x1b[?1006h\x1b[?1000;1002;1006hb";
-    expect(sanitizeReplayedTerminalOutput(input)).toBe("ab");
+    expect(sanitizeReplayedTerminalOutput(input)).toBe(input);
   });
 
   it("preserves normal text, colors, and non-input terminal modes", () => {
