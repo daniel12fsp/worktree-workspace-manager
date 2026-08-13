@@ -25,6 +25,10 @@ import {
 import type { EmbeddedSession } from "../embeddedTerminalView";
 import * as vscode from "vscode";
 import * as pty from "node-pty";
+import {
+  TerminalControlSanitizer,
+  stripEveryTerminalSequence,
+} from "../terminalControl";
 
 const mockPtyOnData = vi.fn(() => ({ dispose: vi.fn() }));
 const mockPtyOnExit = vi.fn(() => ({ dispose: vi.fn() }));
@@ -150,6 +154,40 @@ describe("outputPreview", () => {
   it("keeps the last non-empty line even with long history", () => {
     const output = ["one\n", "two\n", "three\n"];
     expect(outputPreview(output)).toBe("three");
+  });
+
+  it("handles terminal sequences split across chunks", () => {
+    const output = ["hello\x1b]", "2;title\x07\n", "world\n"];
+    expect(outputPreview(output)).toBe("world");
+  });
+
+  it("matches incremental preview updates", () => {
+    const chunks = ["first\nsec", "ond\r\n", "\x1b[31mthird\x1b[0m\n"];
+    const sanitizer = new TerminalControlSanitizer(stripEveryTerminalSequence);
+    let preview = "";
+    let lineRemainder = "";
+    let pendingCarriageReturn = false;
+
+    for (const chunk of chunks) {
+      const sanitized = sanitizer
+        .write(chunk)
+        .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n");
+      const text = lineRemainder + sanitized;
+      const lines = text.split("\n");
+      lineRemainder = lines.pop() ?? "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed) preview = trimmed.slice(0, 140);
+      }
+      const trimmedRemainder = lineRemainder.trim();
+      if (trimmedRemainder) preview = trimmedRemainder.slice(0, 140);
+      pendingCarriageReturn = false;
+    }
+
+    expect(pendingCarriageReturn).toBe(false);
+    expect(preview).toBe(outputPreview(chunks));
   });
 });
 
@@ -457,6 +495,9 @@ describe("consumeActivityMarkers", () => {
     lastCommand: "",
     lastCommandText: "",
     activityMarkerRemainder: "",
+    previewLineRemainder: "",
+    previewPendingCarriageReturn: false,
+    previewSanitizer: new TerminalControlSanitizer(stripEveryTerminalSequence),
     wrapperCleanupPaths: [],
     ...overrides,
   });
@@ -2755,6 +2796,9 @@ function makeSession(
     lastCommand: "",
     lastCommandText: "",
     activityMarkerRemainder: "",
+    previewLineRemainder: "",
+    previewPendingCarriageReturn: false,
+    previewSanitizer: new TerminalControlSanitizer(stripEveryTerminalSequence),
     wrapperCleanupPaths: [],
     ...overrides,
   };

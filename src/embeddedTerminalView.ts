@@ -18,7 +18,11 @@ import {
   normalizePath,
 } from "./workspaceFile";
 import { log, logError } from "./logger";
-import { stripTerminalControlSequences } from "./terminalControl";
+import {
+  stripEveryTerminalSequence,
+  stripTerminalControlSequences,
+  TerminalControlSanitizer,
+} from "./terminalControl";
 
 type TerminalActivityState = "idle" | "running" | "error";
 export type TerminalsLayoutOrder = "terminalFirst" | "selectorFirst";
@@ -41,8 +45,18 @@ export interface EmbeddedSession {
   lastCommand: string;
   lastCommandText: string;
   activityMarkerRemainder: string;
+  previewLineRemainder: string;
+  previewPendingCarriageReturn: boolean;
+  previewSanitizer: TerminalControlSanitizer;
   readonly wrapperCleanupPaths: string[];
 }
+
+type OutputPreviewState = {
+  preview: string;
+  lineRemainder: string;
+  pendingCarriageReturn: boolean;
+  sanitizer: TerminalControlSanitizer;
+};
 
 export class EmbeddedTerminalViewProvider
   implements vscode.WebviewViewProvider, vscode.Disposable
@@ -693,6 +707,11 @@ export class EmbeddedTerminalViewProvider
       lastCommand: "",
       lastCommandText: "",
       activityMarkerRemainder: "",
+      previewLineRemainder: "",
+      previewPendingCarriageReturn: false,
+      previewSanitizer: new TerminalControlSanitizer(
+        stripEveryTerminalSequence,
+      ),
       wrapperCleanupPaths: wrapper.cleanupPaths,
     };
     this.terminalOrder.set(id, ++this.terminalOrderSeq);
@@ -1564,21 +1583,117 @@ export function sanitizedOutputForEditor(output: string[]): string {
 }
 
 export function outputPreview(output: string[]): string {
-  const text = sanitizedOutputForEditor(output)
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(-1)[0];
-  return text?.slice(0, 140) ?? "";
+  return buildOutputPreviewState(output).preview;
 }
 
 function appendOutputChunk(session: EmbeddedSession, chunk: string): void {
   session.output.push(chunk);
   session.outputCharCount += chunk.length;
+  const previewState = updateOutputPreviewState(session, chunk);
+  session.preview = previewState.preview;
+  let removedOutput = false;
   while (session.outputCharCount > MAX_SESSION_OUTPUT_CHARS) {
     const removed = session.output.shift();
     if (!removed) break;
+    removedOutput = true;
     session.outputCharCount -= removed.length;
   }
-  session.preview = outputPreview(session.output);
+  if (!removedOutput) return;
+  const rebuiltState = buildOutputPreviewState(session.output);
+  session.preview = rebuiltState.preview;
+  session.previewLineRemainder = rebuiltState.lineRemainder;
+  session.previewPendingCarriageReturn = rebuiltState.pendingCarriageReturn;
+  session.previewSanitizer = rebuiltState.sanitizer;
+}
+
+function updateOutputPreviewState(
+  session: EmbeddedSession,
+  chunk: string,
+): OutputPreviewState {
+  const sanitizedChunk = session.previewSanitizer.write(chunk);
+  const state = applyPreviewChunk(
+    sanitizedChunk,
+    session.preview,
+    session.previewLineRemainder,
+    session.previewPendingCarriageReturn,
+  );
+  session.previewLineRemainder = state.lineRemainder;
+  session.previewPendingCarriageReturn = state.pendingCarriageReturn;
+  return {
+    preview: state.preview,
+    lineRemainder: state.lineRemainder,
+    pendingCarriageReturn: state.pendingCarriageReturn,
+    sanitizer: session.previewSanitizer,
+  };
+}
+
+function buildOutputPreviewState(output: string[]): OutputPreviewState {
+  const sanitizer = new TerminalControlSanitizer(stripEveryTerminalSequence);
+  let preview = "";
+  let lineRemainder = "";
+  let pendingCarriageReturn = false;
+
+  for (const chunk of output) {
+    const state = applyPreviewChunk(
+      sanitizer.write(chunk),
+      preview,
+      lineRemainder,
+      pendingCarriageReturn,
+    );
+    preview = state.preview;
+    lineRemainder = state.lineRemainder;
+    pendingCarriageReturn = state.pendingCarriageReturn;
+  }
+
+  return { preview, lineRemainder, pendingCarriageReturn, sanitizer };
+}
+
+function applyPreviewChunk(
+  chunk: string,
+  previousPreview: string,
+  previousLineRemainder: string,
+  previousPendingCarriageReturn: boolean,
+): {
+  preview: string;
+  lineRemainder: string;
+  pendingCarriageReturn: boolean;
+} {
+  let preview = previousPreview;
+  let lineRemainder = previousLineRemainder;
+  let pendingCarriageReturn = previousPendingCarriageReturn;
+
+  for (let index = 0; index < chunk.length; index += 1) {
+    const char = chunk[index];
+    if (pendingCarriageReturn) {
+      pendingCarriageReturn = false;
+      if (char === "\n") continue;
+    }
+
+    if (char === "\r") {
+      preview = finalizePreviewLine(lineRemainder, preview);
+      lineRemainder = "";
+      pendingCarriageReturn = true;
+      continue;
+    }
+
+    if (char === "\n") {
+      preview = finalizePreviewLine(lineRemainder, preview);
+      lineRemainder = "";
+      continue;
+    }
+
+    if (char >= "\x00" && char <= "\x1f" && char !== "\t") {
+      continue;
+    }
+    if (char === "\x7f") continue;
+    lineRemainder += char;
+  }
+
+  preview = finalizePreviewLine(lineRemainder, preview);
+  return { preview, lineRemainder, pendingCarriageReturn };
+}
+
+function finalizePreviewLine(line: string, previousPreview: string): string {
+  const trimmed = line.trim();
+  return trimmed ? trimmed.slice(0, 140) : previousPreview;
 }
