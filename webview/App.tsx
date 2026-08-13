@@ -18,6 +18,7 @@ export interface AppState {
   home: string;
   loadingWorktrees: Set<string>;
   terminalsLayoutOrder?: TerminalsLayoutOrder;
+  webviewRenderTelemetry?: "off" | "sampled" | "all";
 }
 
 interface Props {
@@ -34,6 +35,7 @@ export function App({ initialState }: Props) {
   const [terminalPanePercent, setTerminalPanePercent] = useState(65);
   const [, forceRender] = useState(0);
   const replayedSessionIdRef = useRef<string | undefined>(undefined);
+  const renderTelemetryCountRef = useRef(0);
 
   const handleTerminalData = useCallback(
     (data: string, encoding: TerminalInputEncoding = "text") => {
@@ -234,6 +236,7 @@ export function App({ initialState }: Props) {
           home: message.home || "",
           loadingWorktrees: prev.loadingWorktrees,
           terminalsLayoutOrder: layoutOrder(message.terminalsLayoutOrder),
+          webviewRenderTelemetry: message.webviewRenderTelemetry,
         }));
       } else if (
         message.type === "replay" &&
@@ -278,14 +281,25 @@ export function App({ initialState }: Props) {
   );
 
   React.useEffect(() => {
+    const mode = state.webviewRenderTelemetry ?? "off";
+    if (mode === "off") return;
+
+    renderTelemetryCountRef.current += 1;
+    const renderCount = renderTelemetryCountRef.current;
+    if (mode === "sampled" && renderCount !== 1 && renderCount % 20 !== 0) {
+      return;
+    }
+
     vscode.postMessage({
       type: "webviewRender",
       repoCount: renderSummary.repoCount,
       worktreeCount: renderSummary.worktreeCount,
       sessionCount: renderSummary.sessionCount,
       childNodeCount: 0,
+      renderCount,
+      sampled: mode === "sampled",
     });
-  }, [renderSummary, vscode]);
+  }, [renderSummary, state.webviewRenderTelemetry, vscode]);
 
   if (!state.hasWorkspace) {
     return (

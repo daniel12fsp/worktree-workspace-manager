@@ -8,6 +8,7 @@ import {
   defaultShell,
   configuredTerminalShell,
   configuredTerminalsLayoutOrder,
+  configuredWebviewRenderTelemetry,
   validatedConfiguredTerminalShell,
   terminalShell,
   fishQuote,
@@ -317,6 +318,22 @@ describe("defaultShell", () => {
     expect(configuredTerminalsLayoutOrder()).toBe("selectorFirst");
     (vscode as any).__setConfig("worktreeManager.terminalsLayoutOrder", 42);
     expect(configuredTerminalsLayoutOrder()).toBe("terminalFirst");
+  });
+
+  it("reads configured webview render telemetry mode", () => {
+    expect(configuredWebviewRenderTelemetry()).toBe("off");
+    (vscode as any).__setConfig(
+      "worktreeManager.webviewRenderTelemetry",
+      "sampled",
+    );
+    expect(configuredWebviewRenderTelemetry()).toBe("sampled");
+    (vscode as any).__setConfig(
+      "worktreeManager.webviewRenderTelemetry",
+      "all",
+    );
+    expect(configuredWebviewRenderTelemetry()).toBe("all");
+    (vscode as any).__setConfig("worktreeManager.webviewRenderTelemetry", true);
+    expect(configuredWebviewRenderTelemetry()).toBe("off");
   });
 });
 

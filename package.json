@@ -113,6 +113,21 @@
           ],
           "description": "Controls the left-to-right order of the embedded terminal and terminals selector in Terminals by Worktree."
         },
+        "worktreeManager.webviewRenderTelemetry": {
+          "type": "string",
+          "enum": [
+            "off",
+            "sampled",
+            "all"
+          ],
+          "default": "off",
+          "enumDescriptions": [
+            "Disable webview render telemetry logs.",
+            "Log the first render and then every twentieth render.",
+            "Log every webview render."
+          ],
+          "description": "Controls Terminals by Worktree webview render telemetry volume."
+        },
         "worktreeManager.colors": {
           "type": "object",
           "default": {},

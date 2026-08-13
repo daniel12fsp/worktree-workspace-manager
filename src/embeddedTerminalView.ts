@@ -183,11 +183,14 @@ export class EmbeddedTerminalViewProvider
         `Terminals by Worktree UI error: ${String(message.message ?? "unknown error")}`,
       );
     } else if (message?.type === "webviewRender") {
+      if (configuredWebviewRenderTelemetry() === "off") return;
       log("Terminals by Worktree webview rendered", {
         repoCount: Number(message.repoCount) || 0,
         worktreeCount: Number(message.worktreeCount) || 0,
         sessionCount: Number(message.sessionCount) || 0,
         childNodeCount: Number(message.childNodeCount) || 0,
+        renderCount: Number(message.renderCount) || 0,
+        sampled: Boolean(message.sampled),
       });
     } else if (message?.type === "openMenu") {
       await vscode.commands.executeCommand("worktreeManager.showMenu");
@@ -868,6 +871,7 @@ export class EmbeddedTerminalViewProvider
         hasWorkspace,
         home: os.homedir(),
         terminalsLayoutOrder: configuredTerminalsLayoutOrder(),
+        webviewRenderTelemetry: configuredWebviewRenderTelemetry(),
       };
       log("render Terminals by Worktree state", {
         hasWorkspace,
@@ -1405,6 +1409,13 @@ export function configuredTerminalsLayoutOrder(): TerminalsLayoutOrder {
     .getConfiguration("worktreeManager")
     .get<unknown>("terminalsLayoutOrder", "terminalFirst");
   return rawValue === "selectorFirst" ? "selectorFirst" : "terminalFirst";
+}
+
+export function configuredWebviewRenderTelemetry(): "off" | "sampled" | "all" {
+  const rawValue = vscode.workspace
+    .getConfiguration("worktreeManager")
+    .get<unknown>("webviewRenderTelemetry", "off");
+  return rawValue === "all" || rawValue === "sampled" ? rawValue : "off";
 }
 
 export function validatedConfiguredTerminalShell(): string | undefined {

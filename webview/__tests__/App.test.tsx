@@ -96,6 +96,107 @@ describe("App", () => {
     ).toBeTruthy();
   });
 
+  it("does not post webview render telemetry by default", () => {
+    const vscode = createMockVsCode();
+    renderWithVsCode(
+      {
+        repos: [],
+        activeSessionId: undefined,
+        activeOutput: "",
+        hasWorkspace: true,
+        home: "/home/user",
+        loadingWorktrees: new Set(),
+      },
+      vscode,
+    );
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "webviewRender" }),
+    );
+  });
+
+  it("samples webview render telemetry", () => {
+    const vscode = createMockVsCode();
+    const initial: AppState = {
+      repos: [],
+      activeSessionId: undefined,
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+      webviewRenderTelemetry: "sampled",
+    };
+
+    renderWithVsCode(initial, vscode);
+
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "webviewRender",
+        renderCount: 1,
+        sampled: true,
+      }),
+    );
+
+    vi.mocked(vscode.postMessage).mockClear();
+
+    for (let i = 0; i < 18; i += 1) {
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: {
+              type: "state",
+              repos: [
+                {
+                  label: `project-${i}.git`,
+                  path: `/repos/project-${i}`,
+                  worktrees: [],
+                },
+              ],
+              activeSessionId: undefined,
+              activeOutput: "",
+              hasWorkspace: true,
+              home: "/home/user",
+              webviewRenderTelemetry: "sampled",
+            },
+          }),
+        );
+      });
+    }
+
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "webviewRender" }),
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: "state",
+            repos: [
+              {
+                label: "project-19.git",
+                path: "/repos/project-19",
+                worktrees: [],
+              },
+            ],
+            activeSessionId: undefined,
+            activeOutput: "",
+            hasWorkspace: true,
+            home: "/home/user",
+            webviewRenderTelemetry: "sampled",
+          },
+        }),
+      );
+    });
+
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "webviewRender",
+        renderCount: 20,
+        sampled: true,
+      }),
+    );
+  });
+
   it("shows no bare repository workspace folders message when empty repos", () => {
     const state: AppState = {
       repos: [],

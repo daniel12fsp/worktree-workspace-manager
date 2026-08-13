@@ -41,6 +41,7 @@ const initialState: AppState = {
   home: "",
   loadingWorktrees: new Set(),
   terminalsLayoutOrder: "terminalFirst",
+  webviewRenderTelemetry: "off",
 };
 
 // Mount React
