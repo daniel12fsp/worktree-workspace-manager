@@ -11,6 +11,7 @@ import {
   BareRepository,
   Worktree,
   getWorkspaceRepositories,
+  invalidateModelCache,
   listAllWorktrees,
   normalizeConfiguredRepositoryPath,
   updateWorktreeColor,
@@ -66,6 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let suppressTerminalRefreshUntil = 0;
 
   const refreshAll = () => {
+    invalidateModelCache();
     void profileAsync("extension.refreshAll", async () => {
       worktreeProvider.refresh();
       await updateStatus(status);
@@ -114,6 +116,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      invalidateModelCache();
       refreshAll();
       refreshTerminalsUnlessSuppressed();
     }),
@@ -421,6 +424,7 @@ async function addWorktree(repo?: BareRepository): Promise<void> {
       ["--git-dir", repo.gitDir, "worktree", "add", worktreePath, branch],
       `Added ${branch}`,
     );
+    invalidateModelCache();
     return;
   }
 
@@ -446,6 +450,7 @@ async function addWorktree(repo?: BareRepository): Promise<void> {
     ],
     `Created ${branch}`,
   );
+  invalidateModelCache();
 }
 
 function ensureWorkspaceForConfigurationFeature(): boolean {
@@ -733,6 +738,7 @@ async function removeBareRepository(repo?: BareRepository): Promise<void> {
     );
     return;
   }
+  invalidateModelCache();
   void vscode.window.showInformationMessage(
     `Removed ${repo.label} from Worktree Manager`,
   );
@@ -827,6 +833,7 @@ async function removeWorktree(
     ["--git-dir", worktree.repo.gitDir, "worktree", "remove", worktree.path],
     `Removed ${worktree.name}`,
   );
+  invalidateModelCache();
   await removeWorktreeExcludePatterns(worktree);
 }
 

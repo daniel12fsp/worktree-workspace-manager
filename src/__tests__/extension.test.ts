@@ -23,6 +23,7 @@ vi.mock("../model", () => ({
   getWorkspaceRepositories: vi.fn(() => []),
   listAllWorktrees: vi.fn(async () => new Map()),
   updateWorktreeColor: vi.fn(async () => {}),
+  invalidateModelCache: vi.fn(),
   normalizeConfiguredRepositoryPath: vi.fn((p: string) => p),
   resolveGitDir: vi.fn((p: string) => p),
 }));

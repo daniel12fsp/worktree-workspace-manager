@@ -9,6 +9,24 @@ import { profileAsync } from "./performance";
 
 const execFileAsync = promisify(execFile);
 
+type RepositoriesCache = {
+  readonly signature: string;
+  readonly repos: BareRepository[];
+};
+
+type WorktreesCache = {
+  readonly signature: string;
+  readonly all: Map<BareRepository, Worktree[]>;
+};
+
+let repositoriesCache: RepositoriesCache | undefined;
+let repositoriesPromise: Promise<BareRepository[]> | undefined;
+let repositoriesPromiseSignature: string | undefined;
+let worktreesCache: WorktreesCache | undefined;
+let worktreesPromise: Promise<Map<BareRepository, Worktree[]>> | undefined;
+let worktreesPromiseSignature: string | undefined;
+let cacheVersion = 0;
+
 export interface BareRepository {
   readonly configPath: string;
   readonly fsPath: string;
@@ -103,7 +121,15 @@ export function resolveGitDir(fsPath: string): string {
 }
 
 export async function getWorkspaceRepositories(): Promise<BareRepository[]> {
-  return profileAsync("model.getWorkspaceRepositories", async () => {
+  const signature = workspaceFoldersSignature();
+  if (repositoriesCache?.signature === signature)
+    return repositoriesCache.repos;
+  if (repositoriesPromise && repositoriesPromiseSignature === signature) {
+    return repositoriesPromise;
+  }
+
+  const version = cacheVersion;
+  const promise = profileAsync("model.getWorkspaceRepositories", async () => {
     const folders = vscode.workspace.workspaceFolders ?? [];
     log("workspace repository scan start", { count: folders.length });
 
@@ -143,8 +169,20 @@ export async function getWorkspaceRepositories(): Promise<BareRepository[]> {
       repos.push(repo);
     }
     log("workspace repositories discovered", { count: repos.length });
+    if (version === cacheVersion && signature === workspaceFoldersSignature()) {
+      repositoriesCache = { signature, repos };
+    }
     return repos;
+  }).finally(() => {
+    if (repositoriesPromise === promise) {
+      repositoriesPromise = undefined;
+      repositoriesPromiseSignature = undefined;
+    }
   });
+
+  repositoriesPromise = promise;
+  repositoriesPromiseSignature = signature;
+  return promise;
 }
 
 async function isBareRepository(
@@ -215,7 +253,14 @@ export async function listWorktrees(repo: BareRepository): Promise<Worktree[]> {
 export async function listAllWorktrees(): Promise<
   Map<BareRepository, Worktree[]>
 > {
-  return profileAsync("model.listAllWorktrees", async () => {
+  const signature = workspaceFoldersSignature();
+  if (worktreesCache?.signature === signature) return worktreesCache.all;
+  if (worktreesPromise && worktreesPromiseSignature === signature) {
+    return worktreesPromise;
+  }
+
+  const version = cacheVersion;
+  const promise = profileAsync("model.listAllWorktrees", async () => {
     const repos = await getWorkspaceRepositories();
     const entries = await Promise.all(
       repos.map(async (repo) => {
@@ -237,8 +282,20 @@ export async function listAllWorktrees(): Promise<
     void ensureConfiguredColorsForWorktrees(all).catch((error) =>
       logError("failed to populate worktree colors", { error }),
     );
+    if (version === cacheVersion && signature === workspaceFoldersSignature()) {
+      worktreesCache = { signature, all };
+    }
     return all;
+  }).finally(() => {
+    if (worktreesPromise === promise) {
+      worktreesPromise = undefined;
+      worktreesPromiseSignature = undefined;
+    }
   });
+
+  worktreesPromise = promise;
+  worktreesPromiseSignature = signature;
+  return promise;
 }
 
 export function parseWorktreePorcelain(
@@ -358,7 +415,27 @@ export async function updateWorktreeColor(
   await vscode.workspace
     .getConfiguration("worktreeManager")
     .update("colors", next, configurationTarget());
+  invalidateModelCache();
   log("updated worktree color", { key: worktree.colorKey, color });
+}
+
+export function invalidateModelCache(): void {
+  repositoriesCache = undefined;
+  repositoriesPromise = undefined;
+  repositoriesPromiseSignature = undefined;
+  worktreesCache = undefined;
+  worktreesPromise = undefined;
+  worktreesPromiseSignature = undefined;
+  cacheVersion += 1;
+}
+
+function workspaceFoldersSignature(): string {
+  return JSON.stringify(
+    (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+      name: folder.name,
+      path: folder.uri.fsPath,
+    })),
+  );
 }
 
 export function configuredColors(): WorktreeColors {

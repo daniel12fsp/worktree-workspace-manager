@@ -13,6 +13,7 @@ import {
   configuredColors,
   configurationTarget,
   getWorkspaceRepositories,
+  invalidateModelCache,
   listWorktrees,
   listAllWorktrees,
   ensureConfiguredColorsForWorktrees,
@@ -24,6 +25,7 @@ import {
   type WorktreeColors,
 } from "../model";
 import * as vscode from "vscode";
+import { execFile } from "node:child_process";
 
 vi.mock("vscode", () => import("../__mocks__/vscode"));
 vi.mock("../logger", () => ({
@@ -415,6 +417,7 @@ describe("configurationTarget", () => {
 describe("getWorkspaceRepositories", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    invalidateModelCache();
     mockExistsSync.mockReturnValue(false);
     (vscode.workspace as any).workspaceFolders = null;
     (vscode as any).__resetConfig();
@@ -438,6 +441,28 @@ describe("getWorkspaceRepositories", () => {
     const repos = await getWorkspaceRepositories();
     expect(repos).toHaveLength(1);
     expect(repos[0].label).toBe("project");
+  });
+
+  it("reuses cached repository scans for the same workspace folders", async () => {
+    (vscode.workspace as any).workspaceFolders = [
+      { name: "project", uri: { fsPath: "/repos/project" } },
+    ];
+    mockExistsSync.mockImplementation(
+      (p: string) => p === "/repos/project/.bare",
+    );
+    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+
+    await Promise.all([getWorkspaceRepositories(), getWorkspaceRepositories()]);
+    await getWorkspaceRepositories();
+
+    const bareChecks = vi
+      .mocked(execFile)
+      .mock.calls.filter(([, args]) =>
+        Array.isArray(args)
+          ? args.map(String).includes("--is-bare-repository")
+          : false,
+      );
+    expect(bareChecks).toHaveLength(1);
   });
 });
 
@@ -510,6 +535,7 @@ describe("resolveGitDir", () => {
 describe("listAllWorktrees", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    invalidateModelCache();
     mockExistsSync.mockReturnValue(false);
     (vscode.workspace as any).workspaceFolders = null;
     (vscode as any).__resetConfig();
@@ -531,6 +557,29 @@ describe("listAllWorktrees", () => {
     vi.mocked(vscode.window.showWarningMessage).mockClear();
     const result = await listAllWorktrees();
     expect(result).toBeInstanceOf(Map);
+  });
+
+  it("reuses cached worktree lists for the same workspace folders", async () => {
+    (vscode.workspace as any).workspaceFolders = [
+      { name: "project", uri: { fsPath: "/repos/project" } },
+    ];
+    mockExistsSync.mockImplementation(
+      (p: string) => p === "/repos/project/.bare",
+    );
+    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+
+    await Promise.all([listAllWorktrees(), listAllWorktrees()]);
+    await listAllWorktrees();
+
+    const worktreeLists = vi
+      .mocked(execFile)
+      .mock.calls.filter(([, args]) =>
+        Array.isArray(args)
+          ? args.map(String).includes("worktree") &&
+            args.map(String).includes("list")
+          : false,
+      );
+    expect(worktreeLists).toHaveLength(1);
   });
 });
 
