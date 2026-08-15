@@ -12,7 +12,7 @@ interface Props {
   clearDraggedSession: () => void;
 }
 
-export function TerminalLeaf({
+export const TerminalLeaf = React.memo(function TerminalLeaf({
   session,
   isActive,
   onSelect,
@@ -150,7 +150,7 @@ export function TerminalLeaf({
       </span>
     </div>
   );
-}
+});
 
 function terminalNumberFromLabel(label: string): string {
   const match = /^(?:terminal\s+|t)(\d+)\b/i.exec(label.trim());

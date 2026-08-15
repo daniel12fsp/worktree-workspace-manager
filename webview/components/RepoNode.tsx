@@ -9,7 +9,7 @@ interface Props {
   onCreateTerminal?: (path: string) => void;
 }
 
-export function RepoNode({
+export const RepoNode = React.memo(function RepoNode({
   repo,
   collapsed,
   onToggle,
@@ -91,4 +91,4 @@ export function RepoNode({
       )}
     </div>
   );
-}
+});

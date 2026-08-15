@@ -151,8 +151,6 @@ body {
 
 .terminalStatus.running {
   background: var(--vscode-terminal-ansiGreen);
-  box-shadow: 0 0 0 0 rgba(46, 160, 67, 0.75);
-  animation: pulse 1.4s ease-out infinite;
 }
 
 .terminalStatus.error {
@@ -163,15 +161,6 @@ body {
 .terminalStatus.idle {
   border: 1px solid var(--vscode-descriptionForeground);
   opacity: 0.7;
-}
-
-@keyframes pulse {
-  70% {
-    box-shadow: 0 0 0 5px rgba(46, 160, 67, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(46, 160, 67, 0);
-  }
 }
 
 .expandIcon {

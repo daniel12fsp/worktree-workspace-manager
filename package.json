@@ -70,7 +70,8 @@
     "webview:watch": "vite build --watch --config vite.config.mts",
     "test": "vitest run --config vitest.config.mts",
     "test:watch": "vitest --config vitest.config.mts",
-    "test:coverage": "vitest run --config vitest.config.mts --coverage"
+    "test:coverage": "vitest run --config vitest.config.mts --coverage",
+    "stress:terminal-output": "node scripts/terminal-output-stress.js"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.0",
@@ -127,6 +128,11 @@
             "Log every webview render."
           ],
           "description": "Controls Terminals by Worktree webview render telemetry volume."
+        },
+        "worktreeManager.profileMarkers": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable performance.mark/performance.measure instrumentation and profile duration logs for Worktree Manager hot paths."
         },
         "worktreeManager.colors": {
           "type": "object",

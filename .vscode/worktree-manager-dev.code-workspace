@@ -58,7 +58,7 @@
       "**/fe-2": false,
       "**/fe-2/**": false,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": false
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": false,
     },
     "search.exclude": {
       "**/node_modules": true,
@@ -99,13 +99,15 @@
       "**/fe-2": false,
       "**/fe-2/**": false,
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2": false,
-      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": false
+      "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git/fe-2/**": false,
     },
     "worktreeManager.repositories": [
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/fe-project.git",
       "/mnt/6e55b6e6-2f8f-4cf8-9f04-e2e2cfb28569/home/code/tmp/examples-bare-repo/be-project.git",
     ],
     // "worktreeManager.terminalShell": "/usr/bin/zsh",
+    "worktreeManager.profileMarkers": true,
+    "worktreeManager.webviewRenderTelemetry": "sampled",
     "worktreeManager.colors": {
       "fe-project.git/fe-1": {
         "color": "#008080",

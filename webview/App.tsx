@@ -9,6 +9,7 @@ import { TerminalLeaf } from "./components/TerminalLeaf";
 import { TerminalEmbed } from "./components/TerminalEmbed";
 import { FindBox } from "./components/FindBox";
 import { Welcome } from "./components/Welcome";
+import { webviewProfileMark } from "./performance";
 
 export interface AppState {
   repos: RepoData[];
@@ -19,6 +20,7 @@ export interface AppState {
   loadingWorktrees: Set<string>;
   terminalsLayoutOrder?: TerminalsLayoutOrder;
   webviewRenderTelemetry?: "off" | "sampled" | "all";
+  profileMarkers?: boolean;
 }
 
 interface Props {
@@ -33,9 +35,13 @@ export function App({ initialState }: Props) {
   const draggedSessionIdRef = useRef<string | undefined>(undefined);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const [terminalPanePercent, setTerminalPanePercent] = useState(65);
+  const terminalPanePercentRef = useRef(terminalPanePercent);
+  terminalPanePercentRef.current = terminalPanePercent;
   const [, forceRender] = useState(0);
   const replayedSessionIdRef = useRef<string | undefined>(undefined);
   const renderTelemetryCountRef = useRef(0);
+  const renderStartedAt = performance.now();
+  webviewProfileMark(state.profileMarkers, "App.render.start");
 
   const handleTerminalData = useCallback(
     (data: string, encoding: TerminalInputEncoding = "text") => {
@@ -118,7 +124,11 @@ export function App({ initialState }: Props) {
       const container = splitContainerRef.current;
       if (!container) return;
 
+      let resizeFrame = 0;
+      let pendingClientX = event.clientX;
+
       const updateWidth = (clientX: number) => {
+        resizeFrame = 0;
         const rect = container.getBoundingClientRect();
         if (rect.width <= 0) return;
         const rawPercent =
@@ -126,22 +136,36 @@ export function App({ initialState }: Props) {
             ? ((clientX - rect.left) / rect.width) * 100
             : ((rect.right - clientX) / rect.width) * 100;
         const nextPercent = Math.min(85, Math.max(25, rawPercent));
+        if (Math.abs(nextPercent - terminalPanePercentRef.current) < 0.1) {
+          return;
+        }
+        terminalPanePercentRef.current = nextPercent;
         setTerminalPanePercent(nextPercent);
-        requestAnimationFrame(() => terminalApi?.resize());
+        terminalApi?.resize();
+      };
+
+      const scheduleUpdateWidth = (clientX: number) => {
+        pendingClientX = clientX;
+        if (resizeFrame) return;
+        resizeFrame = -1;
+        const frame = requestAnimationFrame(() => updateWidth(pendingClientX));
+        if (resizeFrame === -1) resizeFrame = frame;
       };
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
-        updateWidth(moveEvent.clientX);
+        scheduleUpdateWidth(moveEvent.clientX);
       };
-      const handleMouseUp = () => {
+      const handleMouseUp = (upEvent: MouseEvent) => {
         document.body.classList.remove("resizingLayout");
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
-        requestAnimationFrame(() => terminalApi?.resize());
+        if (resizeFrame > 0) cancelAnimationFrame(resizeFrame);
+        updateWidth(upEvent.clientX);
+        terminalApi?.resize();
       };
 
       document.body.classList.add("resizingLayout");
-      updateWidth(event.clientX);
+      scheduleUpdateWidth(event.clientX);
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
     },
@@ -234,6 +258,7 @@ export function App({ initialState }: Props) {
           loadingWorktrees: prev.loadingWorktrees,
           terminalsLayoutOrder: layoutOrder(message.terminalsLayoutOrder),
           webviewRenderTelemetry: message.webviewRenderTelemetry,
+          profileMarkers: Boolean(message.profileMarkers),
         }));
       } else if (
         message.type === "replay" &&
@@ -287,6 +312,8 @@ export function App({ initialState }: Props) {
       return;
     }
 
+    const durationMs = Number((performance.now() - renderStartedAt).toFixed(2));
+    webviewProfileMark(state.profileMarkers, "App.render.commit");
     vscode.postMessage({
       type: "webviewRender",
       repoCount: renderSummary.repoCount,
@@ -295,8 +322,15 @@ export function App({ initialState }: Props) {
       childNodeCount: 0,
       renderCount,
       sampled: mode === "sampled",
+      durationMs,
     });
-  }, [renderSummary, state.webviewRenderTelemetry, vscode]);
+  }, [
+    renderSummary,
+    renderStartedAt,
+    state.profileMarkers,
+    state.webviewRenderTelemetry,
+    vscode,
+  ]);
 
   if (!state.hasWorkspace) {
     return (

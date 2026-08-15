@@ -19,6 +19,11 @@ import {
 } from "./workspaceFile";
 import { log, logError } from "./logger";
 import {
+  configuredProfileMarkers,
+  profileAsync,
+  profileMark,
+} from "./performance";
+import {
   stripEveryTerminalSequence,
   stripTerminalControlSequences,
   TerminalControlSanitizer,
@@ -30,6 +35,7 @@ export type TerminalsLayoutOrder = "terminalFirst" | "selectorFirst";
 const execFileAsync = promisify(execFile);
 const workspaceFolderBranchByPath = new Map<string, string | undefined>();
 const MAX_SESSION_OUTPUT_CHARS = 200_000;
+const TERMINAL_OUTPUT_BATCH_MS = 16;
 
 export interface EmbeddedSession {
   readonly id: string;
@@ -72,11 +78,20 @@ export class EmbeddedTerminalViewProvider
   private fallbackRendered = false;
   private readonly terminalOrder = new Map<string, number>();
   private readonly sessionIdsByWorktree = new Map<string, Set<string>>();
+  private readonly pendingOutputBySession = new Map<string, string>();
+  private outputFlushTimer: ReturnType<typeof setTimeout> | undefined;
+  private renderSessionsPromise: Promise<void> | undefined;
+  private renderSessionsAgain = false;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
   dispose(): void {
     this.explorerWorktreeChanged.dispose();
+    if (this.outputFlushTimer) {
+      clearTimeout(this.outputFlushTimer);
+      this.outputFlushTimer = undefined;
+    }
+    this.pendingOutputBySession.clear();
     for (const session of this.sessions.values()) {
       session.process.kill();
       cleanupShellWrapper(session);
@@ -85,10 +100,16 @@ export class EmbeddedTerminalViewProvider
   }
 
   async openTerminal(worktree: Worktree): Promise<void> {
-    const session = this.createSession(worktree);
-    this.activeSessionId = session.id;
-    await vscode.commands.executeCommand("worktreeManager.terminals.focus");
-    this.renderSessions();
+    await profileAsync(
+      "terminal.openTerminal",
+      async () => {
+        const session = this.createSession(worktree);
+        this.activeSessionId = session.id;
+        await vscode.commands.executeCommand("worktreeManager.terminals.focus");
+        this.renderSessions();
+      },
+      { worktree: worktree.name, repo: worktree.repo.label },
+    );
   }
 
   async openTerminalForPath(fsPath: string): Promise<void> {
@@ -139,6 +160,7 @@ export class EmbeddedTerminalViewProvider
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
+    profileMark("terminal.resolveWebviewView");
     log("Terminals by Worktree resolve webview view", {
       visible: webviewView.visible,
     });
@@ -205,10 +227,12 @@ export class EmbeddedTerminalViewProvider
         childNodeCount: Number(message.childNodeCount) || 0,
         renderCount: Number(message.renderCount) || 0,
         sampled: Boolean(message.sampled),
+        durationMs: numberOrUndefined(message.durationMs),
       });
     } else if (message?.type === "openMenu") {
       await vscode.commands.executeCommand("worktreeManager.showMenu");
     } else if (message?.type === "select") {
+      this.flushTerminalOutput();
       this.activeSessionId = String(message.id);
       await this.renderSessions();
       await this.postActiveSessionReplay();
@@ -439,53 +463,63 @@ export class EmbeddedTerminalViewProvider
   }
 
   private async checkWorktree(worktree: Worktree): Promise<void> {
-    try {
-      log("embedded check worktree start", {
-        worktree: worktree.name,
-        path: worktree.path,
-        repo: worktree.repo.label,
-      });
-      const result = await checkWorktreeInLiveWorkspace(worktree);
-      log("embedded check worktree result", {
-        worktree: worktree.name,
-        result,
-      });
-      if (result === "updated" || result === "rootFoldersCannotBeHidden") {
-        log(
-          "embedded check worktree: about to close non-selected editor tabs",
-          { worktree: worktree.name, path: worktree.path },
-        );
-        await closeEditorsOutsideWorktree(worktree);
-        log(
-          "embedded check worktree: finished close non-selected editor tabs",
-          { worktree: worktree.name },
-        );
-        this.explorerWorktreeChanged.fire();
-        void this.renderSessions();
-        if (result === "rootFoldersCannotBeHidden") {
-          void vscode.window.showWarningMessage(
-            "Updated Search/exclude settings, but VS Code cannot hide inactive worktrees that are top-level workspace folders without changing workspace folders.",
+    await profileAsync(
+      "terminal.checkWorktree",
+      async () => {
+        try {
+          log("embedded check worktree start", {
+            worktree: worktree.name,
+            path: worktree.path,
+            repo: worktree.repo.label,
+          });
+          const result = await checkWorktreeInLiveWorkspace(worktree);
+          log("embedded check worktree result", {
+            worktree: worktree.name,
+            result,
+          });
+          if (result === "updated" || result === "rootFoldersCannotBeHidden") {
+            log(
+              "embedded check worktree: about to close non-selected editor tabs",
+              { worktree: worktree.name, path: worktree.path },
+            );
+            await closeEditorsOutsideWorktree(worktree);
+            log(
+              "embedded check worktree: finished close non-selected editor tabs",
+              { worktree: worktree.name },
+            );
+            this.explorerWorktreeChanged.fire();
+            void this.renderSessions();
+            if (result === "rootFoldersCannotBeHidden") {
+              void vscode.window.showWarningMessage(
+                "Updated Search/exclude settings, but VS Code cannot hide inactive worktrees that are top-level workspace folders without changing workspace folders.",
+              );
+            } else {
+              void vscode.window.showInformationMessage(
+                "Updated visible worktree",
+              );
+            }
+          } else if (result === "noWorkspaceFile") {
+            void vscode.window.showErrorMessage(
+              "Select Worktree requires an open workspace",
+            );
+          } else if (result === "missingFolders") {
+            void vscode.window.showErrorMessage(
+              "Workspace file must contain a folders array",
+            );
+          } else {
+            void vscode.window.showErrorMessage(
+              "Failed to update visible worktree",
+            );
+          }
+        } catch (error) {
+          logError("check worktree failed", { worktree: worktree.name, error });
+          void vscode.window.showErrorMessage(
+            "Failed to update visible worktree",
           );
-        } else {
-          void vscode.window.showInformationMessage("Updated visible worktree");
         }
-      } else if (result === "noWorkspaceFile") {
-        void vscode.window.showErrorMessage(
-          "Select Worktree requires an open workspace",
-        );
-      } else if (result === "missingFolders") {
-        void vscode.window.showErrorMessage(
-          "Workspace file must contain a folders array",
-        );
-      } else {
-        void vscode.window.showErrorMessage(
-          "Failed to update visible worktree",
-        );
-      }
-    } catch (error) {
-      logError("check worktree failed", { worktree: worktree.name, error });
-      void vscode.window.showErrorMessage("Failed to update visible worktree");
-    }
+      },
+      { worktree: worktree.name, repo: worktree.repo.label },
+    );
   }
 
   private killSessions(
@@ -496,6 +530,7 @@ export class EmbeddedTerminalViewProvider
       this.sessions.delete(session.id);
       this.removeSessionFromWorktreeIndex(session);
       this.terminalOrder.delete(session.id);
+      this.pendingOutputBySession.delete(session.id);
       session.process.kill();
       cleanupShellWrapper(session);
     }
@@ -513,6 +548,7 @@ export class EmbeddedTerminalViewProvider
     this.sessions.delete(id);
     this.removeSessionFromWorktreeIndex(session);
     this.terminalOrder.delete(id);
+    this.pendingOutputBySession.delete(id);
     session.process.kill();
     cleanupShellWrapper(session);
     if (this.activeSessionId === id) {
@@ -567,6 +603,7 @@ export class EmbeddedTerminalViewProvider
     session.output.splice(0, session.output.length);
     session.outputCharCount = 0;
     session.preview = "";
+    this.pendingOutputBySession.delete(id);
     this.view?.webview.postMessage({ type: "clear", id });
     await this.renderSessions();
   }
@@ -574,6 +611,7 @@ export class EmbeddedTerminalViewProvider
   private async postActiveSessionReplay(): Promise<void> {
     if (!this.view || !this.activeSessionId) return;
     const session = this.sessions.get(this.activeSessionId);
+    this.pendingOutputBySession.delete(this.activeSessionId);
     await this.view.webview.postMessage({
       type: "replay",
       id: this.activeSessionId,
@@ -722,11 +760,7 @@ export class EmbeddedTerminalViewProvider
       );
       if (visibleData) {
         appendOutputChunk(session, visibleData);
-        this.view?.webview.postMessage({
-          type: "output",
-          id,
-          data: visibleData,
-        });
+        this.postTerminalOutput(id, visibleData);
       }
       if (stateChanged) void this.renderSessions();
     });
@@ -739,6 +773,7 @@ export class EmbeddedTerminalViewProvider
       this.sessions.delete(id);
       this.removeSessionFromWorktreeIndex(session);
       this.terminalOrder.delete(id);
+      this.pendingOutputBySession.delete(id);
       cleanupShellWrapper(session);
       if (this.activeSessionId === id) {
         this.activeSessionId = this.nextSessionId();
@@ -833,126 +868,186 @@ export class EmbeddedTerminalViewProvider
     session.process.write(Buffer.from(data, "binary"));
   }
 
-  private async renderSessions(): Promise<void> {
+  private postTerminalOutput(id: string, data: string): void {
+    if (id !== this.activeSessionId || !this.view) return;
+
+    this.pendingOutputBySession.set(
+      id,
+      (this.pendingOutputBySession.get(id) ?? "") + data,
+    );
+    if (this.outputFlushTimer) return;
+
+    this.outputFlushTimer = setTimeout(() => {
+      this.outputFlushTimer = undefined;
+      this.flushTerminalOutput();
+    }, TERMINAL_OUTPUT_BATCH_MS);
+  }
+
+  private flushTerminalOutput(): void {
     if (!this.view) {
-      log("render skipped: Terminals by Worktree webview is not ready", {
-        sessionCount: this.sessions.size,
-      });
+      this.pendingOutputBySession.clear();
       return;
     }
-    try {
-      const hasWorkspace = Boolean(
-        vscode.workspace.workspaceFile ||
-        vscode.workspace.workspaceFolders?.length,
-      );
-      const all = await listAllWorktrees();
-      const activeWorkspaceFolders = await getCheckedWorktreePaths();
-      const unmanagedWorkspaceFolders = await workspaceFolderRepos(all);
-      const repos = [
-        ...[...all].map(([repo, worktrees]) => ({
-          label: repo.label,
-          path: repo.fsPath,
-          kind: "bareRepo" as const,
-          worktrees: worktrees.map((worktree) => ({
-            name: worktree.name,
-            branch: worktree.branch ?? "detached",
-            path: worktree.path,
-            color: worktree.color,
-            kind: "worktree" as const,
-            activeInExplorer: activeWorkspaceFolders.has(
-              normalizePath(worktree.path),
-            ),
-            sessions: this.sessionsForWorktree(worktree.path),
-          })),
-        })),
-        ...unmanagedWorkspaceFolders.map(({ repo, worktree }) => ({
-          label: workspaceFolderDisplayName(repo.label, worktree.branch),
-          path: repo.fsPath,
-          kind: "workspaceFolder" as const,
-          worktrees: [
-            {
-              name: worktree.name,
-              branch: "",
-              path: worktree.path,
-              color: worktree.color,
-              kind: "workspaceFolder" as const,
-              activeInExplorer: true,
-              sessions: this.sessionsForWorktree(worktree.path),
-            },
-          ],
-        })),
-      ];
-      const state = {
-        type: "state",
-        repos,
-        activeSessionId: this.activeSessionId,
-        activeOutput: "",
-        hasWorkspace,
-        home: os.homedir(),
-        terminalsLayoutOrder: configuredTerminalsLayoutOrder(),
-        webviewRenderTelemetry: configuredWebviewRenderTelemetry(),
-      };
-      log("render Terminals by Worktree state", {
-        hasWorkspace,
-        repoCount: repos.length,
-        worktreeCount: repos.reduce(
-          (count, repo) => count + repo.worktrees.length,
-          0,
-        ),
-        sessionCount: this.sessions.size,
-        activeSessionId: this.activeSessionId,
-        repos: repos.map((repo) => ({
-          label: repo.label,
-          worktrees: repo.worktrees.map((worktree) => ({
-            name: worktree.name,
-            sessionCount: worktree.sessions.length,
-            sessions: worktree.sessions.map((session) => ({
-              id: session.id,
-              label: session.label,
-              state: session.state,
-              statusText: session.statusText,
-            })),
-          })),
-        })),
-      });
-      if (!this.webviewReady && !this.fallbackRendered) {
-        this.fallbackRendered = true;
-        const view = this.view;
-        setTimeout(() => {
-          if (this.webviewReady || !this.view || this.view !== view) return;
-          view.webview.html = this.html(view.webview);
-          log("rendered static fallback HTML for Terminals by Worktree", {
-            repoCount: repos.length,
+
+    for (const [id, data] of this.pendingOutputBySession) {
+      if (id !== this.activeSessionId || !this.sessions.has(id)) continue;
+      this.view.webview.postMessage({ type: "output", id, data });
+    }
+    this.pendingOutputBySession.clear();
+  }
+
+  private renderSessions(): Promise<void> {
+    if (this.renderSessionsPromise) {
+      this.renderSessionsAgain = true;
+      return this.renderSessionsPromise;
+    }
+
+    this.renderSessionsPromise = (async () => {
+      do {
+        this.renderSessionsAgain = false;
+        await this.renderSessionsNow();
+      } while (this.renderSessionsAgain);
+    })().finally(() => {
+      this.renderSessionsPromise = undefined;
+    });
+
+    return this.renderSessionsPromise;
+  }
+
+  private async renderSessionsNow(): Promise<void> {
+    return profileAsync(
+      "terminal.renderSessions",
+      async () => {
+        if (!this.view) {
+          log("render skipped: Terminals by Worktree webview is not ready", {
             sessionCount: this.sessions.size,
           });
-        }, 750);
-      }
-      const delivered = await this.view.webview.postMessage(state);
-      if (!delivered) {
-        logError(
-          "failed to post Terminals by Worktree state; webview did not accept message",
-          {
+          return;
+        }
+        try {
+          const hasWorkspace = Boolean(
+            vscode.workspace.workspaceFile ||
+            vscode.workspace.workspaceFolders?.length,
+          );
+          const all = await listAllWorktrees();
+          const activeWorkspaceFolders = await getCheckedWorktreePaths();
+          const unmanagedWorkspaceFolders = await workspaceFolderRepos(all);
+          const repos = [
+            ...[...all].map(([repo, worktrees]) => ({
+              label: repo.label,
+              path: repo.fsPath,
+              kind: "bareRepo" as const,
+              worktrees: worktrees.map((worktree) => ({
+                name: worktree.name,
+                branch: worktree.branch ?? "detached",
+                path: worktree.path,
+                color: worktree.color,
+                kind: "worktree" as const,
+                activeInExplorer: activeWorkspaceFolders.has(
+                  normalizePath(worktree.path),
+                ),
+                sessions: this.sessionsForWorktree(worktree.path),
+              })),
+            })),
+            ...unmanagedWorkspaceFolders.map(({ repo, worktree }) => ({
+              label: workspaceFolderDisplayName(repo.label, worktree.branch),
+              path: repo.fsPath,
+              kind: "workspaceFolder" as const,
+              worktrees: [
+                {
+                  name: worktree.name,
+                  branch: "",
+                  path: worktree.path,
+                  color: worktree.color,
+                  kind: "workspaceFolder" as const,
+                  activeInExplorer: true,
+                  sessions: this.sessionsForWorktree(worktree.path),
+                },
+              ],
+            })),
+          ];
+          const state = {
+            type: "state",
+            repos,
+            activeSessionId: this.activeSessionId,
+            activeOutput: "",
+            hasWorkspace,
+            home: os.homedir(),
+            terminalsLayoutOrder: configuredTerminalsLayoutOrder(),
+            webviewRenderTelemetry: configuredWebviewRenderTelemetry(),
+            profileMarkers: configuredProfileMarkers(),
+          };
+          log("render Terminals by Worktree state", {
+            hasWorkspace,
             repoCount: repos.length,
+            worktreeCount: repos.reduce(
+              (count, repo) => count + repo.worktrees.length,
+              0,
+            ),
             sessionCount: this.sessions.size,
-          },
-        );
-        void vscode.window.showErrorMessage(
-          "Terminals by Worktree failed to update: webview did not accept state message.",
-        );
-      }
-    } catch (error) {
-      logError("failed to render Terminals by Worktree", {
-        error:
-          error instanceof Error
-            ? { name: error.name, message: error.message, stack: error.stack }
-            : String(error),
+            activeSessionId: this.activeSessionId,
+            repos: repos.map((repo) => ({
+              label: repo.label,
+              worktrees: repo.worktrees.map((worktree) => ({
+                name: worktree.name,
+                sessionCount: worktree.sessions.length,
+                sessions: worktree.sessions.map((session) => ({
+                  id: session.id,
+                  label: session.label,
+                  state: session.state,
+                  statusText: session.statusText,
+                })),
+              })),
+            })),
+          });
+          if (!this.webviewReady && !this.fallbackRendered) {
+            this.fallbackRendered = true;
+            const view = this.view;
+            setTimeout(() => {
+              if (this.webviewReady || !this.view || this.view !== view) return;
+              view.webview.html = this.html(view.webview);
+              log("rendered static fallback HTML for Terminals by Worktree", {
+                repoCount: repos.length,
+                sessionCount: this.sessions.size,
+              });
+            }, 750);
+          }
+          const delivered = await this.view.webview.postMessage(state);
+          if (!delivered) {
+            logError(
+              "failed to post Terminals by Worktree state; webview did not accept message",
+              {
+                repoCount: repos.length,
+                sessionCount: this.sessions.size,
+              },
+            );
+            void vscode.window.showErrorMessage(
+              "Terminals by Worktree failed to update: webview did not accept state message.",
+            );
+          }
+        } catch (error) {
+          logError("failed to render Terminals by Worktree", {
+            error:
+              error instanceof Error
+                ? {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack,
+                  }
+                : String(error),
+            sessionCount: this.sessions.size,
+            activeSessionId: this.activeSessionId,
+          });
+          void vscode.window.showErrorMessage(
+            `Terminals by Worktree failed to render: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      },
+      {
         sessionCount: this.sessions.size,
         activeSessionId: this.activeSessionId,
-      });
-      void vscode.window.showErrorMessage(
-        `Terminals by Worktree failed to render: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+      },
+    );
   }
 
   private sessionsForWorktree(worktreePath: string) {

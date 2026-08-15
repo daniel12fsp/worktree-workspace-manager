@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { BareRepository, Worktree, dotIcon, listAllWorktrees } from "./model";
 import { getCheckedWorktreePaths, normalizePath } from "./workspaceFile";
 import { logError } from "./logger";
+import { profileAsync } from "./performance";
 
 type Node = RepoNode | WorktreeNode | EmptyNode | ErrorNode;
 
@@ -78,47 +79,56 @@ export class WorktreeProvider
   }
 
   async getChildren(element?: Node): Promise<Node[]> {
-    if (element instanceof RepoNode) {
-      return this.getChildrenForRepo(element.repo);
-    }
-    if (element) return [];
+    return profileAsync("tree.getChildren", async () => {
+      if (element instanceof RepoNode) {
+        return this.getChildrenForRepo(element.repo);
+      }
+      if (element) return [];
 
-    try {
-      const all = await listAllWorktrees();
-      const nodes: Node[] = [];
-      for (const [repo] of all) {
-        nodes.push(new RepoNode(repo));
+      try {
+        const all = await listAllWorktrees();
+        const nodes: Node[] = [];
+        for (const [repo] of all) {
+          nodes.push(new RepoNode(repo));
+        }
+        if (nodes.length === 0) {
+          return [new EmptyNode("No bare repository workspace folders")];
+        }
+        return nodes;
+      } catch (error) {
+        logError("failed to list worktrees for tree", { error });
+        return [new ErrorNode("Failed to list worktrees")];
       }
-      if (nodes.length === 0) {
-        return [new EmptyNode("No bare repository workspace folders")];
-      }
-      return nodes;
-    } catch (error) {
-      logError("failed to list worktrees for tree", { error });
-      return [new ErrorNode("Failed to list worktrees")];
-    }
+    });
   }
 
   private async getChildrenForRepo(repo: BareRepository): Promise<Node[]> {
-    try {
-      const all = await listAllWorktrees();
-      const entry = [...all].find(
-        ([candidate]) => candidate.fsPath === repo.fsPath,
-      );
-      const worktrees = entry?.[1] ?? [];
-      const checkedPaths = await getCheckedWorktreePaths();
-      if (worktrees.length === 0) {
-        return [new EmptyNode()];
-      }
-      return worktrees.map(
-        (wt) => new WorktreeNode(wt, checkedPaths.has(normalizePath(wt.path))),
-      );
-    } catch (error) {
-      logError("failed to list worktrees for repo", {
-        repo: repo.label,
-        error,
-      });
-      return [new ErrorNode(`Failed to list worktrees for ${repo.label}`)];
-    }
+    return profileAsync(
+      "tree.getChildrenForRepo",
+      async () => {
+        try {
+          const all = await listAllWorktrees();
+          const entry = [...all].find(
+            ([candidate]) => candidate.fsPath === repo.fsPath,
+          );
+          const worktrees = entry?.[1] ?? [];
+          const checkedPaths = await getCheckedWorktreePaths();
+          if (worktrees.length === 0) {
+            return [new EmptyNode()];
+          }
+          return worktrees.map(
+            (wt) =>
+              new WorktreeNode(wt, checkedPaths.has(normalizePath(wt.path))),
+          );
+        } catch (error) {
+          logError("failed to list worktrees for repo", {
+            repo: repo.label,
+            error,
+          });
+          return [new ErrorNode(`Failed to list worktrees for ${repo.label}`)];
+        }
+      },
+      { repo: repo.label },
+    );
   }
 }

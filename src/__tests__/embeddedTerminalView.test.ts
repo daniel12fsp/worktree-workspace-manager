@@ -993,6 +993,108 @@ describe("EmbeddedTerminalViewProvider", () => {
     );
   });
 
+  it("batches active terminal output messages", async () => {
+    vi.useFakeTimers();
+    const onDataCallbacks: Array<(data: string) => void> = [];
+    mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
+      onDataCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    }) as any);
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    const mockView = {
+      visible: true,
+      webview: mockWebview,
+    } as any;
+    provider.resolveWebviewView(mockView);
+    const worktree = {
+      name: "feat-login",
+      path: "/tmp/feat-login",
+      color: "#fff",
+      branch: "main",
+      repo: { label: "project.git", fsPath: "/repos/project" },
+    } as any;
+    await provider.openTerminal(worktree);
+    mockWebview.postMessage.mockClear();
+
+    onDataCallbacks[0]?.("hel");
+    onDataCallbacks[0]?.("lo");
+
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "output" }),
+    );
+    await vi.advanceTimersByTimeAsync(16);
+
+    expect(mockWebview.postMessage).toHaveBeenCalledWith({
+      type: "output",
+      id: expect.any(String),
+      data: "hello",
+    });
+    vi.useRealTimers();
+  });
+
+  it("does not stream inactive terminal output before replay", async () => {
+    vi.useFakeTimers();
+    let messageHandler: ((msg: any) => void) | undefined;
+    const onDataCallbacks: Array<(data: string) => void> = [];
+    mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
+      onDataCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    }) as any);
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    const mockView = {
+      visible: true,
+      webview: mockWebview,
+    } as any;
+    provider.resolveWebviewView(mockView);
+    const worktreeA = {
+      name: "feat-login",
+      path: "/tmp/feat-login",
+      color: "#fff",
+      branch: "main",
+      repo: { label: "project.git", fsPath: "/repos/project" },
+    } as any;
+    const worktreeB = { ...worktreeA, name: "feat-api", path: "/tmp/api" };
+    await provider.openTerminal(worktreeA);
+    await provider.openTerminal(worktreeB);
+    const firstSessionId = [...(provider as any).sessions.keys()][0];
+    mockWebview.postMessage.mockClear();
+
+    onDataCallbacks[0]?.("inactive output");
+    await vi.advanceTimersByTimeAsync(16);
+
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "output" }),
+    );
+
+    await messageHandler!({ type: "select", id: firstSessionId });
+
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "replay",
+        id: firstSessionId,
+        data: "inactive output",
+      }),
+    );
+    vi.useRealTimers();
+  });
+
   it("handleWebviewMessage select sets active session", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {

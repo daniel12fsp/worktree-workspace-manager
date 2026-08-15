@@ -12,7 +12,7 @@ interface Props {
   onSetExplorerWorktree: (path: string) => void;
 }
 
-export function WorktreeNode({
+export const WorktreeNode = React.memo(function WorktreeNode({
   repoLabel,
   worktree,
   collapsed,
@@ -143,4 +143,4 @@ export function WorktreeNode({
       </button>
     </div>
   );
-}
+});

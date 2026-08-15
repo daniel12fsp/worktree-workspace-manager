@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 import { log, logError } from "./logger";
+import { profileAsync } from "./performance";
 
 const execFileAsync = promisify(execFile);
 
@@ -102,46 +103,48 @@ export function resolveGitDir(fsPath: string): string {
 }
 
 export async function getWorkspaceRepositories(): Promise<BareRepository[]> {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  log("workspace repository scan start", { count: folders.length });
+  return profileAsync("model.getWorkspaceRepositories", async () => {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    log("workspace repository scan start", { count: folders.length });
 
-  const entries = await Promise.all(
-    folders.map(async (folder) => {
-      const fsPath = normalizeConfiguredRepositoryPath(folder.uri.fsPath);
-      const gitDir = resolveGitDir(fsPath);
-      const label = folder.name || path.basename(fsPath);
-      log("workspace repository candidate", { label, fsPath, gitDir });
+    const entries = await Promise.all(
+      folders.map(async (folder) => {
+        const fsPath = normalizeConfiguredRepositoryPath(folder.uri.fsPath);
+        const gitDir = resolveGitDir(fsPath);
+        const label = folder.name || path.basename(fsPath);
+        log("workspace repository candidate", { label, fsPath, gitDir });
 
-      if (!(await isBareRepository(fsPath, gitDir))) {
-        log("workspace repository skipped: not bare", {
-          label,
+        if (!(await isBareRepository(fsPath, gitDir))) {
+          log("workspace repository skipped: not bare", {
+            label,
+            fsPath,
+            gitDir,
+          });
+          return undefined;
+        }
+
+        log("workspace repository validated", { label, fsPath, gitDir });
+        return {
+          configPath: folder.uri.fsPath,
           fsPath,
           gitDir,
-        });
-        return undefined;
-      }
+          label,
+        } satisfies BareRepository;
+      }),
+    );
 
-      log("workspace repository validated", { label, fsPath, gitDir });
-      return {
-        configPath: folder.uri.fsPath,
-        fsPath,
-        gitDir,
-        label,
-      } satisfies BareRepository;
-    }),
-  );
-
-  const repos: BareRepository[] = [];
-  const seen = new Set<string>();
-  for (const repo of entries) {
-    if (!repo) continue;
-    const key = path.resolve(repo.fsPath);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    repos.push(repo);
-  }
-  log("workspace repositories discovered", { count: repos.length });
-  return repos;
+    const repos: BareRepository[] = [];
+    const seen = new Set<string>();
+    for (const repo of entries) {
+      if (!repo) continue;
+      const key = path.resolve(repo.fsPath);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      repos.push(repo);
+    }
+    log("workspace repositories discovered", { count: repos.length });
+    return repos;
+  });
 }
 
 async function isBareRepository(
@@ -191,40 +194,51 @@ export function normalizeConfiguredRepositoryPath(fsPath: string): string {
 }
 
 export async function listWorktrees(repo: BareRepository): Promise<Worktree[]> {
-  const { stdout } = await execFileAsync("git", [
-    `--git-dir=${repo.gitDir}`,
-    "worktree",
-    "list",
-    "--porcelain",
-  ]);
+  return profileAsync(
+    "model.listWorktrees",
+    async () => {
+      const { stdout } = await execFileAsync("git", [
+        `--git-dir=${repo.gitDir}`,
+        "worktree",
+        "list",
+        "--porcelain",
+      ]);
 
-  const worktrees = parseWorktreePorcelain(stdout, repo);
-  log("listed worktrees", { repo: repo.label, count: worktrees.length });
-  return worktrees;
+      const worktrees = parseWorktreePorcelain(stdout, repo);
+      log("listed worktrees", { repo: repo.label, count: worktrees.length });
+      return worktrees;
+    },
+    { repo: repo.label },
+  );
 }
 
 export async function listAllWorktrees(): Promise<
   Map<BareRepository, Worktree[]>
 > {
-  const repos = await getWorkspaceRepositories();
-  const entries = await Promise.all(
-    repos.map(async (repo) => {
-      try {
-        return [repo, await listWorktrees(repo)] as const;
-      } catch (error) {
-        logError("failed to list worktrees", { repo: repo.configPath, error });
-        void vscode.window.showWarningMessage(
-          `Failed to list worktrees for ${repo.configPath}: ${String(error)}`,
-        );
-        return [repo, [] as Worktree[]] as const;
-      }
-    }),
-  );
-  const all = new Map(entries);
-  void ensureConfiguredColorsForWorktrees(all).catch((error) =>
-    logError("failed to populate worktree colors", { error }),
-  );
-  return all;
+  return profileAsync("model.listAllWorktrees", async () => {
+    const repos = await getWorkspaceRepositories();
+    const entries = await Promise.all(
+      repos.map(async (repo) => {
+        try {
+          return [repo, await listWorktrees(repo)] as const;
+        } catch (error) {
+          logError("failed to list worktrees", {
+            repo: repo.configPath,
+            error,
+          });
+          void vscode.window.showWarningMessage(
+            `Failed to list worktrees for ${repo.configPath}: ${String(error)}`,
+          );
+          return [repo, [] as Worktree[]] as const;
+        }
+      }),
+    );
+    const all = new Map(entries);
+    void ensureConfiguredColorsForWorktrees(all).catch((error) =>
+      logError("failed to populate worktree colors", { error }),
+    );
+    return all;
+  });
 }
 
 export function parseWorktreePorcelain(

@@ -120,7 +120,25 @@ code '/path/to/my-project.code-workspace'
 | -------------------------------------- | ----------------------------------------------------- |
 | `worktreeManager.terminalShell`        | Optional shell path for extension terminals.          |
 | `worktreeManager.terminalsLayoutOrder` | Order of terminal and selector in the terminal panel. |
+| `worktreeManager.webviewRenderTelemetry` | Optional sampled/all webview render duration logs.  |
+| `worktreeManager.profileMarkers`       | Enable performance marks/measures for hot paths.      |
 | `worktreeManager.colors`               | Auto-managed worktree colors, editable from the UI.   |
+
+---
+
+## Profiling performance
+
+1. Enable markers in VS Code settings:
+
+   ```json
+   "worktreeManager.profileMarkers": true,
+   "worktreeManager.webviewRenderTelemetry": "sampled"
+   ```
+
+   You can also launch VS Code with `WTWM_PROFILE=1` to enable extension-host markers.
+2. Run **Developer: Show Logs...** and open **Extension Host** or the **Terminals by Worktree** output channel. Look for `profile measure` entries such as `wtwm:terminal.renderSessions` and `wtwm:model.listAllWorktrees`.
+3. For UI/render details, run **Developer: Open Webview Developer Tools**, select the Terminals by Worktree webview, use the Performance tab, and record while refreshing/selecting worktrees. Marks are named `wtwm.webview:*`.
+4. Keep profiling off for normal use; markers are gated to avoid adding overhead during regular terminal output.
 
 ---
 

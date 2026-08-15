@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import * as vscode from "vscode";
 import { EmbeddedTerminalViewProvider } from "./embeddedTerminalView";
 import { disposeLogger, log, logError } from "./logger";
+import { profileAsync, profileMark } from "./performance";
 import {
   BareRepository,
   Worktree,
@@ -27,6 +28,7 @@ import { RepoNode, WorktreeNode, WorktreeProvider } from "./worktreeView";
 const execFileAsync = promisify(execFile);
 
 export function activate(context: vscode.ExtensionContext): void {
+  profileMark("extension.activate");
   log("activate");
   const worktreeProvider = new WorktreeProvider();
   const terminalProvider = new EmbeddedTerminalViewProvider(
@@ -64,10 +66,12 @@ export function activate(context: vscode.ExtensionContext): void {
   let suppressTerminalRefreshUntil = 0;
 
   const refreshAll = () => {
-    worktreeProvider.refresh();
-    void updateStatus(status);
-    void hideBareRepositoryFolders();
-    void updateWorktreeViewContexts();
+    void profileAsync("extension.refreshAll", async () => {
+      worktreeProvider.refresh();
+      await updateStatus(status);
+      await hideBareRepositoryFolders();
+      await updateWorktreeViewContexts();
+    });
   };
 
   const refreshTerminalsUnlessSuppressed = () => {
@@ -290,52 +294,62 @@ async function checkWorktree(worktree?: Worktree): Promise<void> {
   worktree = worktree ?? (await pickWorktree());
   if (!worktree) return;
 
-  try {
-    log("check worktree start", {
-      worktree: worktree.name,
-      path: worktree.path,
-      repo: worktree.repo.label,
-    });
-    const result = await checkWorktreeInLiveWorkspace(worktree);
-    log("check worktree result", { worktree: worktree.name, result });
-    if (result === "updated") {
-      log("check worktree: about to close non-selected editor tabs", {
-        worktree: worktree.name,
-        path: worktree.path,
-      });
-      await closeEditorsOutsideWorktree(worktree);
-      log("check worktree: finished close non-selected editor tabs", {
-        worktree: worktree.name,
-      });
-      void vscode.window.showInformationMessage("Updated visible worktree");
-    } else if (result === "rootFoldersCannotBeHidden") {
-      log(
-        "check worktree: about to close non-selected editor tabs after root warning",
-        { worktree: worktree.name, path: worktree.path },
-      );
-      await closeEditorsOutsideWorktree(worktree);
-      log(
-        "check worktree: finished close non-selected editor tabs after root warning",
-        { worktree: worktree.name },
-      );
-      void vscode.window.showWarningMessage(
-        "Updated Search/exclude settings, but VS Code cannot hide inactive worktrees that are top-level workspace folders without changing workspace folders.",
-      );
-    } else if (result === "noWorkspaceFile") {
-      void vscode.window.showErrorMessage(
-        "This feature only works with a workspace.",
-      );
-    } else if (result === "missingFolders") {
-      void vscode.window.showErrorMessage(
-        "Workspace file must contain a folders array",
-      );
-    } else {
-      void vscode.window.showErrorMessage("Failed to update visible worktree");
-    }
-  } catch (error) {
-    logError("check worktree failed", { worktree: worktree.name, error });
-    void vscode.window.showErrorMessage("Failed to update visible worktree");
-  }
+  await profileAsync(
+    "extension.checkWorktree",
+    async () => {
+      try {
+        log("check worktree start", {
+          worktree: worktree.name,
+          path: worktree.path,
+          repo: worktree.repo.label,
+        });
+        const result = await checkWorktreeInLiveWorkspace(worktree);
+        log("check worktree result", { worktree: worktree.name, result });
+        if (result === "updated") {
+          log("check worktree: about to close non-selected editor tabs", {
+            worktree: worktree.name,
+            path: worktree.path,
+          });
+          await closeEditorsOutsideWorktree(worktree);
+          log("check worktree: finished close non-selected editor tabs", {
+            worktree: worktree.name,
+          });
+          void vscode.window.showInformationMessage("Updated visible worktree");
+        } else if (result === "rootFoldersCannotBeHidden") {
+          log(
+            "check worktree: about to close non-selected editor tabs after root warning",
+            { worktree: worktree.name, path: worktree.path },
+          );
+          await closeEditorsOutsideWorktree(worktree);
+          log(
+            "check worktree: finished close non-selected editor tabs after root warning",
+            { worktree: worktree.name },
+          );
+          void vscode.window.showWarningMessage(
+            "Updated Search/exclude settings, but VS Code cannot hide inactive worktrees that are top-level workspace folders without changing workspace folders.",
+          );
+        } else if (result === "noWorkspaceFile") {
+          void vscode.window.showErrorMessage(
+            "This feature only works with a workspace.",
+          );
+        } else if (result === "missingFolders") {
+          void vscode.window.showErrorMessage(
+            "Workspace file must contain a folders array",
+          );
+        } else {
+          void vscode.window.showErrorMessage(
+            "Failed to update visible worktree",
+          );
+        }
+      } catch (error) {
+        logError("check worktree failed", { worktree: worktree.name, error });
+        void vscode.window.showErrorMessage(
+          "Failed to update visible worktree",
+        );
+      }
+    },
+    { worktree: worktree.name, repo: worktree.repo.label },
+  );
 }
 
 async function openTerminalHere(
