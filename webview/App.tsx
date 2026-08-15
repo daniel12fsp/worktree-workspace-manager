@@ -71,6 +71,19 @@ export function App({ initialState }: Props) {
     [state.activeSessionId, vscode],
   );
 
+  const sendTerminalInput = useCallback(
+    (data: string) => {
+      if (!state.activeSessionId) return;
+      vscode.postMessage({
+        type: "input",
+        id: state.activeSessionId,
+        data,
+        encoding: "text",
+      });
+    },
+    [state.activeSessionId, vscode],
+  );
+
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const terminalApi = useTerminal(
     terminalContainerRef,
@@ -240,6 +253,26 @@ export function App({ initialState }: Props) {
     if (state.activeSessionId) return;
     replayedSessionIdRef.current = undefined;
   }, [state.activeSessionId]);
+
+  React.useEffect(() => {
+    if (!state.activeSessionId) return;
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (isEditableTarget(target)) return;
+      if (terminalContainerRef.current?.contains(document.activeElement))
+        return;
+
+      const input = fallbackKeyboardInput(event);
+      if (!input) return;
+      event.preventDefault();
+      sendTerminalInput(input);
+      terminalApi?.focus();
+    };
+
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, [sendTerminalInput, state.activeSessionId, terminalApi]);
 
   // Handle messages from extension host
   React.useEffect(() => {
@@ -460,4 +493,38 @@ function layoutOrder(
   value: TerminalsLayoutOrder | undefined,
 ): TerminalsLayoutOrder {
   return value === "selectorFirst" ? "selectorFirst" : "terminalFirst";
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return (
+    tag === "input" ||
+    tag === "textarea" ||
+    tag === "select" ||
+    target.isContentEditable
+  );
+}
+
+function fallbackKeyboardInput(event: KeyboardEvent): string | undefined {
+  if (
+    event.type !== "keydown" ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.altKey
+  ) {
+    return undefined;
+  }
+  switch (event.key) {
+    case "Enter":
+      return "\r";
+    case "Backspace":
+      return "\x7f";
+    case "Tab":
+      return "\t";
+    case "Escape":
+      return "\x1b";
+    default:
+      return event.key.length === 1 ? event.key : undefined;
+  }
 }

@@ -37,6 +37,16 @@ const workspaceFolderBranchByPath = new Map<string, string | undefined>();
 const MAX_SESSION_OUTPUT_CHARS = 200_000;
 const TERMINAL_OUTPUT_BATCH_MS = 16;
 
+type WorkspaceTerminalState = {
+  readonly signature: string;
+  readonly all: Map<BareRepository, Worktree[]>;
+  readonly activeWorkspaceFolders: Set<string>;
+  readonly unmanagedWorkspaceFolders: Array<{
+    repo: BareRepository;
+    worktree: Worktree;
+  }>;
+};
+
 export interface EmbeddedSession {
   readonly id: string;
   label: string;
@@ -82,6 +92,10 @@ export class EmbeddedTerminalViewProvider
   private outputFlushTimer: ReturnType<typeof setTimeout> | undefined;
   private renderSessionsPromise: Promise<void> | undefined;
   private renderSessionsAgain = false;
+  private workspaceStateCache: WorkspaceTerminalState | undefined;
+  private workspaceStatePromise: Promise<WorkspaceTerminalState> | undefined;
+  private workspaceStatePromiseSignature: string | undefined;
+  private workspaceStateVersion = 0;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -143,6 +157,7 @@ export class EmbeddedTerminalViewProvider
   }
 
   refresh(): void {
+    this.invalidateWorkspaceStateCache();
     void this.renderSessions();
   }
 
@@ -308,6 +323,7 @@ export class EmbeddedTerminalViewProvider
         await vscode.commands.executeCommand("worktreeManager.addWorktree", {
           repo,
         });
+        this.invalidateWorkspaceStateCache();
         await this.renderSessions();
       }
     } else if (message?.type === "copyRepoPath") {
@@ -325,6 +341,7 @@ export class EmbeddedTerminalViewProvider
           "worktreeManager.removeBareRepository",
           { repo },
         );
+        this.invalidateWorkspaceStateCache();
         await this.renderSessions();
       }
     } else if (message?.type === "removeWorktree") {
@@ -333,6 +350,7 @@ export class EmbeddedTerminalViewProvider
         await vscode.commands.executeCommand("worktreeManager.removeWorktree", {
           worktree,
         });
+        this.invalidateWorkspaceStateCache();
         await this.renderSessions();
       }
     } else if (message?.type === "copyWorktreePath") {
@@ -406,6 +424,7 @@ export class EmbeddedTerminalViewProvider
         });
         if (color) {
           await updateWorktreeColor(worktree, color);
+          this.invalidateWorkspaceStateCache();
           await this.renderSessions();
         }
       }
@@ -488,6 +507,7 @@ export class EmbeddedTerminalViewProvider
               { worktree: worktree.name },
             );
             this.explorerWorktreeChanged.fire();
+            this.invalidateWorkspaceStateCache();
             void this.renderSessions();
             if (result === "rootFoldersCannotBeHidden") {
               void vscode.window.showWarningMessage(
@@ -929,9 +949,8 @@ export class EmbeddedTerminalViewProvider
             vscode.workspace.workspaceFile ||
             vscode.workspace.workspaceFolders?.length,
           );
-          const all = await listAllWorktrees();
-          const activeWorkspaceFolders = await getCheckedWorktreePaths();
-          const unmanagedWorkspaceFolders = await workspaceFolderRepos(all);
+          const { all, activeWorkspaceFolders, unmanagedWorkspaceFolders } =
+            await this.getWorkspaceState();
           const repos = [
             ...[...all].map(([repo, worktrees]) => ({
               label: repo.label,
@@ -1088,6 +1107,61 @@ export class EmbeddedTerminalViewProvider
     }
   }
 
+  private async getWorkspaceState(): Promise<WorkspaceTerminalState> {
+    const signature = workspaceSignature();
+    if (this.workspaceStateCache?.signature === signature) {
+      return this.workspaceStateCache;
+    }
+    if (
+      this.workspaceStatePromise &&
+      this.workspaceStatePromiseSignature === signature
+    ) {
+      return this.workspaceStatePromise;
+    }
+
+    const version = this.workspaceStateVersion;
+    const promise = (async () => {
+      const all = await listAllWorktrees();
+      const [activeWorkspaceFolders, unmanagedWorkspaceFolders] =
+        await Promise.all([
+          getCheckedWorktreePaths(),
+          workspaceFolderRepos(all),
+        ]);
+      return {
+        signature,
+        all,
+        activeWorkspaceFolders,
+        unmanagedWorkspaceFolders,
+      };
+    })()
+      .then((state) => {
+        if (
+          version === this.workspaceStateVersion &&
+          state.signature === workspaceSignature()
+        ) {
+          this.workspaceStateCache = state;
+        }
+        return state;
+      })
+      .finally(() => {
+        if (this.workspaceStatePromise === promise) {
+          this.workspaceStatePromise = undefined;
+          this.workspaceStatePromiseSignature = undefined;
+        }
+      });
+
+    this.workspaceStatePromise = promise;
+    this.workspaceStatePromiseSignature = signature;
+    return promise;
+  }
+
+  private invalidateWorkspaceStateCache(): void {
+    this.workspaceStateCache = undefined;
+    this.workspaceStatePromise = undefined;
+    this.workspaceStatePromiseSignature = undefined;
+    this.workspaceStateVersion += 1;
+  }
+
   private async findWorktree(fsPath: string): Promise<Worktree | undefined> {
     const all = await listAllWorktrees();
     return (
@@ -1131,6 +1205,16 @@ export class EmbeddedTerminalViewProvider
 </body>
 </html>`;
   }
+}
+
+function workspaceSignature(): string {
+  return JSON.stringify({
+    workspaceFile: vscode.workspace.workspaceFile?.fsPath,
+    folders: (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
+      name: folder.name,
+      path: folder.uri.fsPath,
+    })),
+  });
 }
 
 async function workspaceFolderRepos(

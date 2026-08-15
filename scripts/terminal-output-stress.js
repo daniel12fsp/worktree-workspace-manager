@@ -277,7 +277,7 @@ async function runWriter(options) {
     `[terminal-output-stress] start label=${options.label} worker=${options.workerIndex ?? 0} profile=${options.profile} lines=${options.forever ? "forever" : options.lines} chunkBytes=${options.chunkBytes} delayMs=${options.delayMs}\n`,
   );
 
-  while (options.forever || lineNumber < options.lines) {
+  while (true) {
     lineNumber += 1;
     const line = makeLine(options, lineNumber);
     if (options.stderrEvery > 0 && lineNumber % options.stderrEvery === 0) {

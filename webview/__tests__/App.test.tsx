@@ -269,6 +269,76 @@ describe("App", () => {
     expect(screen.getByText(/feat\/login/)).toBeTruthy();
   });
 
+  it("forwards keyboard input when the active terminal has lost DOM focus", async () => {
+    const mockVsCode = createMockVsCode();
+    const state: AppState = {
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "running",
+                  displayName: "terminal 1",
+                  statusText: "npm run dev",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: "s1",
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    };
+
+    renderWithVsCode(state, mockVsCode);
+    fireEvent.keyDown(window, { key: "a" });
+
+    await waitFor(() => {
+      expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+        type: "input",
+        id: "s1",
+        data: "a",
+        encoding: "text",
+      });
+    });
+  });
+
+  it("does not forward fallback keyboard input from editable controls", async () => {
+    const mockVsCode = createMockVsCode();
+    renderWithVsCode(
+      {
+        repos: [],
+        activeSessionId: "s1",
+        activeOutput: "",
+        hasWorkspace: true,
+        home: "/home/user",
+        loadingWorktrees: new Set(),
+      },
+      mockVsCode,
+    );
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    fireEvent.keyDown(input, { key: "a" });
+
+    expect(mockVsCode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "input" }),
+    );
+  });
+
   it("posts binary terminal input with binary encoding", async () => {
     let onBinaryCallback: ((data: string) => void) | undefined;
     mockTerminalOnBinary.mockImplementation(

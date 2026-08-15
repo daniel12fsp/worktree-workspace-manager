@@ -993,6 +993,57 @@ describe("EmbeddedTerminalViewProvider", () => {
     );
   });
 
+  it("reuses cached workspace state for terminal activity renders", async () => {
+    const onDataCallbacks: Array<(data: string) => void> = [];
+    mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
+      onDataCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    }) as any);
+    const repo = {
+      label: "project.git",
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      configPath: "/repos/project.git",
+    } as any;
+    const worktree = {
+      name: "feat-login",
+      path: "/tmp/feat-login",
+      color: "#fff",
+      branch: "main",
+      repo,
+    } as any;
+    mockListAllWorktrees.mockResolvedValue(new Map([[repo, [worktree]]]));
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    const mockView = {
+      visible: true,
+      webview: mockWebview,
+    } as any;
+    provider.resolveWebviewView(mockView);
+    await (provider as any).renderSessions();
+    mockListAllWorktrees.mockClear();
+
+    await provider.openTerminal(worktree);
+    while ((provider as any).renderSessionsPromise) {
+      await (provider as any).renderSessionsPromise;
+    }
+    await (provider as any).getWorkspaceState();
+    mockListAllWorktrees.mockClear();
+
+    onDataCallbacks[0]?.("\x1b]777;wtwm;start;npm test\x07");
+    while ((provider as any).renderSessionsPromise) {
+      await (provider as any).renderSessionsPromise;
+    }
+
+    expect(mockListAllWorktrees).not.toHaveBeenCalled();
+  });
+
   it("batches active terminal output messages", async () => {
     vi.useFakeTimers();
     const onDataCallbacks: Array<(data: string) => void> = [];
