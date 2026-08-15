@@ -8,6 +8,11 @@
       "category": "format",
       "hint": "(Code style issues found|Forgot to run Prettier|\\[warn\\])"
     },
+    "eslint": {
+      "command": "npm run lint || true",
+      "category": "lint",
+      "hint": "(warning|error)"
+    },
     "tsc": {
       "command": "npx tsc -p ./ --noEmit && npx tsc -p ./tsconfig.webview.json --noEmit",
       "category": "typescript",
@@ -32,5 +37,5 @@
       "hint": "(error TS[0-9]+|ERROR|failed|Error:)"
     }
   },
-  "order": [["prettier", "tsc"], "unit_test", "coverage", "compile"]
+  "order": [["prettier", "eslint", "tsc"], "unit_test", "coverage", "compile"]
 }
