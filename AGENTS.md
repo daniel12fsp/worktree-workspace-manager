@@ -3,7 +3,8 @@
 - Keep tests deterministic.
 - Performance target: 60 FPS, <=16.67 ms/frame; UI work <=1–2 ms and avoid per-frame work unless needed.
 - All commands must exit 0.
-- Support Mac os and Linux
+- Support Mac os and Linux.
+- Preserve keyboard input everywhere: typing must work in the embedded terminal, including after it loses DOM focus, without stealing keystrokes from extension inputs or other VS Code editors and terminals. A prior regression dropped embedded-terminal input after focus changes, so keyboard/focus changes require regression tests for both terminal fallback input and editable-control isolation.
 
 ## Verification
 

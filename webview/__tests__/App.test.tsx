@@ -317,6 +317,71 @@ describe("App", () => {
     });
   });
 
+  it("routes terminal typing without capturing extension text input", async () => {
+    let onDataCallback: ((data: string) => void) | undefined;
+    mockTerminalOnData.mockImplementation(
+      (callback: (data: string) => void) => {
+        onDataCallback = callback;
+        return { dispose: vi.fn() };
+      },
+    );
+    const mockVsCode = createMockVsCode();
+    renderWithVsCode(
+      {
+        repos: [
+          {
+            label: "project.git",
+            path: "/repos/project",
+            worktrees: [
+              {
+                name: "feat-login",
+                branch: "feat/login",
+                path: "/tmp/feat-login",
+                color: "#e6194b",
+                activeInExplorer: true,
+                sessions: [
+                  {
+                    id: "s1",
+                    label: "terminal 1",
+                    state: "running",
+                    displayName: "terminal 1",
+                    statusText: "",
+                    preview: "",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        activeSessionId: "s1",
+        activeOutput: "",
+        hasWorkspace: true,
+        home: "/home/user",
+        loadingWorktrees: new Set(),
+      },
+      mockVsCode,
+    );
+
+    expect(onDataCallback).toBeTypeOf("function");
+    act(() => onDataCallback!("terminal text"));
+    expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+      type: "input",
+      id: "s1",
+      data: "terminal text",
+      encoding: "text",
+    });
+
+    vi.mocked(mockVsCode.postMessage).mockClear();
+    const findInput = screen.getByPlaceholderText("Find in terminal");
+    fireEvent.input(findInput, { target: { value: "search text" } });
+    fireEvent.keyDown(findInput, { key: "x" });
+
+    expect(findInput).toHaveValue("search text");
+    expect(mockVsCode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "input" }),
+    );
+  });
+
   it("does not forward fallback keyboard input from editable controls", async () => {
     const mockVsCode = createMockVsCode();
     renderWithVsCode(
