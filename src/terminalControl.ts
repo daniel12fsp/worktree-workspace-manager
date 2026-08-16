@@ -1,8 +1,8 @@
-export type TerminalSequence = {
+export interface TerminalSequence {
   readonly value: string;
   readonly end: number;
   readonly complete: boolean;
-};
+}
 
 export class TerminalControlSanitizer {
   private pending = "";
@@ -78,6 +78,14 @@ function readTerminalSequence(
   return undefined;
 }
 
+function isStringControlIntro(value: string): boolean {
+  return "]P_^X".includes(value);
+}
+
+function isCharsetIntro(value: string): boolean {
+  return "()*+,-./".includes(value);
+}
+
 function readEscSequence(data: string, start: number): TerminalSequence {
   if (start + 1 >= data.length) {
     return { value: data.slice(start), end: data.length, complete: false };
@@ -85,24 +93,10 @@ function readEscSequence(data: string, start: number): TerminalSequence {
 
   const next = data[start + 1];
   if (next === "[") return readCsiSequence(data, start, start + 2);
-  if (
-    next === "]" ||
-    next === "P" ||
-    next === "_" ||
-    next === "^" ||
-    next === "X"
-  ) {
+  if (isStringControlIntro(next)) {
     return readStringControl(data, start, start + 2, false);
   }
-  if (
-    next === "(" ||
-    next === ")" ||
-    next === "*" ||
-    next === "+" ||
-    next === "-" ||
-    next === "." ||
-    next === "/"
-  ) {
+  if (isCharsetIntro(next)) {
     const end = start + 3;
     return {
       value: data.slice(start, Math.min(end, data.length)),
@@ -121,22 +115,23 @@ function readEscSequence(data: string, start: number): TerminalSequence {
 function readCsiSequence(
   data: string,
   start: number,
-  index: number,
+  startIndex: number,
 ): TerminalSequence {
-  while (index < data.length) {
-    const code = data.charCodeAt(index);
+  let cursor = startIndex;
+  while (cursor < data.length) {
+    const code = data.charCodeAt(cursor);
     if (code >= 0x40 && code <= 0x7e) {
       const end =
-        code === 0x4d && data.slice(start, index + 1) === "\x1b[M"
-          ? index + 4
-          : index + 1;
+        code === 0x4d && data.slice(start, cursor + 1) === "\x1b[M"
+          ? cursor + 4
+          : cursor + 1;
       return {
         value: data.slice(start, Math.min(end, data.length)),
         end: Math.min(end, data.length),
         complete: end <= data.length,
       };
     }
-    index += 1;
+    cursor += 1;
   }
   return { value: data.slice(start), end: data.length, complete: false };
 }
@@ -144,26 +139,27 @@ function readCsiSequence(
 function readStringControl(
   data: string,
   start: number,
-  index: number,
+  startIndex: number,
   allowC1Terminator: boolean,
 ): TerminalSequence {
-  while (index < data.length) {
-    const code = data.charCodeAt(index);
+  let cursor = startIndex;
+  while (cursor < data.length) {
+    const code = data.charCodeAt(cursor);
     if (code === 0x07 || (allowC1Terminator && code === 0x9c)) {
       return {
-        value: data.slice(start, index + 1),
-        end: index + 1,
+        value: data.slice(start, cursor + 1),
+        end: cursor + 1,
         complete: true,
       };
     }
-    if (code === 0x1b && data[index + 1] === "\\") {
+    if (code === 0x1b && data[cursor + 1] === "\\") {
       return {
-        value: data.slice(start, index + 2),
-        end: index + 2,
+        value: data.slice(start, cursor + 2),
+        end: cursor + 2,
         complete: true,
       };
     }
-    index += 1;
+    cursor += 1;
   }
   return { value: data.slice(start), end: data.length, complete: false };
 }

@@ -61,7 +61,9 @@ export class WorktreeProvider
           this.refresh();
         }
       }),
-      vscode.workspace.onDidChangeWorkspaceFolders(() => this.refresh()),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        this.refresh();
+      }),
     );
   }
 
@@ -74,7 +76,7 @@ export class WorktreeProvider
     this.emitter.fire();
   }
 
-  async getTreeItem(element: Node): Promise<vscode.TreeItem> {
+  getTreeItem(element: Node): vscode.TreeItem {
     return element;
   }
 

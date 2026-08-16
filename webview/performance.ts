@@ -17,8 +17,8 @@ export function webviewProfileMeasure<T>(
   if (!enabled) return fn();
 
   const id = ++seq;
-  const start = `wtwm.webview:${name}:start:${id}`;
-  const end = `wtwm.webview:${name}:end:${id}`;
+  const start = `wtwm.webview:${name}:start:${String(id)}`;
+  const end = `wtwm.webview:${name}:end:${String(id)}`;
   performance.mark(start);
   try {
     return fn();

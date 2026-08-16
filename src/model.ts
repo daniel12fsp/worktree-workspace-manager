@@ -6,34 +6,19 @@ import { promisify } from "node:util";
 import * as vscode from "vscode";
 import { log, logError } from "./logger";
 import { profileAsync } from "./performance";
-
+import {
+  modelState,
+  ensureConfiguredColorsForWorktrees,
+  workspaceFoldersSignature,
+  parseWorktreePorcelain,
+} from "./modelHelpers";
 const execFileAsync = promisify(execFile);
-
-type RepositoriesCache = {
-  readonly signature: string;
-  readonly repos: BareRepository[];
-};
-
-type WorktreesCache = {
-  readonly signature: string;
-  readonly all: Map<BareRepository, Worktree[]>;
-};
-
-let repositoriesCache: RepositoriesCache | undefined;
-let repositoriesPromise: Promise<BareRepository[]> | undefined;
-let repositoriesPromiseSignature: string | undefined;
-let worktreesCache: WorktreesCache | undefined;
-let worktreesPromise: Promise<Map<BareRepository, Worktree[]>> | undefined;
-let worktreesPromiseSignature: string | undefined;
-let cacheVersion = 0;
-
 export interface BareRepository {
   readonly configPath: string;
   readonly fsPath: string;
   readonly gitDir: string;
   readonly label: string;
 }
-
 export interface Worktree {
   readonly repo: BareRepository;
   readonly path: string;
@@ -45,13 +30,10 @@ export interface Worktree {
   readonly color: string;
   readonly colorKey: string;
 }
-
 export interface WorktreeColorConfig {
   readonly color: string;
 }
-
-export type WorktreeColors = Record<string, WorktreeColorConfig>;
-
+export type WorktreeColors = Partial<Record<string, WorktreeColorConfig>>;
 export const palette = [
   "#e6194b",
   "#3cb44b",
@@ -78,7 +60,6 @@ export const palette = [
   "#b15928",
   "#6a3d9a",
 ];
-
 export function expandHome(input: string): string {
   if (input === "~") {
     return os.homedir();
@@ -109,10 +90,9 @@ export function resolveGitDir(fsPath: string): string {
     return fsPath;
   }
 
-  const match = fs
-    .readFileSync(gitFile, "utf8")
-    .trim()
-    .match(/^gitdir:\s*(.+)$/i);
+  const match = /^gitdir:\s*(.+)$/i.exec(
+    fs.readFileSync(gitFile, "utf8").trim(),
+  );
   if (!match) {
     return fsPath;
   }
@@ -122,13 +102,16 @@ export function resolveGitDir(fsPath: string): string {
 
 export async function getWorkspaceRepositories(): Promise<BareRepository[]> {
   const signature = workspaceFoldersSignature();
-  if (repositoriesCache?.signature === signature)
-    return repositoriesCache.repos;
-  if (repositoriesPromise && repositoriesPromiseSignature === signature) {
-    return repositoriesPromise;
+  if (modelState.repositoriesCache?.signature === signature)
+    return modelState.repositoriesCache.repos;
+  if (
+    modelState.repositoriesPromise &&
+    modelState.repositoriesPromiseSignature === signature
+  ) {
+    return modelState.repositoriesPromise;
   }
 
-  const version = cacheVersion;
+  const version = modelState.cacheVersion;
   const promise = profileAsync("model.getWorkspaceRepositories", async () => {
     const folders = vscode.workspace.workspaceFolders ?? [];
     log("workspace repository scan start", { count: folders.length });
@@ -169,19 +152,22 @@ export async function getWorkspaceRepositories(): Promise<BareRepository[]> {
       repos.push(repo);
     }
     log("workspace repositories discovered", { count: repos.length });
-    if (version === cacheVersion && signature === workspaceFoldersSignature()) {
-      repositoriesCache = { signature, repos };
+    if (
+      version === modelState.cacheVersion &&
+      signature === workspaceFoldersSignature()
+    ) {
+      modelState.repositoriesCache = { signature, repos };
     }
     return repos;
   }).finally(() => {
-    if (repositoriesPromise === promise) {
-      repositoriesPromise = undefined;
-      repositoriesPromiseSignature = undefined;
+    if (modelState.repositoriesPromise === promise) {
+      modelState.repositoriesPromise = undefined;
+      modelState.repositoriesPromiseSignature = undefined;
     }
   });
 
-  repositoriesPromise = promise;
-  repositoriesPromiseSignature = signature;
+  modelState.repositoriesPromise = promise;
+  modelState.repositoriesPromiseSignature = signature;
   return promise;
 }
 
@@ -254,19 +240,23 @@ export async function listAllWorktrees(): Promise<
   Map<BareRepository, Worktree[]>
 > {
   const signature = workspaceFoldersSignature();
-  if (worktreesCache?.signature === signature) return worktreesCache.all;
-  if (worktreesPromise && worktreesPromiseSignature === signature) {
-    return worktreesPromise;
+  if (modelState.worktreesCache?.signature === signature)
+    return modelState.worktreesCache.all;
+  if (
+    modelState.worktreesPromise &&
+    modelState.worktreesPromiseSignature === signature
+  ) {
+    return modelState.worktreesPromise;
   }
 
-  const version = cacheVersion;
+  const version = modelState.cacheVersion;
   const promise = profileAsync("model.listAllWorktrees", async () => {
     const repos = await getWorkspaceRepositories();
     const entries = await Promise.all(
       repos.map(async (repo) => {
         try {
           return [repo, await listWorktrees(repo)] as const;
-        } catch (error) {
+        } catch (error: unknown) {
           logError("failed to list worktrees", {
             repo: repo.configPath,
             error,
@@ -279,207 +269,26 @@ export async function listAllWorktrees(): Promise<
       }),
     );
     const all = new Map(entries);
-    void ensureConfiguredColorsForWorktrees(all).catch((error) =>
-      logError("failed to populate worktree colors", { error }),
-    );
-    if (version === cacheVersion && signature === workspaceFoldersSignature()) {
-      worktreesCache = { signature, all };
+    void ensureConfiguredColorsForWorktrees(all).catch((error: unknown) => {
+      logError("failed to populate worktree colors", { error });
+    });
+    if (
+      version === modelState.cacheVersion &&
+      signature === workspaceFoldersSignature()
+    ) {
+      modelState.worktreesCache = { signature, all };
     }
     return all;
   }).finally(() => {
-    if (worktreesPromise === promise) {
-      worktreesPromise = undefined;
-      worktreesPromiseSignature = undefined;
+    if (modelState.worktreesPromise === promise) {
+      modelState.worktreesPromise = undefined;
+      modelState.worktreesPromiseSignature = undefined;
     }
   });
 
-  worktreesPromise = promise;
-  worktreesPromiseSignature = signature;
+  modelState.worktreesPromise = promise;
+  modelState.worktreesPromiseSignature = signature;
   return promise;
 }
 
-export function parseWorktreePorcelain(
-  output: string,
-  repo: BareRepository,
-): Worktree[] {
-  const result: Worktree[] = [];
-  let current:
-    | {
-        path?: string;
-        head?: string;
-        branch?: string;
-        locked?: string | true;
-        prunable?: string | true;
-        bare?: true;
-      }
-    | undefined;
-
-  const flush = () => {
-    if (!current?.path || current.bare) {
-      current = undefined;
-      return;
-    }
-    const name = path.basename(current.path);
-    result.push({
-      repo,
-      path: current.path,
-      head: current.head,
-      branch: current.branch,
-      locked: current.locked,
-      prunable: current.prunable,
-      name,
-      color: colorForWorktree(repo, name),
-      colorKey: colorKeyForWorktree(repo, name),
-    });
-    current = undefined;
-  };
-
-  for (const line of output.split(/\r?\n/)) {
-    if (line === "") {
-      flush();
-      continue;
-    }
-    const firstSpace = line.indexOf(" ");
-    const key = firstSpace === -1 ? line : line.slice(0, firstSpace);
-    const value = firstSpace === -1 ? true : line.slice(firstSpace + 1);
-
-    if (key === "worktree") {
-      flush();
-      current = { path: String(value) };
-    } else if (current) {
-      if (key === "HEAD") current.head = String(value);
-      if (key === "branch") current.branch = shortBranch(String(value));
-      if (key === "locked") current.locked = value;
-      if (key === "prunable") current.prunable = value;
-      if (key === "bare") current.bare = true;
-    }
-  }
-  flush();
-  return result;
-}
-
-export function shortBranch(ref?: string): string | undefined {
-  return ref?.startsWith("refs/heads/") ? ref.slice("refs/heads/".length) : ref;
-}
-
-export function colorForName(name: string): string {
-  return palette[Math.abs(hash(name)) % palette.length];
-}
-
-export function colorKeyForWorktree(
-  repo: BareRepository,
-  name: string,
-): string {
-  return `${repo.label}/${name}`;
-}
-
-export function colorForWorktree(repo: BareRepository, name: string): string {
-  const configured = configuredColors()[colorKeyForWorktree(repo, name)]?.color;
-  return isValidHexColor(configured) ? configured : colorForName(name);
-}
-
-export async function ensureConfiguredColorsForWorktrees(
-  all: Map<BareRepository, Worktree[]>,
-): Promise<void> {
-  const existing = configuredColors();
-  const next: WorktreeColors = { ...existing };
-  let changed = false;
-
-  for (const [repo, worktrees] of all) {
-    for (const worktree of worktrees) {
-      if (!isValidHexColor(next[worktree.colorKey]?.color)) {
-        next[worktree.colorKey] = { color: colorForName(worktree.name) };
-        changed = true;
-      }
-    }
-  }
-
-  if (!changed) return;
-  await vscode.workspace
-    .getConfiguration("worktreeManager")
-    .update("colors", next, configurationTarget());
-  log("populated missing worktree colors", { count: Object.keys(next).length });
-}
-
-export async function updateWorktreeColor(
-  worktree: Worktree,
-  color: string,
-): Promise<void> {
-  if (!isValidHexColor(color)) {
-    throw new Error("Color must be a hex value like #3cb44b");
-  }
-  const next: WorktreeColors = {
-    ...configuredColors(),
-    [worktree.colorKey]: { color },
-  };
-  await vscode.workspace
-    .getConfiguration("worktreeManager")
-    .update("colors", next, configurationTarget());
-  invalidateModelCache();
-  log("updated worktree color", { key: worktree.colorKey, color });
-}
-
-export function invalidateModelCache(): void {
-  repositoriesCache = undefined;
-  repositoriesPromise = undefined;
-  repositoriesPromiseSignature = undefined;
-  worktreesCache = undefined;
-  worktreesPromise = undefined;
-  worktreesPromiseSignature = undefined;
-  cacheVersion += 1;
-}
-
-function workspaceFoldersSignature(): string {
-  return JSON.stringify(
-    (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
-      name: folder.name,
-      path: folder.uri.fsPath,
-    })),
-  );
-}
-
-export function configuredColors(): WorktreeColors {
-  const raw = vscode.workspace
-    .getConfiguration("worktreeManager")
-    .get<Record<string, unknown>>("colors", {});
-  const colors: WorktreeColors = {};
-  for (const [key, value] of Object.entries(raw ?? {})) {
-    if (typeof value === "string") {
-      colors[key] = { color: value };
-    } else if (
-      value &&
-      typeof value === "object" &&
-      typeof (value as { color?: unknown }).color === "string"
-    ) {
-      colors[key] = { color: (value as { color: string }).color };
-    }
-  }
-  return colors;
-}
-
-export function configurationTarget(): vscode.ConfigurationTarget {
-  return vscode.workspace.workspaceFile ||
-    vscode.workspace.workspaceFolders?.length
-    ? vscode.ConfigurationTarget.Workspace
-    : vscode.ConfigurationTarget.Global;
-}
-
-export function isValidHexColor(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(value)
-  );
-}
-
-export function hash(input: string): number {
-  let h = 5381;
-  for (let i = 0; i < input.length; i++) {
-    h = ((h << 5) + h) ^ input.charCodeAt(i);
-  }
-  return h | 0;
-}
-
-export function dotIcon(color: string): vscode.Uri {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="${color}"/></svg>`;
-  return vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
-}
+export * from "./modelHelpers";

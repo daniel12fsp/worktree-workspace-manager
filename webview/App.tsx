@@ -1,14 +1,11 @@
-import React, { useState, useCallback, useRef, useMemo } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { useVsCode } from "./hooks/useVsCode";
 import { useTerminal } from "./hooks/useTerminal";
 import type { TerminalInputEncoding } from "./hooks/useTerminal";
 import type { RepoData, TerminalsLayoutOrder } from "./types";
-import { RepoNode } from "./components/RepoNode";
-import { WorktreeNode } from "./components/WorktreeNode";
-import { TerminalLeaf } from "./components/TerminalLeaf";
-import { TerminalEmbed } from "./components/TerminalEmbed";
-import { FindBox } from "./components/FindBox";
+import { AppLayout } from "./components/AppLayout";
 import { Welcome } from "./components/Welcome";
+import { useAppEffects } from "./hooks/useAppEffects";
 import { webviewProfileMark } from "./performance";
 
 export interface AppState {
@@ -96,7 +93,9 @@ export function App({ initialState }: Props) {
     (id: string) => {
       vscode.postMessage({ type: "select", id });
       setState((prev) => ({ ...prev, activeSessionId: id }));
-      requestAnimationFrame(() => terminalApi?.focus());
+      requestAnimationFrame(() => {
+        terminalApi.focus();
+      });
     },
     [vscode, terminalApi],
   );
@@ -126,7 +125,9 @@ export function App({ initialState }: Props) {
       collapsedWorktreesRef.current.delete(`${repoLabel}:${path}`);
       forceRender((n) => n + 1);
       vscode.postMessage({ type: "create", path });
-      requestAnimationFrame(() => terminalApi?.focus());
+      requestAnimationFrame(() => {
+        terminalApi.focus();
+      });
     },
     [vscode, terminalApi],
   );
@@ -154,14 +155,16 @@ export function App({ initialState }: Props) {
         }
         terminalPanePercentRef.current = nextPercent;
         setTerminalPanePercent(nextPercent);
-        terminalApi?.resize();
+        terminalApi.resize();
       };
 
       const scheduleUpdateWidth = (clientX: number) => {
         pendingClientX = clientX;
         if (resizeFrame) return;
         resizeFrame = -1;
-        const frame = requestAnimationFrame(() => updateWidth(pendingClientX));
+        const frame = requestAnimationFrame(() => {
+          updateWidth(pendingClientX);
+        });
         if (resizeFrame === -1) resizeFrame = frame;
       };
 
@@ -174,7 +177,7 @@ export function App({ initialState }: Props) {
         window.removeEventListener("mouseup", handleMouseUp);
         if (resizeFrame > 0) cancelAnimationFrame(resizeFrame);
         updateWidth(upEvent.clientX);
-        terminalApi?.resize();
+        terminalApi.resize();
       };
 
       document.body.classList.add("resizingLayout");
@@ -235,135 +238,17 @@ export function App({ initialState }: Props) {
     forceRender((n) => n + 1);
   }, []);
 
-  React.useEffect(() => {
-    if (!state.activeSessionId) return;
-    if (replayedSessionIdRef.current !== state.activeSessionId) {
-      replayedSessionIdRef.current = state.activeSessionId;
-      terminalApi?.clearAndWrite(state.activeOutput);
-    }
-    terminalApi?.resize();
-  }, [
-    state.activeSessionId,
-    state.activeOutput,
-    terminalApi?.clearAndWrite,
-    terminalApi?.resize,
-  ]);
-
-  React.useEffect(() => {
-    if (state.activeSessionId) return;
-    replayedSessionIdRef.current = undefined;
-  }, [state.activeSessionId]);
-
-  React.useEffect(() => {
-    if (!state.activeSessionId) return;
-
-    const handleKeydown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (isEditableTarget(target)) return;
-      if (terminalContainerRef.current?.contains(document.activeElement))
-        return;
-
-      const input = fallbackKeyboardInput(event);
-      if (!input) return;
-      event.preventDefault();
-      sendTerminalInput(input);
-      terminalApi?.focus();
-    };
-
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
-  }, [sendTerminalInput, state.activeSessionId, terminalApi]);
-
-  // Handle messages from extension host
-  React.useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      const message = event.data;
-      if (message.type === "state") {
-        setState((prev) => ({
-          repos: message.repos || [],
-          activeSessionId: message.activeSessionId,
-          activeOutput:
-            prev.activeSessionId !== message.activeSessionId
-              ? ""
-              : message.activeOutput || "",
-          hasWorkspace: Boolean(message.hasWorkspace),
-          home: message.home || "",
-          loadingWorktrees: prev.loadingWorktrees,
-          terminalsLayoutOrder: layoutOrder(message.terminalsLayoutOrder),
-          webviewRenderTelemetry: message.webviewRenderTelemetry,
-          profileMarkers: Boolean(message.profileMarkers),
-        }));
-      } else if (
-        message.type === "replay" &&
-        message.id === state.activeSessionId
-      ) {
-        replayedSessionIdRef.current = message.id;
-        setState((prev) => ({ ...prev, activeOutput: message.data || "" }));
-        terminalApi?.clearAndWrite(message.data || "");
-      } else if (
-        message.type === "output" &&
-        message.id === state.activeSessionId
-      ) {
-        terminalApi?.write(message.data);
-      } else if (
-        message.type === "clear" &&
-        message.id === state.activeSessionId
-      ) {
-        terminalApi?.clear();
-      } else if (message.type === "loadingDone") {
-        setState((prev) => {
-          const next = new Set(prev.loadingWorktrees);
-          next.delete(String(message.path));
-          return { ...prev, loadingWorktrees: next };
-        });
-      }
-    };
-    window.addEventListener("message", handler);
-    return () => window.removeEventListener("message", handler);
-  }, [state.activeSessionId, terminalApi]);
-
-  const renderSummary = useMemo(
-    () => ({
-      repoCount: state.repos.length,
-      worktreeCount: state.repos.reduce((c, r) => c + r.worktrees.length, 0),
-      sessionCount: state.repos.reduce(
-        (c, r) =>
-          c + r.worktrees.reduce((ic, wt) => ic + wt.sessions.length, 0),
-        0,
-      ),
-    }),
-    [state.repos],
-  );
-
-  React.useEffect(() => {
-    const mode = state.webviewRenderTelemetry ?? "off";
-    if (mode === "off") return;
-
-    renderTelemetryCountRef.current += 1;
-    const renderCount = renderTelemetryCountRef.current;
-    if (mode === "sampled" && renderCount !== 1 && renderCount % 20 !== 0) {
-      return;
-    }
-
-    const durationMs = Number((performance.now() - renderStartedAt).toFixed(2));
-    webviewProfileMark(state.profileMarkers, "App.render.commit");
-    vscode.postMessage({
-      type: "webviewRender",
-      repoCount: renderSummary.repoCount,
-      worktreeCount: renderSummary.worktreeCount,
-      sessionCount: renderSummary.sessionCount,
-      childNodeCount: 0,
-      renderCount,
-      sampled: mode === "sampled",
-      durationMs,
-    });
-  }, [
-    renderSummary,
-    renderStartedAt,
-    state.profileMarkers,
-    state.webviewRenderTelemetry,
+  useAppEffects({
+    state,
+    setState,
+    terminalApi,
     vscode,
-  ]);
+    terminalContainerRef,
+    replayedSessionIdRef,
+    renderTelemetryCountRef,
+    renderStartedAt,
+    sendTerminalInput,
+  });
 
   if (!state.hasWorkspace) {
     return (
@@ -381,111 +266,28 @@ export function App({ initialState }: Props) {
     );
   }
 
-  const terminalPane = (
-    <section
-      className="terminalPane"
-      aria-label="Terminal panel"
-      style={{ flex: `0 0 ${terminalPanePercent}%` }}
-    >
-      <TerminalEmbed
-        activeSessionId={state.activeSessionId}
-        containerRef={terminalContainerRef}
-        terminalApi={terminalApi}
-      />
-    </section>
-  );
-  const resizeHandle = (
-    <div
-      className="resizeHandle"
-      role="separator"
-      aria-label="Resize terminal and tree panels"
-      aria-orientation="vertical"
-      onMouseDown={handleResizeMouseDown}
-      style={{ flex: "0 0 6px" }}
-    />
-  );
-  const selectorPane = (
-    <div className="sidebar" id="list" style={{ flex: "1 1 220px" }}>
-      {state.repos.map((repo) => {
-        const isRepoCollapsed = collapsedReposRef.current.has(repo.label);
-        const workspaceFolderWorktree =
-          repo.kind === "workspaceFolder" ? repo.worktrees[0] : undefined;
-        return (
-          <div key={repo.label}>
-            <RepoNode
-              repo={repo}
-              collapsed={isRepoCollapsed}
-              onToggle={() => toggleRepo(repo.label)}
-              onCreateTerminal={
-                repo.kind === "workspaceFolder"
-                  ? (repoPath) => handleCreateTerminal(repo.label, repoPath)
-                  : undefined
-              }
-            />
-            {!isRepoCollapsed && workspaceFolderWorktree
-              ? workspaceFolderWorktree.sessions.map((session) => (
-                  <TerminalLeaf
-                    key={session.id}
-                    session={session}
-                    isActive={session.id === state.activeSessionId}
-                    onSelect={handleSelect}
-                    onReorder={handleReorder}
-                    onDragStartSession={handleDragStartSession}
-                    getDraggedSessionId={getDraggedSessionId}
-                    clearDraggedSession={clearDraggedSession}
-                  />
-                ))
-              : !isRepoCollapsed &&
-                repo.worktrees.map((wt) => {
-                  const worktreeKey = `${repo.label}:${wt.path}`;
-                  const isWtCollapsed =
-                    collapsedWorktreesRef.current.has(worktreeKey);
-                  return (
-                    <div key={wt.path}>
-                      <WorktreeNode
-                        repoLabel={repo.label}
-                        worktree={wt}
-                        collapsed={isWtCollapsed}
-                        onToggle={() => toggleWorktree(repo.label, wt.path)}
-                        onCreateTerminal={(path) =>
-                          handleCreateTerminal(repo.label, path)
-                        }
-                        loading={state.loadingWorktrees.has(wt.path)}
-                        onSetExplorerWorktree={handleSetExplorerWorktree}
-                      />
-                      {!isWtCollapsed &&
-                        wt.sessions.map((session) => (
-                          <TerminalLeaf
-                            key={session.id}
-                            session={session}
-                            isActive={session.id === state.activeSessionId}
-                            onSelect={handleSelect}
-                            onReorder={handleReorder}
-                            onDragStartSession={handleDragStartSession}
-                            getDraggedSessionId={getDraggedSessionId}
-                            clearDraggedSession={clearDraggedSession}
-                          />
-                        ))}
-                    </div>
-                  );
-                })}
-          </div>
-        );
-      })}
-    </div>
-  );
-  const panes =
-    layoutOrder(state.terminalsLayoutOrder) === "terminalFirst"
-      ? [terminalPane, resizeHandle, selectorPane]
-      : [selectorPane, resizeHandle, terminalPane];
-
   return (
-    <div className="root">
-      <FindBox />
-      <div ref={splitContainerRef} className="splitLayout">
-        {panes.map((pane, index) => React.cloneElement(pane, { key: index }))}
-      </div>
-    </div>
+    <AppLayout
+      state={state}
+      terminalPanePercent={terminalPanePercent}
+      splitContainerRef={splitContainerRef}
+      terminalContainerRef={terminalContainerRef}
+      terminalApi={terminalApi}
+      handleResizeMouseDown={handleResizeMouseDown}
+      treeProps={{
+        collapsedRepos: collapsedReposRef.current,
+        collapsedWorktrees: collapsedWorktreesRef.current,
+        onToggleRepo: toggleRepo,
+        onToggleWorktree: toggleWorktree,
+        onCreateTerminal: handleCreateTerminal,
+        onSetExplorerWorktree: handleSetExplorerWorktree,
+        onSelect: handleSelect,
+        onReorder: handleReorder,
+        onDragStartSession: handleDragStartSession,
+        getDraggedSessionId,
+        clearDraggedSession,
+      }}
+    />
   );
 }
 
@@ -493,38 +295,4 @@ function layoutOrder(
   value: TerminalsLayoutOrder | undefined,
 ): TerminalsLayoutOrder {
   return value === "selectorFirst" ? "selectorFirst" : "terminalFirst";
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName.toLowerCase();
-  return (
-    tag === "input" ||
-    tag === "textarea" ||
-    tag === "select" ||
-    target.isContentEditable
-  );
-}
-
-function fallbackKeyboardInput(event: KeyboardEvent): string | undefined {
-  if (
-    event.type !== "keydown" ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.altKey
-  ) {
-    return undefined;
-  }
-  switch (event.key) {
-    case "Enter":
-      return "\r";
-    case "Backspace":
-      return "\x7f";
-    case "Tab":
-      return "\t";
-    case "Escape":
-      return "\x1b";
-    default:
-      return event.key.length === 1 ? event.key : undefined;
-  }
 }

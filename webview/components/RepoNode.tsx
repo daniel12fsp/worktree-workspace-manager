@@ -65,7 +65,9 @@ export const RepoNode = React.memo(function RepoNode({
                 message: { type: "killRepo", path: repo.path },
               },
             ];
-      showContextMenu(e, items, (msg) => vscode.postMessage(msg));
+      showContextMenu(e, items, (msg) => {
+        vscode.postMessage(msg);
+      });
     },
     [repo.kind, repo.path, vscode],
   );

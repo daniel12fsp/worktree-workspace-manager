@@ -32,8 +32,8 @@ export function showContextMenu(
 
   const menu = document.createElement("div");
   menu.className = "contextMenu";
-  menu.style.left = event.clientX + "px";
-  menu.style.top = event.clientY + "px";
+  menu.style.left = `${String(event.clientX)}px`;
+  menu.style.top = `${String(event.clientY)}px`;
 
   const close = () => {
     menu.remove();

@@ -52,7 +52,9 @@ export const TerminalLeaf = React.memo(function TerminalLeaf({
           message: { type: "closeSession", id: session.id },
         },
       ];
-      showContextMenu(e, items, (msg) => vscode.postMessage(msg));
+      showContextMenu(e, items, (msg) => {
+        vscode.postMessage(msg);
+      });
     },
     [session.id, vscode],
   );
@@ -109,7 +111,7 @@ export const TerminalLeaf = React.memo(function TerminalLeaf({
       : session.state === "error"
         ? "Failed"
         : "Idle";
-  const titleCommand = session.commandText || session.statusText || "idle";
+  const titleCommand = session.commandText ?? session.statusText;
   const tooltipText = `${stateLabel}: ${terminalNumberLabel} - ${titleCommand}`;
   const tooltipId = `terminal-tooltip-${session.id.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 

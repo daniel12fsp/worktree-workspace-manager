@@ -7,28 +7,35 @@ import "./styles.css";
 
 declare function acquireVsCodeApi(): VsCodeApi;
 
+declare global {
+  interface Window {
+    WorktreeTerminals: { vscodeApi: VsCodeApi };
+  }
+}
+
 const vscode = acquireVsCodeApi();
 
 // Store reference for link provider callbacks
-(window as any).WorktreeTerminals = { vscodeApi: vscode };
+window.WorktreeTerminals = { vscodeApi: vscode };
 
 // Report errors to extension host
 window.onerror = (message, source, line, column, error) => {
   vscode.postMessage({
     type: "webviewError",
-    message: String(message),
-    source: source ? String(source) : undefined,
-    line: line ? Number(line) : undefined,
-    column: column ? Number(column) : undefined,
-    stack: error && (error as Error).stack,
+    message,
+    source: source ?? undefined,
+    line: line ?? undefined,
+    column: column ?? undefined,
+    stack: error?.stack,
   });
 };
 window.onunhandledrejection = (event) => {
-  const reason = event.reason;
+  const reason: unknown = event.reason;
+  const error = reason instanceof Error ? reason : undefined;
   vscode.postMessage({
     type: "webviewError",
-    message: reason && reason.message ? reason.message : String(reason),
-    stack: reason && reason.stack,
+    message: error?.message ?? String(reason),
+    stack: error?.stack,
   });
 };
 

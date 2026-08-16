@@ -64,12 +64,12 @@ export async function closeEditorsForRepository(
   });
 }
 
-type CloseEditorsOptions = {
+interface CloseEditorsOptions {
   reason: string;
   roots: readonly string[];
   closeWhen: (fileUris: vscode.Uri[]) => boolean;
   logStart: Record<string, unknown>;
-};
+}
 
 async function closeEditorsByPredicate({
   reason,
@@ -105,7 +105,7 @@ async function closeEditorsByPredicate({
 
   log(
     `${reason}: inspected tabs`,
-    inspectedTabs.map(({ tab: _tab, ...entry }) => entry),
+    inspectedTabs.map(({ ...entry }) => entry),
   );
 
   const closeCandidates = inspectedTabs.filter((entry) => entry.shouldClose);
@@ -116,7 +116,7 @@ async function closeEditorsByPredicate({
 
   log(
     `${reason}: closing candidates`,
-    closeCandidates.map(({ tab: _tab, ...entry }) => entry),
+    closeCandidates.map(({ ...entry }) => entry),
   );
 
   let closedCount = 0;

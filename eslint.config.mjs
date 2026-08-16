@@ -1,28 +1,28 @@
 // @ts-check
-import js from '@eslint/js';
-import { defineConfig } from 'eslint/config';
-import tseslint from 'typescript-eslint';
+import js from "@eslint/js";
+import { defineConfig } from "eslint/config";
+import tseslint from "typescript-eslint";
 
 export default defineConfig([
   {
     ignores: [
-      'out/**',
-      'dist/**',
-      'node_modules/**',
-      'webview/__tests__/**',
-      'src/__tests__/**',
-      '**/*.test.ts',
-      '**/*.test.tsx',
-      '**/*.d.ts',
-      'verify.js',
-      'verify.config.json',
-      '*.config.*',
-      '*.mjs',
-      '*.cjs',
+      "out/**",
+      "dist/**",
+      "node_modules/**",
+      "webview/__tests__/**",
+      "src/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "**/*.d.ts",
+      "verify.js",
+      "verify.config.json",
+      "*.config.*",
+      "*.mjs",
+      "*.cjs",
     ],
   },
   {
-    files: ['src/**/*.ts'],
+    files: ["src/**/*.ts"],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -39,17 +39,17 @@ export default defineConfig([
       ...tseslint.configs.stylisticTypeChecked,
     ],
     rules: {
-      complexity: ['warn', 10],
-      'max-depth': ['warn', 4],
-      'max-lines': ['warn', 300],
-      'max-nested-callbacks': ['warn', 4],
-      'max-params': ['warn', 5],
-      'no-return-assign': 'warn',
-      'no-param-reassign': 'warn',
+      complexity: ["error", 10],
+      "max-depth": ["error", 4],
+      "max-lines": ["error", 300],
+      "max-nested-callbacks": ["error", 4],
+      "max-params": ["error", 5],
+      "no-return-assign": "error",
+      "no-param-reassign": "error",
     },
   },
   {
-    files: ['webview/**/*.{ts,tsx}'],
+    files: ["webview/**/*.{ts,tsx}"],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -66,13 +66,13 @@ export default defineConfig([
       ...tseslint.configs.stylisticTypeChecked,
     ],
     rules: {
-      complexity: ['warn', 10],
-      'max-depth': ['warn', 4],
-      'max-lines': ['warn', 300],
-      'max-nested-callbacks': ['warn', 4],
-      'max-params': ['warn', 5],
-      'no-return-assign': 'warn',
-      'no-param-reassign': 'warn',
+      complexity: ["error", 10],
+      "max-depth": ["error", 4],
+      "max-lines": ["error", 300],
+      "max-nested-callbacks": ["error", 4],
+      "max-params": ["error", 5],
+      "no-return-assign": "error",
+      "no-param-reassign": "error",
     },
   },
 ]);

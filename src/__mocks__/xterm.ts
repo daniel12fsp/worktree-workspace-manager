@@ -1,35 +1,43 @@
 export class Terminal {
-  open(_container: HTMLElement) {}
-  write(_data: string) {}
-  clear() {}
-  focus() {}
-  resize(_cols: number, _rows: number) {}
-  onData(_callback: (data: string) => void) {
-    return { dispose: () => {} };
+  open(): void {
+    return;
   }
-  onBinary(_callback: (data: string) => void) {
-    return { dispose: () => {} };
+  write(): void {
+    return;
   }
-  onFocus(_callback: () => void) {
-    return { dispose: () => {} };
+  clear(): void {
+    return;
   }
-  onBlur(_callback: () => void) {
-    return { dispose: () => {} };
+  focus(): void {
+    return;
   }
-  loadAddon(_addon: any) {}
-  registerLinkProvider(_provider: any) {}
-  buffer = {
-    active: {
-      getLine(_n: number) {
-        return {
-          translateToString(_trim?: boolean) {
-            return "";
-          },
-        };
-      },
-    },
-  };
-  attachCustomKeyEventHandler(_handler: (e: KeyboardEvent) => boolean) {}
+  resize(): void {
+    return;
+  }
+  onData(): { dispose(): void } {
+    return { dispose: () => undefined };
+  }
+  onBinary(): { dispose(): void } {
+    return { dispose: () => undefined };
+  }
+  onFocus(): { dispose(): void } {
+    return { dispose: () => undefined };
+  }
+  onBlur(): { dispose(): void } {
+    return { dispose: () => undefined };
+  }
+  loadAddon(): void {
+    return;
+  }
+  registerLinkProvider(): void {
+    return;
+  }
+  buffer = { active: { getLine: () => ({ translateToString: () => "" }) } };
+  attachCustomKeyEventHandler(): void {
+    return;
+  }
   element: HTMLElement | null = null;
-  dispose() {}
+  dispose(): void {
+    return;
+  }
 }

@@ -11,7 +11,11 @@ export function Welcome({ message }: Props) {
   return (
     <div className="welcome">
       <strong>{message}</strong>
-      <button onClick={() => vscode.postMessage({ type: "openMenu" })}>
+      <button
+        onClick={() => {
+          vscode.postMessage({ type: "openMenu" });
+        }}
+      >
         Open Worktree Manager Menu
       </button>
     </div>

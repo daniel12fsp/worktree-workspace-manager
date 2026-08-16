@@ -7,7 +7,6 @@ class MockUri {
   path: string;
   query = "";
   fragment = "";
-
   constructor(
     scheme: string,
     authority: string,
@@ -22,92 +21,80 @@ class MockUri {
     this.fragment = fragment;
     this.fsPath = path;
   }
-
-  static file(path: string) {
+  static file(path: string): MockUri {
     return new MockUri("file", "", path, "", "");
   }
-
-  static parse(value: string) {
-    if (value.startsWith("data:")) {
-      return new MockUri("data", "", value, "", "");
-    }
-    return new MockUri("file", "", value, "", "");
+  static parse(value: string): MockUri {
+    return new MockUri(
+      value.startsWith("data:") ? "data" : "file",
+      "",
+      value,
+      "",
+      "",
+    );
   }
-
-  static joinPath(...segments: MockUri[]) {
-    return MockUri.file(segments.map((s) => s.path).join("/"));
+  static joinPath(...segments: MockUri[]): MockUri {
+    return MockUri.file(segments.map((segment) => segment.path).join("/"));
   }
-
-  toString() {
-    if (this.scheme === "data") return this.path;
-    return this.fsPath;
+  toString(): string {
+    return this.scheme === "data" ? this.path : this.fsPath;
   }
 }
 
 export class TreeItem {
-  label: string;
-  collapsibleState: number;
   contextValue?: string;
-  iconPath?: any;
+  iconPath?: unknown;
   tooltip?: string;
-  resourceUri?: any;
+  resourceUri?: unknown;
   checkboxState?: number;
-
-  constructor(label: string, collapsibleState: number) {
-    this.label = label;
-    this.collapsibleState = collapsibleState;
-  }
+  constructor(
+    public label: string,
+    public collapsibleState: number,
+  ) {}
 }
-
 export enum TreeItemCollapsibleState {
   None = 0,
   Collapsed = 1,
   Expanded = 2,
 }
-
 export enum TreeItemCheckboxState {
   Unchecked = 0,
   Checked = 1,
 }
-
 export class ThemeIcon {
-  id: string;
-  constructor(id: string) {
-    this.id = id;
-  }
+  constructor(public id: string) {}
 }
-
-export class EventEmitter<T = any> {
-  private listeners: Array<(e: T) => void> = [];
-  event = (listener: (e: T) => void) => {
+export class EventEmitter<T = unknown> {
+  private listeners: ((event: T) => void)[] = [];
+  event = (listener: (event: T) => void): { dispose(): void } => {
     this.listeners.push(listener);
-    return { dispose: () => {} };
+    return {
+      dispose: () => {
+        this.listeners = this.listeners.filter((item) => item !== listener);
+      },
+    };
   };
-  fire(data: T) {
+  fire(data: T): void {
     for (const listener of this.listeners) listener(data);
   }
-  dispose() {
+  dispose(): void {
     this.listeners = [];
   }
 }
-
 export enum ConfigurationTarget {
   Global = 1,
   Workspace = 2,
   WorkspaceFolder = 3,
 }
-
 export enum ProgressLocation {
   Notification = 10,
   Window = 15,
   SourceControl = 20,
 }
-
 export enum StatusBarAlignment {
   Left = 1,
   Right = 2,
 }
-
 export class StatusBarItem {
   text = "";
   command = "";
@@ -116,99 +103,71 @@ export class StatusBarItem {
   hide = vi.fn();
   dispose = vi.fn();
 }
-
 export class TabInputText {
-  uri: MockUri;
-  constructor(uri: MockUri) {
-    this.uri = uri;
-  }
+  constructor(public uri: MockUri) {}
 }
-
 export class TabInputTextDiff {
-  original: MockUri;
-  modified: MockUri;
-  constructor(original: MockUri, modified: MockUri) {
-    this.original = original;
-    this.modified = modified;
-  }
+  constructor(
+    public original: MockUri,
+    public modified: MockUri,
+  ) {}
 }
-
 export class TabInputCustom {
-  uri: MockUri;
-  viewType: string;
-  constructor(uri: MockUri, viewType: string) {
-    this.uri = uri;
-    this.viewType = viewType;
-  }
+  constructor(
+    public uri: MockUri,
+    public viewType: string,
+  ) {}
 }
-
 export class TabInputNotebook {
-  uri: MockUri;
-  notebookType: string;
-  constructor(uri: MockUri, notebookType: string) {
-    this.uri = uri;
-    this.notebookType = notebookType;
-  }
+  constructor(
+    public uri: MockUri,
+    public notebookType: string,
+  ) {}
 }
-
 export class TabInputNotebookDiff {
-  original: MockUri;
-  modified: MockUri;
-  notebookType: string;
-  constructor(original: MockUri, modified: MockUri, notebookType: string) {
-    this.original = original;
-    this.modified = modified;
-    this.notebookType = notebookType;
-  }
+  constructor(
+    public original: MockUri,
+    public modified: MockUri,
+    public notebookType: string,
+  ) {}
 }
-
 export class TabInputTerminal {
-  constructor() {}
+  readonly kind = "terminal";
 }
 
-const configStore = new Map<string, any>();
-
-function getConfig(section?: string) {
-  const store: Record<string, unknown> = {};
-  for (const [key, value] of configStore) {
-    if (!section || key.startsWith(section + ".")) {
-      store[key] = value;
-    }
-  }
-  return store;
-}
+const configStore = new Map<string, unknown>();
+const disposable = (): { dispose(): void } => ({ dispose: () => undefined });
+const asyncUndefined = (): Promise<undefined> => Promise.resolve(undefined);
 
 export const workspace = {
   workspaceFile: null as MockUri | null,
-  workspaceFolders: null as any,
+  workspaceFolders: null as
+    | { uri: MockUri; name: string; index: number }[]
+    | null,
   getConfiguration: vi.fn((section?: string) => ({
-    get: vi.fn((key: string, defaultValue?: any) => {
-      const fullKey = section ? `${section}.${key}` : key;
-      return configStore.get(fullKey) ?? defaultValue;
-    }),
-    update: vi.fn(async (key: string, value: any) => {
-      const fullKey = section ? `${section}.${key}` : key;
-      configStore.set(fullKey, value);
-    }),
+    get: (key: string, defaultValue?: unknown): unknown =>
+      configStore.get(section ? `${section}.${key}` : key) ?? defaultValue,
+    update: (key: string, value: unknown): Promise<void> => {
+      configStore.set(section ? `${section}.${key}` : key, value);
+      return Promise.resolve();
+    },
   })),
-  onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
-  onDidChangeWorkspaceFolders: vi.fn(() => ({ dispose: vi.fn() })),
+  onDidChangeConfiguration: vi.fn(disposable),
+  onDidChangeWorkspaceFolders: vi.fn(disposable),
   updateWorkspaceFolders: vi.fn(() => true),
-  openTextDocument: vi.fn(async () => ({
-    content: "",
-    languageId: "",
-    uri: MockUri.file(""),
-  })),
+  openTextDocument: vi.fn(() =>
+    Promise.resolve({ content: "", languageId: "", uri: MockUri.file("") }),
+  ),
 };
 
 export const window = {
   createTreeView: vi.fn(() => ({
     reveal: vi.fn(),
     dispose: vi.fn(),
-    onDidChangeSelection: vi.fn(() => ({ dispose: vi.fn() })),
-    onDidChangeCheckboxState: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidChangeSelection: vi.fn(disposable),
+    onDidChangeCheckboxState: vi.fn(disposable),
   })),
-  registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
+  registerWebviewViewProvider: vi.fn(disposable),
   createStatusBarItem: vi.fn(() => new StatusBarItem()),
   createOutputChannel: vi.fn(() => ({
     appendLine: vi.fn(),
@@ -223,45 +182,39 @@ export const window = {
     sendText: vi.fn(),
     dispose: vi.fn(),
   })),
-  showQuickPick: vi.fn(async () => undefined),
-  showInputBox: vi.fn(async () => undefined),
-  showOpenDialog: vi.fn(async () => undefined),
-  showInformationMessage: vi.fn(async () => undefined),
-  showWarningMessage: vi.fn(async () => undefined),
-  showErrorMessage: vi.fn(async () => undefined),
-  withProgress: vi.fn(async (_opts, task) => {
-    await task({ report: vi.fn() });
-  }),
+  showQuickPick: vi.fn(asyncUndefined),
+  showInputBox: vi.fn(asyncUndefined),
+  showOpenDialog: vi.fn(asyncUndefined),
+  showInformationMessage: vi.fn(asyncUndefined),
+  showWarningMessage: vi.fn(asyncUndefined),
+  showErrorMessage: vi.fn(asyncUndefined),
+  withProgress: vi.fn(
+    <T>(_: unknown, task: (progress: { report(): void }) => Promise<T>) =>
+      task({ report: () => undefined }),
+  ),
   tabGroups: {
-    all: [] as any[],
-    close: vi.fn(async () => true),
+    all: [] as unknown[],
+    close: vi.fn(() => Promise.resolve(true)),
   },
 };
-
 export const commands = {
-  registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
-  executeCommand: vi.fn(async () => undefined),
+  registerCommand: vi.fn(disposable),
+  executeCommand: vi.fn(asyncUndefined),
 };
-
 export const env = {
   clipboard: {
-    writeText: vi.fn(async () => {}),
-    readText: vi.fn(async () => ""),
+    writeText: vi.fn(() => Promise.resolve()),
+    readText: vi.fn(() => Promise.resolve("")),
   },
-  openExternal: vi.fn(async () => {}),
+  openExternal: vi.fn(() => Promise.resolve()),
 };
-
 export const Uri = MockUri;
-
-// Helper for tests to reset config state
-export function __resetConfig() {
+export function __resetConfig(): void {
   configStore.clear();
 }
-
-export function __setConfig(key: string, value: any) {
+export function __setConfig(key: string, value: unknown): void {
   configStore.set(key, value);
 }
-
 export default {
   workspace,
   window,

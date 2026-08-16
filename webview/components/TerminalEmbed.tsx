@@ -20,7 +20,9 @@ export function TerminalEmbed({
 }: Props) {
   useEffect(() => {
     if (activeSessionId && terminalApi) {
-      requestAnimationFrame(() => terminalApi.focus());
+      requestAnimationFrame(() => {
+        terminalApi.focus();
+      });
     }
   }, [activeSessionId, terminalApi]);
 
@@ -56,7 +58,9 @@ export function TerminalEmbed({
       }
     };
     window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
+    return () => {
+      window.removeEventListener("keydown", handleKeydown);
+    };
   }, [terminalApi]);
 
   if (!activeSessionId) return null;

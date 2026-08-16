@@ -74,11 +74,14 @@ export const WorktreeNode = React.memo(function WorktreeNode({
                 message: { type: "killWorktree", path: worktree.path },
               },
             ];
-      showContextMenu(e, items, (msg) => vscode.postMessage(msg));
+      showContextMenu(e, items, (msg) => {
+        vscode.postMessage(msg);
+      });
     },
     [worktree.kind, worktree.path, vscode],
   );
 
+  void repoLabel;
   void onSetExplorerWorktree;
 
   const handleAdd = useCallback(

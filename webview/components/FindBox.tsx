@@ -23,20 +23,32 @@ export function FindBox() {
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            handleSearch(Boolean(e.shiftKey));
+            handleSearch(e.shiftKey);
           } else if (e.key === "Escape") {
             e.preventDefault();
             const findBox = document.getElementById("findBox");
             if (findBox) findBox.classList.remove("visible");
           }
         }}
-        onInput={() => handleSearch(false)}
+        onInput={() => {
+          handleSearch(false);
+        }}
       />
       <span id="findResult" className="findResult" />
-      <button onClick={() => handleSearch(true)} title="Previous match">
+      <button
+        onClick={() => {
+          handleSearch(true);
+        }}
+        title="Previous match"
+      >
         ↑
       </button>
-      <button onClick={() => handleSearch(false)} title="Next match">
+      <button
+        onClick={() => {
+          handleSearch(false);
+        }}
+        title="Next match"
+      >
         ↓
       </button>
       <button

@@ -6,7 +6,7 @@ let seq = 0;
 
 export function configuredProfileMarkers(): boolean {
   const envValue =
-    process.env.WTWM_PROFILE || process.env.WORKTREE_MANAGER_PROFILE;
+    process.env.WTWM_PROFILE ?? process.env.WORKTREE_MANAGER_PROFILE;
   if (envValue === "1" || envValue === "true") return true;
   return vscode.workspace
     .getConfiguration("worktreeManager")
@@ -31,8 +31,8 @@ export async function profileAsync<T>(
   if (!configuredProfileMarkers()) return fn();
 
   const id = ++seq;
-  const start = `wtwm:${name}:start:${id}`;
-  const end = `wtwm:${name}:end:${id}`;
+  const start = `wtwm:${name}:start:${String(id)}`;
+  const end = `wtwm:${name}:end:${String(id)}`;
   performance.mark(start);
   try {
     return await fn();
@@ -58,8 +58,8 @@ export function profileSync<T>(
   if (!configuredProfileMarkers()) return fn();
 
   const id = ++seq;
-  const start = `wtwm:${name}:start:${id}`;
-  const end = `wtwm:${name}:end:${id}`;
+  const start = `wtwm:${name}:start:${String(id)}`;
+  const end = `wtwm:${name}:end:${String(id)}`;
   performance.mark(start);
   try {
     return fn();
