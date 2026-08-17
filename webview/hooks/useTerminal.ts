@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import { Terminal } from "@xterm/xterm";
 import { handleTerminalKeyEvent } from "./terminalKeyHandler";
+import type { TerminalSessionNavigationDirection } from "./terminalUtilsCore";
 import { SearchAddon } from "@xterm/addon-search";
 import { FitAddon } from "@xterm/addon-fit";
 import type {
@@ -16,6 +17,7 @@ export function useTerminal(
   activeSessionId: string | undefined,
   onData: (data: string, encoding?: TerminalInputEncoding) => void,
   onResize: (cols: number, rows: number) => void,
+  onSelectAdjacent: (direction: TerminalSessionNavigationDirection) => void,
 ) {
   const termRef = useRef<TerminalLike | null>(null);
   const searchAddonRef = useRef<SearchAddonLike | null>(null);
@@ -32,6 +34,8 @@ export function useTerminal(
   onDataRef.current = onData;
   const onResizeRef = useRef(onResize);
   onResizeRef.current = onResize;
+  const onSelectAdjacentRef = useRef(onSelectAdjacent);
+  onSelectAdjacentRef.current = onSelectAdjacent;
   const attachExistingTerminal = useCallback(() => {
     const term = termRef.current;
     const container = containerRef.current;
@@ -84,6 +88,7 @@ export function useTerminal(
           activeSessionIdRef,
           hasFocusRef,
           onData: onDataRef.current,
+          onSelectAdjacent: onSelectAdjacentRef.current,
         }),
       );
       term.open(containerRef.current);

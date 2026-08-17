@@ -5,6 +5,8 @@ import {
   writeTerminalSelectionToClipboard,
   readClipboardToTerminal,
   terminalNavigationInputSequence,
+  terminalSessionNavigationDirection,
+  type TerminalSessionNavigationDirection,
 } from "./terminalUtilsCore";
 import { hideTerminalFindBox, focusTerminalNow } from "./terminalUtilsLinks";
 
@@ -16,6 +18,9 @@ interface KeyHandlerOptions {
   readonly activeSessionIdRef: RefObject<string | undefined>;
   readonly hasFocusRef: RefObject<boolean>;
   readonly onData: (data: string) => void;
+  readonly onSelectAdjacent: (
+    direction: TerminalSessionNavigationDirection,
+  ) => void;
 }
 
 function handleClipboard(
@@ -83,6 +88,13 @@ export function handleTerminalKeyEvent(
   if (handleClipboard(event, options)) return false;
   if (handleFind(event, options.runSearch)) return false;
   if (handleEscape(event, options)) return false;
+  const sessionDirection = terminalSessionNavigationDirection(event);
+  if (sessionDirection) {
+    event.preventDefault();
+    event.stopPropagation();
+    options.onSelectAdjacent(sessionDirection);
+    return false;
+  }
   const navigationInput = terminalNavigationInputSequence(event);
   if (!navigationInput) return true;
   event.preventDefault();

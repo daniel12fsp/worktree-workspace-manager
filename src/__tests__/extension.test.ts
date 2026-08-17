@@ -10,6 +10,7 @@ import {
   expandMaybeHome,
   menuItems,
   workspaceFolderMatchesRepository,
+  activate,
   type BareRepository,
 } from "../extension";
 
@@ -35,9 +36,12 @@ vi.mock("../embeddedTerminalView", () => ({
     openTerminal: vi.fn(),
     openTerminalForPath: vi.fn(),
     openNativeTerminalForPath: vi.fn(),
+    focusTerminal: vi.fn(),
+    selectPreviousTerminal: vi.fn(),
+    selectNextTerminal: vi.fn(),
     killRepoTerminals: vi.fn(),
     killWorktreeTerminals: vi.fn(),
-    onDidChangeExplorerWorktree: { event: vi.fn() },
+    onDidChangeExplorerWorktree: vi.fn(() => ({ dispose: vi.fn() })),
   })),
 }));
 vi.mock("../worktreeView", () => ({
@@ -58,6 +62,24 @@ vi.mock("../workspaceFile", () => ({
   hideBareRepositoryFolders: vi.fn(async () => {}),
   getCheckedWorktreePaths: vi.fn(async () => new Set()),
 }));
+
+describe("terminal keyboard commands", () => {
+  it("registers customizable focus and session navigation commands", async () => {
+    const vscode = await import("vscode");
+    vi.mocked(vscode.commands.registerCommand).mockClear();
+    const context = { subscriptions: [] } as any;
+
+    activate(context);
+
+    const registrations = vi.mocked(vscode.commands.registerCommand).mock.calls;
+    const commandIds = registrations.map(([id]) => id);
+    expect(commandIds).toContain("worktreeManager.focusEmbeddedTerminal");
+    expect(commandIds).toContain(
+      "worktreeManager.selectPreviousEmbeddedTerminal",
+    );
+    expect(commandIds).toContain("worktreeManager.selectNextEmbeddedTerminal");
+  });
+});
 
 describe("shellQuote", () => {
   it("wraps in single quotes", () => {

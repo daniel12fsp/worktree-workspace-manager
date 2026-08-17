@@ -112,6 +112,18 @@ code '/path/to/my-project.code-workspace'
 | **Remove Worktree**              | Run `git worktree remove`.                          |
 | **Fetch / Prune Stale**          | Keep repository metadata current.                   |
 
+## Terminal keyboard shortcuts
+
+| Action | Linux / Windows | macOS |
+| --- | --- | --- |
+| Focus active embedded terminal | `Ctrl+Alt+Shift+T` | `Cmd+Option+Shift+T` |
+| Select terminal above | `Ctrl+Alt+Shift+Up` | `Cmd+Option+Shift+Up` |
+| Select terminal below | `Ctrl+Alt+Shift+Down` | `Cmd+Option+Shift+Down` |
+
+Terminal selection follows the visible order and wraps at either end. These are
+VS Code default keybindings rather than hard-coded listeners. Change or remove
+them with **Preferences: Open Keyboard Shortcuts** or in `keybindings.json`.
+
 ---
 
 ## Settings

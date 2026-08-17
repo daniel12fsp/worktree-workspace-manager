@@ -726,6 +726,49 @@ describe("EmbeddedTerminalViewProvider", () => {
     expect(typeof provider.openNativeTerminalForPath).toBe("function");
   });
 
+  it("focuses the embedded terminal through the webview", async () => {
+    const postMessage = vi.fn(async () => true);
+    (provider as any).view = { webview: { postMessage } };
+
+    await provider.focusTerminal();
+
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      "worktreeManager.terminals.focus",
+    );
+    expect(postMessage).toHaveBeenCalledWith({ type: "focusTerminal" });
+  });
+
+  it("selects terminals above and below in display order with wraparound", async () => {
+    const postMessage = vi.fn(async () => true);
+    (provider as any).view = { webview: { postMessage } };
+    (provider as any).sessions.set("first", { id: "first" });
+    (provider as any).sessions.set("second", { id: "second" });
+    (provider as any).terminalOrder.set("first", 1);
+    (provider as any).terminalOrder.set("second", 2);
+    (provider as any).activeSessionId = "first";
+    vi.spyOn(provider as any, "renderSessions").mockResolvedValue(undefined);
+    vi.spyOn(provider as any, "postActiveSessionReplay").mockResolvedValue(
+      undefined,
+    );
+
+    await provider.selectPreviousTerminal();
+    expect((provider as any).activeSessionId).toBe("second");
+
+    await provider.selectNextTerminal();
+    expect((provider as any).activeSessionId).toBe("first");
+    expect(postMessage).toHaveBeenCalledWith({ type: "focusTerminal" });
+  });
+
+  it("focuses safely when selecting with no terminal sessions", async () => {
+    const postMessage = vi.fn(async () => true);
+    (provider as any).view = { webview: { postMessage } };
+
+    await provider.selectNextTerminal();
+
+    expect((provider as any).activeSessionId).toBeUndefined();
+    expect(postMessage).toHaveBeenCalledWith({ type: "focusTerminal" });
+  });
+
   it("has killRepoTerminals method", () => {
     expect(typeof provider.killRepoTerminals).toBe("function");
   });
@@ -1191,7 +1234,7 @@ describe("EmbeddedTerminalViewProvider", () => {
     await messageHandler!({ type: "collapseAll" });
   });
 
-  it("handleWebviewMessage openMenu executes command", async () => {
+  it("handleWebviewMessage executes commands requested by the webview", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
@@ -1210,8 +1253,16 @@ describe("EmbeddedTerminalViewProvider", () => {
     } as any;
     provider.resolveWebviewView(mockView);
     await messageHandler!({ type: "openMenu" });
+    await messageHandler!({ type: "selectPreviousTerminal" });
+    await messageHandler!({ type: "selectNextTerminal" });
     expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
       "worktreeManager.showMenu",
+    );
+    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
+      "worktreeManager.selectPreviousEmbeddedTerminal",
+    );
+    expect(vi.mocked(vscode.commands.executeCommand)).toHaveBeenCalledWith(
+      "worktreeManager.selectNextEmbeddedTerminal",
     );
   });
 

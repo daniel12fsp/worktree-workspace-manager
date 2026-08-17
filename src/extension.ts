@@ -244,6 +244,18 @@ export function activate(context: vscode.ExtensionContext): void {
       async (fsPath: string) => terminalProvider.openTerminalForPath(fsPath),
     ),
     vscode.commands.registerCommand(
+      "worktreeManager.focusEmbeddedTerminal",
+      async () => terminalProvider.focusTerminal(),
+    ),
+    vscode.commands.registerCommand(
+      "worktreeManager.selectPreviousEmbeddedTerminal",
+      async () => terminalProvider.selectPreviousTerminal(),
+    ),
+    vscode.commands.registerCommand(
+      "worktreeManager.selectNextEmbeddedTerminal",
+      async () => terminalProvider.selectNextTerminal(),
+    ),
+    vscode.commands.registerCommand(
       "worktreeManager.openNativeTerminalForPath",
       async (fsPath: string) =>
         terminalProvider.openNativeTerminalForPath(fsPath),

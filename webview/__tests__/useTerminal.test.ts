@@ -15,6 +15,7 @@ import {
   terminalCursorShowSequence,
   lastCursorVisibilityControl,
   terminalNavigationInputSequence,
+  terminalSessionNavigationDirection,
   terminalClipboardShortcutAction,
   detectTerminalLinksInBuffer,
   hideTerminalFindBox,
@@ -259,6 +260,66 @@ describe("stripTerminalGeneratedInput", () => {
 
   it("preserves keyboard input sequences while idle", () => {
     expect(stripTerminalGeneratedInput("a\x1b[Ab", "idle")).toBe("a\x1b[Ab");
+  });
+});
+
+describe("terminalSessionNavigationDirection", () => {
+  it("maps the default Linux and macOS shortcuts", () => {
+    expect(
+      terminalSessionNavigationDirection(
+        {
+          type: "keydown",
+          key: "ArrowUp",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: true,
+          shiftKey: true,
+        },
+        "Linux",
+      ),
+    ).toBe(-1);
+    expect(
+      terminalSessionNavigationDirection(
+        {
+          type: "keydown",
+          key: "ArrowDown",
+          ctrlKey: false,
+          metaKey: true,
+          altKey: true,
+          shiftKey: true,
+        },
+        "MacIntel",
+      ),
+    ).toBe(1);
+  });
+
+  it("does not capture incomplete or wrong-platform shortcuts", () => {
+    expect(
+      terminalSessionNavigationDirection(
+        {
+          type: "keydown",
+          key: "ArrowUp",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: false,
+          shiftKey: true,
+        },
+        "Linux",
+      ),
+    ).toBeUndefined();
+    expect(
+      terminalSessionNavigationDirection(
+        {
+          type: "keydown",
+          key: "ArrowDown",
+          ctrlKey: true,
+          metaKey: false,
+          altKey: true,
+          shiftKey: true,
+        },
+        "MacIntel",
+      ),
+    ).toBeUndefined();
   });
 });
 

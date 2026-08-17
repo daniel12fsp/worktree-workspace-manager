@@ -43,6 +43,8 @@ export function useAppEffects(options: AppEffectsOptions): void {
     renderStartedAt,
     sendTerminalInput,
   } = options;
+  const activeSessionIdRef = React.useRef(state.activeSessionId);
+  activeSessionIdRef.current = state.activeSessionId;
 
   React.useEffect(() => {
     if (!state.activeSessionId) return;
@@ -90,7 +92,10 @@ export function useAppEffects(options: AppEffectsOptions): void {
   React.useEffect(() => {
     const handler = (event: MessageEvent) => {
       const message = event.data as WebviewMessage;
-      if (message.type === "state") {
+      if (message.type === "focusTerminal") {
+        terminalApi.focus();
+      } else if (message.type === "state") {
+        activeSessionIdRef.current = message.activeSessionId;
         setState((previous) => ({
           repos: message.repos ?? [],
           activeSessionId: message.activeSessionId,
@@ -102,16 +107,22 @@ export function useAppEffects(options: AppEffectsOptions): void {
           webviewRenderTelemetry: message.webviewRenderTelemetry,
           profileMarkers: Boolean(message.profileMarkers),
         }));
-      } else if (isActiveMessage(message, "replay", state.activeSessionId)) {
+      } else if (
+        isActiveMessage(message, "replay", activeSessionIdRef.current)
+      ) {
         replayedSessionIdRef.current = message.id;
         setState((previous) => ({
           ...previous,
           activeOutput: message.data ?? "",
         }));
         terminalApi.clearAndWrite(message.data ?? "");
-      } else if (isActiveMessage(message, "output", state.activeSessionId)) {
+      } else if (
+        isActiveMessage(message, "output", activeSessionIdRef.current)
+      ) {
         terminalApi.write(message.data ?? "");
-      } else if (isActiveMessage(message, "clear", state.activeSessionId)) {
+      } else if (
+        isActiveMessage(message, "clear", activeSessionIdRef.current)
+      ) {
         terminalApi.clear();
       } else if (message.type === "loadingDone") {
         setState((previous) => {

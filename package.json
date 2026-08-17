@@ -57,7 +57,10 @@
     "onCommand:worktreeManager.pruneStale",
     "onCommand:worktreeManager.configureRepositories",
     "onCommand:worktreeManager.closeRepoTerminals",
-    "onCommand:worktreeManager.killWorktreeTerminals"
+    "onCommand:worktreeManager.killWorktreeTerminals",
+    "onCommand:worktreeManager.focusEmbeddedTerminal",
+    "onCommand:worktreeManager.selectPreviousEmbeddedTerminal",
+    "onCommand:worktreeManager.selectNextEmbeddedTerminal"
   ],
   "main": "./out/extension.js",
   "scripts": {
@@ -266,6 +269,35 @@
       {
         "command": "worktreeManager.killWorktreeTerminals",
         "title": "Kill Related Terminals"
+      },
+      {
+        "command": "worktreeManager.focusEmbeddedTerminal",
+        "title": "Terminals by Worktree: Focus Active Terminal"
+      },
+      {
+        "command": "worktreeManager.selectPreviousEmbeddedTerminal",
+        "title": "Terminals by Worktree: Select Terminal Above"
+      },
+      {
+        "command": "worktreeManager.selectNextEmbeddedTerminal",
+        "title": "Terminals by Worktree: Select Terminal Below"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "worktreeManager.focusEmbeddedTerminal",
+        "key": "ctrl+alt+shift+t",
+        "mac": "cmd+alt+shift+t"
+      },
+      {
+        "command": "worktreeManager.selectPreviousEmbeddedTerminal",
+        "key": "ctrl+alt+shift+up",
+        "mac": "cmd+alt+shift+up"
+      },
+      {
+        "command": "worktreeManager.selectNextEmbeddedTerminal",
+        "key": "ctrl+alt+shift+down",
+        "mac": "cmd+alt+shift+down"
       }
     ],
     "menus": {

@@ -10,6 +10,7 @@ const TERMINAL_CURSOR_SHOW = "\x1b[?25h";
 const CURSOR_RESTORE_DELAY_MS = 250;
 type ClipboardShortcutAction = "copy" | "paste";
 type TerminalInputEncoding = "text" | "binary";
+export type TerminalSessionNavigationDirection = -1 | 1;
 export interface TerminalRange {
   start: { x: number; y: number };
   end: { x: number; y: number };
@@ -31,6 +32,29 @@ export interface TerminalLike {
   focus(): void;
   registerLinkProvider?(provider: unknown): void;
 }
+export function terminalSessionNavigationDirection(
+  event: Pick<
+    KeyboardEvent,
+    "type" | "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+  >,
+  platform = navigator.userAgent,
+): TerminalSessionNavigationDirection | undefined {
+  const isMac = /mac/i.test(platform);
+  const hasPlatformModifier = isMac
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey;
+  if (
+    event.type !== "keydown" ||
+    !hasPlatformModifier ||
+    !event.altKey ||
+    !event.shiftKey
+  ) {
+    return undefined;
+  }
+  if (event.key === "ArrowUp") return -1;
+  return event.key === "ArrowDown" ? 1 : undefined;
+}
+
 export function terminalNavigationInputSequence(
   event: Pick<
     KeyboardEvent,

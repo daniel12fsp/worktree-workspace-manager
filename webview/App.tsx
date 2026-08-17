@@ -81,12 +81,23 @@ export function App({ initialState }: Props) {
     [state.activeSessionId, vscode],
   );
 
+  const handleSelectAdjacent = useCallback(
+    (direction: -1 | 1) => {
+      vscode.postMessage({
+        type:
+          direction === -1 ? "selectPreviousTerminal" : "selectNextTerminal",
+      });
+    },
+    [vscode],
+  );
+
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const terminalApi = useTerminal(
     terminalContainerRef,
     state.activeSessionId,
     handleTerminalData,
     handleTerminalResize,
+    handleSelectAdjacent,
   );
 
   const handleSelect = useCallback(

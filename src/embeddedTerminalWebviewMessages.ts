@@ -59,6 +59,16 @@ export abstract class EmbeddedTerminalWebviewMessages extends EmbeddedTerminalAc
       openMenu: async () => {
         await vscode.commands.executeCommand("worktreeManager.showMenu");
       },
+      selectPreviousTerminal: async () => {
+        await vscode.commands.executeCommand(
+          "worktreeManager.selectPreviousEmbeddedTerminal",
+        );
+      },
+      selectNextTerminal: async () => {
+        await vscode.commands.executeCommand(
+          "worktreeManager.selectNextEmbeddedTerminal",
+        );
+      },
       collapse: () => {
         log("ignored embedded terminal collapse message", {
           id: String(message.id),

@@ -34,11 +34,57 @@ export class EmbeddedTerminalViewProvider
       async () => {
         const session = this.createSession(worktree);
         this.activeSessionId = session.id;
-        await vscode.commands.executeCommand("worktreeManager.terminals.focus");
-        void this.renderSessions();
+        await this.revealTerminalView();
+        await this.renderSessions();
+        await this.requestTerminalFocus();
       },
       { worktree: worktree.name, repo: worktree.repo.label },
     );
+  }
+
+  async focusTerminal(): Promise<void> {
+    await this.revealTerminalView();
+    await this.requestTerminalFocus();
+  }
+
+  async selectPreviousTerminal(): Promise<void> {
+    await this.selectAdjacentTerminal(-1);
+  }
+
+  async selectNextTerminal(): Promise<void> {
+    await this.selectAdjacentTerminal(1);
+  }
+
+  private async selectAdjacentTerminal(direction: -1 | 1): Promise<void> {
+    const ordered = this.orderedSessions([...this.sessions.values()]);
+    if (ordered.length > 0) {
+      this.flushTerminalOutput();
+      const activeIndex = ordered.findIndex(
+        (session) => session.id === this.activeSessionId,
+      );
+      const nextIndex =
+        activeIndex < 0
+          ? direction === 1
+            ? 0
+            : ordered.length - 1
+          : (activeIndex + direction + ordered.length) % ordered.length;
+      this.activeSessionId = ordered[nextIndex].id;
+    }
+
+    await this.revealTerminalView();
+    if (ordered.length > 0) {
+      await this.renderSessions();
+      await this.postActiveSessionReplay();
+    }
+    await this.requestTerminalFocus();
+  }
+
+  private async revealTerminalView(): Promise<void> {
+    await vscode.commands.executeCommand("worktreeManager.terminals.focus");
+  }
+
+  private async requestTerminalFocus(): Promise<void> {
+    await this.view?.webview.postMessage({ type: "focusTerminal" });
   }
 
   async openTerminalForPath(fsPath: string): Promise<void> {

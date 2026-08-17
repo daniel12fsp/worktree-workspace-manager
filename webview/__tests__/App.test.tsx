@@ -317,6 +317,115 @@ describe("App", () => {
     });
   });
 
+  it("selects adjacent sessions with the terminal-focused shortcuts", () => {
+    const mockVsCode = createMockVsCode();
+    renderWithVsCode(
+      {
+        repos: [
+          {
+            label: "project.git",
+            path: "/repos/project",
+            worktrees: [
+              {
+                name: "main",
+                branch: "main",
+                path: "/repos/project/main",
+                color: "#e6194b",
+                activeInExplorer: true,
+                sessions: [
+                  {
+                    id: "s1",
+                    label: "terminal 1",
+                    state: "idle",
+                    displayName: "terminal 1",
+                    statusText: "",
+                    preview: "",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        activeSessionId: "s1",
+        activeOutput: "",
+        hasWorkspace: true,
+        home: "/home/user",
+        loadingWorktrees: new Set(),
+      },
+      mockVsCode,
+    );
+    const terminal = vi.mocked(Terminal).mock.results.at(-1)?.value;
+    const handler = vi.mocked(terminal.attachCustomKeyEventHandler).mock
+      .calls[0]?.[0];
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    expect(
+      handler({
+        type: "keydown",
+        key: "ArrowUp",
+        ctrlKey: true,
+        metaKey: false,
+        altKey: true,
+        shiftKey: true,
+        preventDefault,
+        stopPropagation,
+      }),
+    ).toBe(false);
+
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
+    expect(mockVsCode.postMessage).toHaveBeenCalledWith({
+      type: "selectPreviousTerminal",
+    });
+  });
+
+  it("focuses xterm when the extension requests terminal focus", async () => {
+    renderWithVsCode({
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "main",
+              branch: "main",
+              path: "/repos/project/main",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "idle",
+                  displayName: "terminal 1",
+                  statusText: "",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      activeSessionId: "s1",
+      activeOutput: "",
+      hasWorkspace: true,
+      home: "/home/user",
+      loadingWorktrees: new Set(),
+    });
+    await waitFor(() => expect(Terminal).toHaveBeenCalled());
+    const terminal = vi.mocked(Terminal).mock.results.at(-1)?.value;
+    terminal.focus.mockClear();
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", { data: { type: "focusTerminal" } }),
+      );
+    });
+
+    expect(terminal.focus).toHaveBeenCalledOnce();
+  });
+
   it("routes terminal typing without capturing extension text input", async () => {
     let onDataCallback: ((data: string) => void) | undefined;
     mockTerminalOnData.mockImplementation(
@@ -1485,7 +1594,7 @@ describe("App", () => {
     window.dispatchEvent(event);
   });
 
-  it("writes mouse reset when the active session changes", async () => {
+  it("replays output sent immediately after the active session changes", async () => {
     const first: AppState = {
       repos: [
         {
@@ -1550,15 +1659,6 @@ describe("App", () => {
           },
         }),
       );
-    });
-
-    await waitFor(() => {
-      expect(term.write).toHaveBeenCalledWith(
-        "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
-      );
-    });
-
-    act(() => {
       window.dispatchEvent(
         new MessageEvent("message", {
           data: { type: "replay", id: "s2", data: "second" },
@@ -1568,6 +1668,9 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(term.write).toHaveBeenCalledWith("second", expect.any(Function));
+      expect(term.write).toHaveBeenCalledWith(
+        "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
+      );
     });
   });
 
