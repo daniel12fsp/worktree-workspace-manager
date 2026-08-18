@@ -18,6 +18,7 @@ import {
 } from "./terminalEnvironment";
 import { appendOutputChunk } from "./terminalOutput";
 import { shellActivityWrapper } from "./terminalShellWrapper";
+import { invalidateModelCache } from "./modelHelpers";
 
 const TERMINAL_OUTPUT_BATCH_MS = 16;
 
@@ -35,7 +36,11 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
     const terminalNumber = generated.terminalNumber;
     const shellResolution = resolvedTerminalShell();
     const wrapper = shellActivityWrapper(shellResolution.shell);
-    const env = ptyEnv({ ...options.env, ...wrapper.env });
+    const env = ptyEnv({
+      ...options.env,
+      WTWM_WORKTREE_PATH: worktree.path,
+      ...wrapper.env,
+    });
     log("embedded terminal spawn prepare", {
       repo: worktree.repo.label,
       worktree: worktree.name,
@@ -108,6 +113,7 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
       statusText: "idle",
       lastCommand: "",
       lastCommandText: "",
+      reportedBranch: worktree.branch,
       activityMarkerRemainder: "",
       previewLineRemainder: "",
       previewPendingCarriageReturn: false,
@@ -118,15 +124,18 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
     };
     this.terminalOrder.set(id, ++this.terminalOrderSeq);
     proc.onData((data) => {
-      const { visibleData, stateChanged } = consumeActivityMarkers(
-        session,
-        data,
-      );
+      const { visibleData, stateChanged, branchChanged } =
+        consumeActivityMarkers(session, data);
       if (visibleData) {
         appendOutputChunk(session, visibleData);
         this.postTerminalOutput(id, visibleData);
       }
-      if (stateChanged) void this.renderSessions();
+      if (branchChanged) {
+        invalidateModelCache();
+        this.invalidateWorkspaceStateCache();
+        this.explorerWorktreeChanged.fire();
+      }
+      if (stateChanged || branchChanged) void this.renderSessions();
     });
     proc.onExit((event) => {
       log("terminal exited", {

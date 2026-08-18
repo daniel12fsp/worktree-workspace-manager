@@ -405,6 +405,13 @@ describe("zshActivityRc", () => {
     expect(rc).toContain('if [[ "$exit_code" -ne 0 ]]');
     expect(rc).toContain("777;wtwm;error;%s;%s");
   });
+
+  it("reports the worktree branch after each command", () => {
+    const rc = zshActivityRc();
+    expect(rc).toContain('git -C "$WTWM_WORKTREE_PATH" symbolic-ref');
+    expect(rc).toContain("777;wtwm;branch;%s");
+    expect(rc).toContain('return "$exit_code"');
+  });
 });
 
 describe("bashActivityRc", () => {
@@ -438,6 +445,13 @@ describe("bashActivityRc", () => {
     expect(rc).toContain('if [[ "$exit_code" -ne 0 ]]');
     expect(rc).toContain("777;wtwm;error;%s;%s");
     expect(rc).toContain("history 1");
+  });
+
+  it("reports the worktree branch after each command", () => {
+    const rc = bashActivityRc();
+    expect(rc).toContain('git -C "$WTWM_WORKTREE_PATH" symbolic-ref');
+    expect(rc).toContain("777;wtwm;branch;%s");
+    expect(rc).toContain('return "$exit_code"');
   });
 });
 
@@ -494,6 +508,7 @@ describe("consumeActivityMarkers", () => {
     statusText: "idle",
     lastCommand: "",
     lastCommandText: "",
+    reportedBranch: undefined,
     activityMarkerRemainder: "",
     previewLineRemainder: "",
     previewPendingCarriageReturn: false,
@@ -587,6 +602,31 @@ describe("consumeActivityMarkers", () => {
     expect(session.statusText).toBe("npm failed (127)");
     expect(session.lastCommandText).toBe("npm run dev");
     expect(result.stateChanged).toBe(true);
+  });
+
+  it("detects and strips branch markers", () => {
+    const session = makeSession({ reportedBranch: "main" });
+    const data = "before\x1b]777;wtwm;branch;feat/login\x07after";
+    const result = consumeActivityMarkers(session, data);
+    expect(result.visibleData).toBe("beforeafter");
+    expect(result.stateChanged).toBe(false);
+    expect(result.branchChanged).toBe(true);
+    expect(session.reportedBranch).toBe("feat/login");
+  });
+
+  it("reports detached HEAD only when the branch changes", () => {
+    const session = makeSession({ reportedBranch: "main" });
+    const changed = consumeActivityMarkers(
+      session,
+      "\x1b]777;wtwm;branch;\x07",
+    );
+    const unchanged = consumeActivityMarkers(
+      session,
+      "\x1b]777;wtwm;branch;\x07",
+    );
+    expect(changed.branchChanged).toBe(true);
+    expect(unchanged.branchChanged).toBe(false);
+    expect(session.reportedBranch).toBeUndefined();
   });
 
   it("strips markers from visible data", () => {
@@ -1085,6 +1125,68 @@ describe("EmbeddedTerminalViewProvider", () => {
     }
 
     expect(mockListAllWorktrees).not.toHaveBeenCalled();
+  });
+
+  it("refreshes terminal and explorer branch labels after a branch marker", async () => {
+    const onDataCallbacks: Array<(data: string) => void> = [];
+    mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
+      onDataCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    }) as any);
+    const repo = {
+      label: "project.git",
+      fsPath: "/repos/project",
+      gitDir: "/repos/project/.bare",
+      configPath: "/repos/project.git",
+    } as any;
+    const mainWorktree = {
+      name: "feat-login",
+      path: "/tmp/feat-login",
+      color: "#fff",
+      branch: "main",
+      repo,
+    } as any;
+    const switchedWorktree = { ...mainWorktree, branch: "feat/login" };
+    mockListAllWorktrees.mockResolvedValue(new Map([[repo, [mainWorktree]]]));
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    provider.resolveWebviewView({ visible: true, webview: mockWebview } as any);
+    await provider.openTerminal(mainWorktree);
+    while ((provider as any).renderSessionsPromise) {
+      await (provider as any).renderSessionsPromise;
+    }
+
+    const explorerListener = vi.fn();
+    provider.onDidChangeExplorerWorktree(explorerListener);
+    mockListAllWorktrees.mockResolvedValue(
+      new Map([[repo, [switchedWorktree]]]),
+    );
+    mockListAllWorktrees.mockClear();
+    mockWebview.postMessage.mockClear();
+
+    onDataCallbacks[0]?.("\x1b]777;wtwm;branch;feat/login\x07");
+    while ((provider as any).renderSessionsPromise) {
+      await (provider as any).renderSessionsPromise;
+    }
+
+    expect(explorerListener).toHaveBeenCalledOnce();
+    expect(mockListAllWorktrees).toHaveBeenCalled();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "state",
+        repos: [
+          expect.objectContaining({
+            worktrees: [expect.objectContaining({ branch: "feat/login" })],
+          }),
+        ],
+      }),
+    );
   });
 
   it("batches active terminal output messages", async () => {
@@ -2999,6 +3101,7 @@ function makeSession(
     statusText: "idle",
     lastCommand: "",
     lastCommandText: "",
+    reportedBranch: undefined,
     activityMarkerRemainder: "",
     previewLineRemainder: "",
     previewPendingCarriageReturn: false,

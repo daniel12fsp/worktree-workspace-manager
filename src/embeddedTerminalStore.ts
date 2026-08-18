@@ -36,6 +36,7 @@ export abstract class EmbeddedTerminalStore {
   constructor(protected readonly extensionUri: vscode.Uri) {}
 
   protected abstract renderSessions(): Promise<void>;
+  protected abstract invalidateWorkspaceStateCache(): void;
   protected abstract removeSessionFromWorktreeIndex(
     session: EmbeddedSession,
   ): void;

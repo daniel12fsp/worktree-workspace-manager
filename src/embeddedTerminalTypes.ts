@@ -18,6 +18,7 @@ export interface EmbeddedSession {
   statusText: string;
   lastCommand: string;
   lastCommandText: string;
+  reportedBranch: string | undefined;
   activityMarkerRemainder: string;
   previewLineRemainder: string;
   previewPendingCarriageReturn: boolean;

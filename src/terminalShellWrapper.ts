@@ -91,11 +91,14 @@ __wtwm_preexec() {
 
 __wtwm_precmd() {
   local exit_code="$?"
+  local git_branch=""
   if [[ "$exit_code" -ne 0 ]]; then
     printf '\033]777;wtwm;error;%s;%s\a' "$exit_code" "$__wtwm_last_command"
   else
     printf '\033]777;wtwm;idle\a'
   fi
+  git_branch="$(command git -C "$WTWM_WORKTREE_PATH" symbolic-ref --quiet --short HEAD 2>/dev/null)"
+  printf '\033]777;wtwm;branch;%s\a' "$git_branch"
   return "$exit_code"
 }
 
@@ -133,6 +136,7 @@ __wtwm_debug() {
 __wtwm_prompt_start() {
   local exit_code="$?"
   local command=""
+  local git_branch=""
   __wtwm_in_prompt=1
   if [[ "$exit_code" -ne 0 ]]; then
     command="$(__wtwm_command_from_history)"
@@ -140,6 +144,8 @@ __wtwm_prompt_start() {
   else
     printf '\\033]777;wtwm;idle\\a'
   fi
+  git_branch="$(command git -C "$WTWM_WORKTREE_PATH" symbolic-ref --quiet --short HEAD 2>/dev/null)"
+  printf '\\033]777;wtwm;branch;%s\\a' "$git_branch"
   return "$exit_code"
 }
 

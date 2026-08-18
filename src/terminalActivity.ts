@@ -5,14 +5,14 @@ const terminalEscape = String.fromCharCode(27);
 const terminalBell = String.fromCharCode(7);
 const activityMarkerPrefix = `${terminalEscape}]777;wtwm;`;
 const activityMarkerPattern = new RegExp(
-  `${terminalEscape}\\]777;wtwm;(start;([^${terminalBell}]*)|idle|error;([^;${terminalBell}]*)(?:;([^${terminalBell}]*))?)${terminalBell}`,
+  `${terminalEscape}\\]777;wtwm;(start;[^${terminalBell}]*|idle|error;[^${terminalBell}]*|branch;[^${terminalBell}]*)${terminalBell}`,
   "g",
 );
 
 export function consumeActivityMarkers(
   session: EmbeddedSession,
   data: string,
-): { visibleData: string; stateChanged: boolean } {
+): { visibleData: string; stateChanged: boolean; branchChanged: boolean } {
   let combined = session.activityMarkerRemainder + data;
   session.activityMarkerRemainder = "";
 
@@ -26,21 +26,43 @@ export function consumeActivityMarkers(
   }
 
   let stateChanged = false;
+  let branchChanged = false;
   const visibleData = combined.replace(
     activityMarkerPattern,
-    (
-      _match,
-      kind: string,
-      command?: string,
-      exitCode?: string,
-      failedCommand?: string,
-    ) => {
-      applyActivityMarker(session, kind, command, exitCode, failedCommand);
-      stateChanged = true;
+    (_match, marker: string) => {
+      if (marker.startsWith("branch;")) {
+        const branch = marker.slice("branch;".length);
+        const nextBranch = branch === "" ? undefined : branch;
+        branchChanged = branchChanged || nextBranch !== session.reportedBranch;
+        session.reportedBranch = nextBranch;
+      } else {
+        applyEncodedActivityMarker(session, marker);
+        stateChanged = true;
+      }
       return "";
     },
   );
-  return { visibleData, stateChanged };
+  return { visibleData, stateChanged, branchChanged };
+}
+
+function applyEncodedActivityMarker(
+  session: EmbeddedSession,
+  marker: string,
+): void {
+  if (marker.startsWith("start;")) {
+    applyActivityMarker(session, marker, marker.slice("start;".length));
+    return;
+  }
+  if (marker.startsWith("error;")) {
+    const payload = marker.slice("error;".length);
+    const separator = payload.indexOf(";");
+    const exitCode = separator < 0 ? payload : payload.slice(0, separator);
+    const failedCommand =
+      separator < 0 ? undefined : payload.slice(separator + 1);
+    applyActivityMarker(session, marker, undefined, exitCode, failedCommand);
+    return;
+  }
+  applyActivityMarker(session, marker);
 }
 
 function applyActivityMarker(
