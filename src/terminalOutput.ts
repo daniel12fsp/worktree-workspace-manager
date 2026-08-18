@@ -8,6 +8,8 @@ import type {
 } from "./embeddedTerminalTypes";
 
 const MAX_SESSION_OUTPUT_CHARS = 200_000;
+const COMPACTED_SESSION_OUTPUT_CHARS = 150_000;
+const MAX_PREVIEW_LINE_CHARS = 140;
 
 export function outputPreview(output: string[]): string {
   return buildOutputPreviewState(output).preview;
@@ -21,19 +23,9 @@ export function appendOutputChunk(
   session.outputCharCount += chunk.length;
   const previewState = updateOutputPreviewState(session, chunk);
   session.preview = previewState.preview;
-  let removedOutput = false;
-  while (session.outputCharCount > MAX_SESSION_OUTPUT_CHARS) {
-    const removed = session.output.shift();
-    if (!removed) break;
-    removedOutput = true;
-    session.outputCharCount -= removed.length;
+  if (session.outputCharCount > MAX_SESSION_OUTPUT_CHARS) {
+    compactOutputHistory(session);
   }
-  if (!removedOutput) return;
-  const rebuiltState = buildOutputPreviewState(session.output);
-  session.preview = rebuiltState.preview;
-  session.previewLineRemainder = rebuiltState.lineRemainder;
-  session.previewPendingCarriageReturn = rebuiltState.pendingCarriageReturn;
-  session.previewSanitizer = rebuiltState.sanitizer;
 }
 
 function updateOutputPreviewState(
@@ -115,11 +107,35 @@ function applyPreviewChunk(
       continue;
     }
     if (char === "\x7f") continue;
-    lineRemainder += char;
+    if (lineRemainder.length < MAX_PREVIEW_LINE_CHARS) {
+      lineRemainder += char;
+    }
   }
 
   preview = finalizePreviewLine(lineRemainder, preview);
   return { preview, lineRemainder, pendingCarriageReturn };
+}
+
+function compactOutputHistory(session: EmbeddedSession): void {
+  let charsToRemove = session.outputCharCount - COMPACTED_SESSION_OUTPUT_CHARS;
+  let removeCount = 0;
+
+  while (
+    removeCount < session.output.length &&
+    charsToRemove >= session.output[removeCount].length
+  ) {
+    charsToRemove -= session.output[removeCount].length;
+    removeCount += 1;
+  }
+
+  if (removeCount > 0) session.output.splice(0, removeCount);
+  if (charsToRemove > 0 && session.output.length > 0) {
+    session.output[0] = session.output[0].slice(charsToRemove);
+  }
+  session.outputCharCount = session.output.reduce(
+    (total, output) => total + output.length,
+    0,
+  );
 }
 
 function finalizePreviewLine(line: string, previousPreview: string): string {

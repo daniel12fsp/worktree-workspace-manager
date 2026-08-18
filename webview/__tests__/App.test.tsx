@@ -1406,25 +1406,68 @@ describe("App", () => {
     expect(true).toBeTruthy();
   });
 
-  it("handles output message for active session", () => {
+  it("acknowledges active output only after xterm renders it", () => {
     const state: AppState = {
-      repos: [],
+      repos: [
+        {
+          label: "project.git",
+          path: "/repos/project",
+          worktrees: [
+            {
+              name: "feat-login",
+              branch: "feat/login",
+              path: "/tmp/feat-login",
+              color: "#e6194b",
+              activeInExplorer: true,
+              sessions: [
+                {
+                  id: "s1",
+                  label: "terminal 1",
+                  state: "idle",
+                  displayName: "terminal 1",
+                  statusText: "idle",
+                  preview: "",
+                },
+              ],
+            },
+          ],
+        },
+      ],
       activeSessionId: "s1",
       activeOutput: "",
       hasWorkspace: true,
       home: "/home/user",
       loadingWorktrees: new Set(),
     };
-    renderWithVsCode(state);
-    // Simulate output message
-    const event = new MessageEvent("message", {
-      data: {
-        type: "output",
-        id: "s1",
-        data: "test output",
-      },
+    const vscode = createMockVsCode();
+    renderWithVsCode(state, vscode);
+    const term = vi.mocked(Terminal).mock.results[0]?.value;
+    vi.mocked(term.write).mockClear();
+    vi.mocked(vscode.postMessage).mockClear();
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "output", id: "s1", data: "test output" },
+        }),
+      );
     });
-    window.dispatchEvent(event);
+
+    expect(term.write).toHaveBeenCalledWith(
+      "test output",
+      expect.any(Function),
+    );
+    expect(vscode.postMessage).not.toHaveBeenCalledWith({
+      type: "outputRendered",
+      id: "s1",
+    });
+
+    const callback = vi.mocked(term.write).mock.calls[0]?.[1];
+    act(() => callback?.());
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      type: "outputRendered",
+      id: "s1",
+    });
   });
 
   it("writes mouse reset before replaying active session output", async () => {

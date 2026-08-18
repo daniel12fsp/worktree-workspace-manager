@@ -11,10 +11,15 @@ export abstract class EmbeddedTerminalSessionMessages extends EmbeddedTerminalWe
   ): Partial<Record<string, WebviewMessageHandler>> {
     return {
       select: async () => {
-        this.flushTerminalOutput();
+        if (this.activeSessionId) {
+          this.clearOutputDelivery(this.activeSessionId);
+        }
         this.activeSessionId = String(message.id);
         await this.renderSessions();
         await this.postActiveSessionReplay();
+      },
+      outputRendered: () => {
+        this.terminalOutputRendered(String(message.id));
       },
       input: () => {
         if (message.encoding === "binary") {

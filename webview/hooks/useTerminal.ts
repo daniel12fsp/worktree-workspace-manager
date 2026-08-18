@@ -164,24 +164,32 @@ export function useTerminal(
   const focus = useCallback(() => {
     focusTerminalNow(termRef.current, activeSessionIdRef.current, hasFocusRef);
   }, []);
-  const clearAndWrite = useCallback((data: string) => {
-    if (!termRef.current) return;
+  const clearAndWrite = useCallback((data: string, onComplete?: () => void) => {
+    if (!termRef.current) {
+      onComplete?.();
+      return;
+    }
     replayDepthRef.current += 1;
     termRef.current.reset();
     const replaySafeData = sanitizeReplayedTerminalOutput(data);
     if (!replaySafeData) {
       replayDepthRef.current = Math.max(0, replayDepthRef.current - 1);
       writeTerminalCursorShow(termRef.current);
+      onComplete?.();
       return;
     }
     termRef.current.write(replaySafeData, () => {
       replayDepthRef.current = Math.max(0, replayDepthRef.current - 1);
       writeTerminalCursorShow(termRef.current);
+      onComplete?.();
     });
   }, []);
-  const write = useCallback((data: string) => {
-    if (!termRef.current) return;
-    termRef.current.write(data);
+  const write = useCallback((data: string, onComplete?: () => void) => {
+    if (!termRef.current) {
+      onComplete?.();
+      return;
+    }
+    termRef.current.write(data, onComplete);
     updateTerminalCursorRestoreTimer(
       data,
       termRef.current,

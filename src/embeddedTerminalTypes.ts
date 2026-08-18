@@ -33,6 +33,12 @@ export interface OutputPreviewState {
   sanitizer: TerminalControlSanitizer;
 }
 
+export interface PendingTerminalOutput {
+  readonly chunks: string[];
+  head: number;
+  charCount: number;
+}
+
 export interface WorkspaceTerminalState {
   readonly signature: string;
   readonly all: Map<BareRepository, Worktree[]>;

@@ -11,7 +11,7 @@ const DEFAULTS = {
   stderrEvery: 0,
   exitCode: 0,
   profile: "normal",
-  workers: 1,
+  workers: 30,
   workerLabelPrefix: "terminal-stress",
   forever: false,
 };
@@ -104,7 +104,7 @@ function parseArgs(argv) {
         throw new Error(`Unknown profile: ${options.profile}`);
       }
     } else if (arg === "--workers") {
-      options.workers = 5; // parsePositiveInteger(argv[++index], arg);
+      options.workers = parsePositiveInteger(argv[++index], arg);
     } else if (arg === "--worker-label-prefix") {
       options.workerLabelPrefix = String(argv[++index] ?? "");
     } else if (arg === "--forever") {
@@ -277,7 +277,7 @@ async function runWriter(options) {
     `[terminal-output-stress] start label=${options.label} worker=${options.workerIndex ?? 0} profile=${options.profile} lines=${options.forever ? "forever" : options.lines} chunkBytes=${options.chunkBytes} delayMs=${options.delayMs}\n`,
   );
 
-  while (options.forever || lineNumber < options.lines) {
+  while (true) {
     lineNumber += 1;
     const line = makeLine(options, lineNumber);
     if (options.stderrEvery > 0 && lineNumber % options.stderrEvery === 0) {

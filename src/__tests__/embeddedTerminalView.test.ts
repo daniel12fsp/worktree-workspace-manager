@@ -29,12 +29,15 @@ import {
   TerminalControlSanitizer,
   stripEveryTerminalSequence,
 } from "../terminalControl";
+import { appendOutputChunk } from "../terminalOutput";
 
 const mockPtyOnData = vi.fn(() => ({ dispose: vi.fn() }));
 const mockPtyOnExit = vi.fn(() => ({ dispose: vi.fn() }));
 const mockPtyWrite = vi.fn();
 const mockPtyKill = vi.fn();
 const mockPtyResize = vi.fn();
+const mockPtyPause = vi.fn();
+const mockPtyResume = vi.fn();
 
 vi.mock("vscode", () => import("../__mocks__/vscode"));
 vi.mock("node-pty", () => ({
@@ -44,6 +47,8 @@ vi.mock("node-pty", () => ({
     write: mockPtyWrite,
     kill: mockPtyKill,
     resize: mockPtyResize,
+    pause: mockPtyPause,
+    resume: mockPtyResume,
   })),
 }));
 vi.mock("../logger", () => ({
@@ -103,6 +108,8 @@ describe("sanitizedOutputForEditor", () => {
     mockPtyWrite.mockClear();
     mockPtyKill.mockClear();
     mockPtyResize.mockClear();
+    mockPtyPause.mockClear();
+    mockPtyResume.mockClear();
   });
 
   it("removes terminal color and control sequences", () => {
@@ -159,6 +166,31 @@ describe("outputPreview", () => {
   it("handles terminal sequences split across chunks", () => {
     const output = ["hello\x1b]", "2;title\x07\n", "world\n"];
     expect(outputPreview(output)).toBe("world");
+  });
+
+  it("compacts large histories while preserving recent output", () => {
+    const session = {
+      output: [],
+      outputCharCount: 0,
+      preview: "",
+      previewLineRemainder: "",
+      previewPendingCarriageReturn: false,
+      previewSanitizer: new TerminalControlSanitizer(
+        stripEveryTerminalSequence,
+      ),
+    } as unknown as EmbeddedSession;
+
+    for (let index = 0; index < 250; index += 1) {
+      appendOutputChunk(
+        session,
+        `${String(index).padStart(3, "0")}${"x".repeat(996)}\n`,
+      );
+    }
+
+    expect(session.outputCharCount).toBeLessThanOrEqual(200_000);
+    expect(session.output.join("")).not.toContain("000xxx");
+    expect(session.output.join("")).toContain("249xxx");
+    expect(session.preview).toBe(`249${"x".repeat(137)}`);
   });
 
   it("matches incremental preview updates", () => {
@@ -1232,6 +1264,65 @@ describe("EmbeddedTerminalViewProvider", () => {
       id: expect.any(String),
       data: "hello",
     });
+    vi.useRealTimers();
+  });
+
+  it("backpressures active output until the webview renders each chunk", async () => {
+    vi.useFakeTimers();
+    let messageHandler: ((msg: any) => void) | undefined;
+    const onDataCallbacks: Array<(data: string) => void> = [];
+    mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
+      onDataCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    }) as any);
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    provider.resolveWebviewView({ visible: true, webview: mockWebview } as any);
+    await provider.openTerminal({
+      name: "feat-login",
+      path: "/tmp/feat-login",
+      color: "#fff",
+      branch: "main",
+      repo: { label: "project.git", fsPath: "/repos/project" },
+    } as any);
+    const sessionId = [...(provider as any).sessions.keys()][0];
+    mockWebview.postMessage.mockClear();
+
+    onDataCallbacks[0]?.("x".repeat(600_000));
+    expect(mockPtyPause).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(16);
+
+    const outputMessages = () =>
+      mockWebview.postMessage.mock.calls.filter(
+        ([message]) => message.type === "output",
+      );
+    expect(outputMessages()).toHaveLength(1);
+    expect(outputMessages()[0][0].data).toHaveLength(64_000);
+
+    onDataCallbacks[0]?.("more");
+    await vi.advanceTimersByTimeAsync(32);
+    expect(outputMessages()).toHaveLength(1);
+
+    for (let index = 0; index < 10; index += 1) {
+      await messageHandler!({ type: "outputRendered", id: sessionId });
+      await vi.runOnlyPendingTimersAsync();
+    }
+
+    expect(mockPtyResume).toHaveBeenCalledOnce();
+    expect(
+      outputMessages()
+        .map(([message]) => message.data)
+        .join(""),
+    ).toBe(`${"x".repeat(600_000)}more`);
     vi.useRealTimers();
   });
 

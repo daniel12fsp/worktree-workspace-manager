@@ -115,11 +115,15 @@ export function useAppEffects(options: AppEffectsOptions): void {
           ...previous,
           activeOutput: message.data ?? "",
         }));
-        terminalApi.clearAndWrite(message.data ?? "");
+        terminalApi.clearAndWrite(message.data ?? "", () => {
+          vscode.postMessage({ type: "outputRendered", id: message.id });
+        });
       } else if (
         isActiveMessage(message, "output", activeSessionIdRef.current)
       ) {
-        terminalApi.write(message.data ?? "");
+        terminalApi.write(message.data ?? "", () => {
+          vscode.postMessage({ type: "outputRendered", id: message.id });
+        });
       } else if (
         isActiveMessage(message, "clear", activeSessionIdRef.current)
       ) {

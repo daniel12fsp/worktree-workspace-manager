@@ -20,8 +20,8 @@ export class EmbeddedTerminalViewProvider
       clearTimeout(this.outputFlushTimer);
       this.outputFlushTimer = undefined;
     }
-    this.pendingOutputBySession.clear();
     for (const session of this.sessions.values()) {
+      this.clearOutputDelivery(session.id);
       session.process.kill();
       cleanupShellWrapper(session);
     }
@@ -58,7 +58,9 @@ export class EmbeddedTerminalViewProvider
   private async selectAdjacentTerminal(direction: -1 | 1): Promise<void> {
     const ordered = this.orderedSessions([...this.sessions.values()]);
     if (ordered.length > 0) {
-      this.flushTerminalOutput();
+      if (this.activeSessionId) {
+        this.clearOutputDelivery(this.activeSessionId);
+      }
       const activeIndex = ordered.findIndex(
         (session) => session.id === this.activeSessionId,
       );

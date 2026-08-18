@@ -3,9 +3,14 @@ import * as vscode from "vscode";
 import type { Worktree } from "./model";
 import type {
   EmbeddedSession,
+  PendingTerminalOutput,
   WorkspaceTerminalState,
 } from "./embeddedTerminalTypes";
 import { log } from "./logger";
+import {
+  stripEveryTerminalSequence,
+  TerminalControlSanitizer,
+} from "./terminalControl";
 import {
   cleanupShellWrapper,
   sanitizedOutputForEditor,
@@ -24,7 +29,12 @@ export abstract class EmbeddedTerminalStore {
   protected fallbackRendered = false;
   protected readonly terminalOrder = new Map<string, number>();
   protected readonly sessionIdsByWorktree = new Map<string, Set<string>>();
-  protected readonly pendingOutputBySession = new Map<string, string>();
+  protected readonly pendingOutputBySession = new Map<
+    string,
+    PendingTerminalOutput
+  >();
+  protected readonly outputPausedSessionIds = new Set<string>();
+  protected outputInFlightSessionId: string | undefined;
   protected outputFlushTimer: ReturnType<typeof setTimeout> | undefined;
   protected renderSessionsPromise: Promise<void> | undefined;
   protected renderSessionsAgain = false;
@@ -52,7 +62,7 @@ export abstract class EmbeddedTerminalStore {
       this.sessions.delete(session.id);
       this.removeSessionFromWorktreeIndex(session);
       this.terminalOrder.delete(session.id);
-      this.pendingOutputBySession.delete(session.id);
+      this.clearOutputDelivery(session.id);
       session.process.kill();
       cleanupShellWrapper(session);
     }
@@ -70,7 +80,7 @@ export abstract class EmbeddedTerminalStore {
     this.sessions.delete(id);
     this.removeSessionFromWorktreeIndex(session);
     this.terminalOrder.delete(id);
-    this.pendingOutputBySession.delete(id);
+    this.clearOutputDelivery(id);
     session.process.kill();
     cleanupShellWrapper(session);
     if (this.activeSessionId === id) {
@@ -127,20 +137,44 @@ export abstract class EmbeddedTerminalStore {
     session.output.splice(0, session.output.length);
     session.outputCharCount = 0;
     session.preview = "";
-    this.pendingOutputBySession.delete(id);
+    session.previewLineRemainder = "";
+    session.previewPendingCarriageReturn = false;
+    session.previewSanitizer = new TerminalControlSanitizer(
+      stripEveryTerminalSequence,
+    );
+    this.clearOutputDelivery(id);
     this.view?.webview.postMessage({ type: "clear", id });
     await this.renderSessions();
   }
 
   protected async postActiveSessionReplay(): Promise<void> {
     if (!this.view || !this.activeSessionId) return;
-    const session = this.sessions.get(this.activeSessionId);
-    this.pendingOutputBySession.delete(this.activeSessionId);
-    await this.view.webview.postMessage({
-      type: "replay",
-      id: this.activeSessionId,
-      data: session?.output.join("") ?? "",
-    });
+    const id = this.activeSessionId;
+    const session = this.sessions.get(id);
+    this.clearOutputDelivery(id);
+    this.outputInFlightSessionId = id;
+    let delivered = false;
+    try {
+      delivered = await this.view.webview.postMessage({
+        type: "replay",
+        id,
+        data: session?.output.join("") ?? "",
+      });
+    } finally {
+      if (!delivered && this.outputInFlightSessionId === id) {
+        this.clearOutputDelivery(id);
+      }
+    }
+  }
+
+  protected clearOutputDelivery(id: string): void {
+    this.pendingOutputBySession.delete(id);
+    if (this.outputInFlightSessionId === id) {
+      this.outputInFlightSessionId = undefined;
+    }
+    if (this.outputPausedSessionIds.delete(id)) {
+      this.sessions.get(id)?.process.resume();
+    }
   }
 
   protected async setTerminalAliasForSession(id: string): Promise<void> {

@@ -3,7 +3,10 @@ import * as path from "node:path";
 import * as pty from "node-pty";
 import * as vscode from "vscode";
 import type { Worktree } from "./model";
-import type { EmbeddedSession } from "./embeddedTerminalTypes";
+import type {
+  EmbeddedSession,
+  PendingTerminalOutput,
+} from "./embeddedTerminalTypes";
 import { EmbeddedTerminalStore } from "./embeddedTerminalStore";
 import { log, logError } from "./logger";
 import {
@@ -21,6 +24,9 @@ import { shellActivityWrapper } from "./terminalShellWrapper";
 import { invalidateModelCache } from "./modelHelpers";
 
 const TERMINAL_OUTPUT_BATCH_MS = 16;
+const MAX_OUTPUT_MESSAGE_CHARS = 64_000;
+const OUTPUT_PAUSE_HIGH_WATER_CHARS = 512_000;
+const OUTPUT_RESUME_LOW_WATER_CHARS = 128_000;
 
 export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
   protected createSession(
@@ -146,7 +152,7 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
       this.sessions.delete(id);
       this.removeSessionFromWorktreeIndex(session);
       this.terminalOrder.delete(id);
-      this.pendingOutputBySession.delete(id);
+      this.clearOutputDelivery(id);
       cleanupShellWrapper(session);
       if (this.activeSessionId === id) {
         this.activeSessionId = this.nextSessionId();
@@ -244,28 +250,107 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
   protected postTerminalOutput(id: string, data: string): void {
     if (id !== this.activeSessionId || !this.view) return;
 
-    this.pendingOutputBySession.set(
-      id,
-      (this.pendingOutputBySession.get(id) ?? "") + data,
-    );
-    if (this.outputFlushTimer) return;
+    let pending = this.pendingOutputBySession.get(id);
+    if (!pending) {
+      pending = { chunks: [], head: 0, charCount: 0 };
+      this.pendingOutputBySession.set(id, pending);
+    }
+    pending.chunks.push(data);
+    pending.charCount += data.length;
 
-    this.outputFlushTimer = setTimeout(() => {
-      this.outputFlushTimer = undefined;
-      this.flushTerminalOutput();
-    }, TERMINAL_OUTPUT_BATCH_MS);
+    if (
+      pending.charCount >= OUTPUT_PAUSE_HIGH_WATER_CHARS &&
+      !this.outputPausedSessionIds.has(id)
+    ) {
+      this.sessions.get(id)?.process.pause();
+      this.outputPausedSessionIds.add(id);
+    }
+    this.scheduleOutputFlush();
   }
 
   protected flushTerminalOutput(): void {
     if (!this.view) {
-      this.pendingOutputBySession.clear();
+      for (const id of this.pendingOutputBySession.keys()) {
+        this.clearOutputDelivery(id);
+      }
       return;
     }
+    if (this.outputInFlightSessionId) return;
 
-    for (const [id, data] of this.pendingOutputBySession) {
-      if (id !== this.activeSessionId || !this.sessions.has(id)) continue;
-      this.view.webview.postMessage({ type: "output", id, data });
-    }
-    this.pendingOutputBySession.clear();
+    const id = this.activeSessionId;
+    if (!id || !this.sessions.has(id)) return;
+    const pending = this.pendingOutputBySession.get(id);
+    if (!pending) return;
+    const data = dequeueOutput(pending, MAX_OUTPUT_MESSAGE_CHARS);
+    if (pending.charCount === 0) this.pendingOutputBySession.delete(id);
+    if (!data) return;
+
+    this.outputInFlightSessionId = id;
+    void this.view.webview.postMessage({ type: "output", id, data }).then(
+      (delivered) => {
+        if (!delivered && this.outputInFlightSessionId === id) {
+          this.clearOutputDelivery(id);
+        }
+      },
+      () => {
+        if (this.outputInFlightSessionId === id) {
+          this.clearOutputDelivery(id);
+        }
+      },
+    );
   }
+
+  protected terminalOutputRendered(id: string): void {
+    if (this.outputInFlightSessionId !== id) return;
+    this.outputInFlightSessionId = undefined;
+    this.resumeOutputIfReady(id);
+    this.scheduleOutputFlush(0);
+  }
+
+  private resumeOutputIfReady(id: string): void {
+    const pendingChars = this.pendingOutputBySession.get(id)?.charCount ?? 0;
+    if (
+      pendingChars <= OUTPUT_RESUME_LOW_WATER_CHARS &&
+      this.outputPausedSessionIds.delete(id)
+    ) {
+      this.sessions.get(id)?.process.resume();
+    }
+  }
+
+  private scheduleOutputFlush(delay = TERMINAL_OUTPUT_BATCH_MS): void {
+    if (this.outputFlushTimer || this.outputInFlightSessionId) return;
+    this.outputFlushTimer = setTimeout(() => {
+      this.outputFlushTimer = undefined;
+      this.flushTerminalOutput();
+    }, delay);
+  }
+}
+
+function dequeueOutput(
+  pending: PendingTerminalOutput,
+  maximumChars: number,
+): string {
+  const parts: string[] = [];
+  let remaining = maximumChars;
+
+  while (pending.head < pending.chunks.length && remaining > 0) {
+    const chunk = pending.chunks[pending.head];
+    if (chunk.length <= remaining) {
+      parts.push(chunk);
+      remaining -= chunk.length;
+      pending.charCount -= chunk.length;
+      pending.head += 1;
+      continue;
+    }
+    parts.push(chunk.slice(0, remaining));
+    pending.chunks[pending.head] = chunk.slice(remaining);
+    pending.charCount -= remaining;
+    remaining = 0;
+  }
+
+  if (pending.head > 64 && pending.head * 2 >= pending.chunks.length) {
+    pending.chunks.splice(0, pending.head);
+    pending.head = 0;
+  }
+  return parts.join("");
 }
