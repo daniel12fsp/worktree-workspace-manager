@@ -849,7 +849,8 @@ describe("EmbeddedTerminalViewProvider", () => {
     expect(typeof provider.killWorktreeTerminals).toBe("function");
   });
 
-  it("dispose does not throw", () => {
+  it("dispose is safe to call more than once", () => {
+    expect(() => provider.dispose()).not.toThrow();
     expect(() => provider.dispose()).not.toThrow();
   });
 
@@ -2965,8 +2966,15 @@ describe("EmbeddedTerminalViewProvider", () => {
     await provider.openTerminal(worktree);
     const sessions = (provider as any).sessions;
     if (sessions.size > 0) {
+      const session = [...sessions.values()][0] as EmbeddedSession;
+      session.state = "running";
+
       provider.dispose();
+
+      expect(mockPtyWrite).toHaveBeenCalledWith("\x03");
+      expect(mockPtyKill).toHaveBeenCalledWith("SIGHUP");
       expect(sessions.size).toBe(0);
+      expect((provider as any).activeSessionId).toBeUndefined();
     }
   });
 

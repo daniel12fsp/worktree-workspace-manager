@@ -6,7 +6,7 @@ import type {
   PendingTerminalOutput,
   WorkspaceTerminalState,
 } from "./embeddedTerminalTypes";
-import { log } from "./logger";
+import { log, logError } from "./logger";
 import {
   stripEveryTerminalSequence,
   TerminalControlSanitizer,
@@ -58,14 +58,7 @@ export abstract class EmbeddedTerminalStore {
     predicate: (session: EmbeddedSession) => boolean,
   ): number {
     const matches = [...this.sessions.values()].filter(predicate);
-    for (const session of matches) {
-      this.sessions.delete(session.id);
-      this.removeSessionFromWorktreeIndex(session);
-      this.terminalOrder.delete(session.id);
-      this.clearOutputDelivery(session.id);
-      session.process.kill();
-      cleanupShellWrapper(session);
-    }
+    for (const session of matches) this.terminateSession(session);
     if (matches.length) log("killed sessions", { count: matches.length });
     if (this.activeSessionId && !this.sessions.has(this.activeSessionId)) {
       this.activeSessionId = this.nextSessionId();
@@ -77,12 +70,7 @@ export abstract class EmbeddedTerminalStore {
   protected closeSessionById(id: string): boolean {
     const session = this.sessions.get(id);
     if (!session) return false;
-    this.sessions.delete(id);
-    this.removeSessionFromWorktreeIndex(session);
-    this.terminalOrder.delete(id);
-    this.clearOutputDelivery(id);
-    session.process.kill();
-    cleanupShellWrapper(session);
+    this.terminateSession(session);
     if (this.activeSessionId === id) {
       this.activeSessionId = this.nextSessionId();
     }
@@ -92,6 +80,33 @@ export abstract class EmbeddedTerminalStore {
       worktree: session.worktree.name,
     });
     return true;
+  }
+
+  protected terminateSession(session: EmbeddedSession): void {
+    this.sessions.delete(session.id);
+    this.removeSessionFromWorktreeIndex(session);
+    this.terminalOrder.delete(session.id);
+    this.clearOutputDelivery(session.id);
+
+    if (session.state === "running") {
+      try {
+        session.process.write("\x03");
+      } catch (error) {
+        logError("failed to interrupt embedded terminal command", {
+          id: session.id,
+          error,
+        });
+      }
+    }
+    try {
+      session.process.kill("SIGHUP");
+    } catch (error) {
+      logError("failed to terminate embedded terminal", {
+        id: session.id,
+        error,
+      });
+    }
+    cleanupShellWrapper(session);
   }
 
   protected async openSessionOutput(id: string): Promise<void> {

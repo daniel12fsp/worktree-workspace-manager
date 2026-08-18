@@ -5,10 +5,7 @@ import { EmbeddedTerminalMessages } from "./embeddedTerminalMessages";
 import type { WebviewMessage } from "./embeddedTerminalMessageTypes";
 import { log, logError } from "./logger";
 import { profileAsync, profileMark } from "./performance";
-import {
-  cleanupShellWrapper,
-  validatedConfiguredTerminalShell,
-} from "./terminalEnvironment";
+import { validatedConfiguredTerminalShell } from "./terminalEnvironment";
 
 export class EmbeddedTerminalViewProvider
   extends EmbeddedTerminalMessages
@@ -20,12 +17,10 @@ export class EmbeddedTerminalViewProvider
       clearTimeout(this.outputFlushTimer);
       this.outputFlushTimer = undefined;
     }
-    for (const session of this.sessions.values()) {
-      this.clearOutputDelivery(session.id);
-      session.process.kill();
-      cleanupShellWrapper(session);
+    for (const session of [...this.sessions.values()]) {
+      this.terminateSession(session);
     }
-    this.sessions.clear();
+    this.activeSessionId = undefined;
   }
 
   async openTerminal(worktree: Worktree): Promise<void> {

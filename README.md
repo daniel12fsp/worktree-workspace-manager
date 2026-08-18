@@ -124,6 +124,10 @@ Terminal selection follows the visible order and wraps at either end. These are
 VS Code default keybindings rather than hard-coded listeners. Change or remove
 them with **Preferences: Open Keyboard Shortcuts** or in `keybindings.json`.
 
+Embedded terminals are not restored after the extension or VS Code stops. On
+shutdown, running foreground commands are interrupted and their shells receive
+a hangup signal. Detached commands such as `nohup` jobs may continue running.
+
 ---
 
 ## Settings
