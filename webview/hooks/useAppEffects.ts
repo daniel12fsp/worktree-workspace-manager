@@ -25,7 +25,6 @@ interface AppEffectsOptions {
   terminalApi: ReturnType<typeof useTerminal>;
   vscode: ReturnType<typeof useVsCode>;
   terminalContainerRef: React.RefObject<HTMLDivElement | null>;
-  replayedSessionIdRef: React.RefObject<string | undefined>;
   renderTelemetryCountRef: React.RefObject<number>;
   renderStartedAt: number;
   sendTerminalInput: (data: string) => void;
@@ -38,33 +37,14 @@ export function useAppEffects(options: AppEffectsOptions): void {
     terminalApi,
     vscode,
     terminalContainerRef,
-    replayedSessionIdRef,
     renderTelemetryCountRef,
     renderStartedAt,
     sendTerminalInput,
   } = options;
-  const activeSessionIdRef = React.useRef(state.activeSessionId);
-  activeSessionIdRef.current = state.activeSessionId;
-
   React.useEffect(() => {
     if (!state.activeSessionId) return;
-    if (replayedSessionIdRef.current !== state.activeSessionId) {
-      replayedSessionIdRef.current = state.activeSessionId;
-      terminalApi.clearAndWrite(state.activeOutput);
-    }
     terminalApi.resize();
-  }, [
-    state.activeSessionId,
-    state.activeOutput,
-    terminalApi.clearAndWrite,
-    terminalApi.resize,
-    replayedSessionIdRef,
-  ]);
-
-  React.useEffect(() => {
-    if (state.activeSessionId) return;
-    replayedSessionIdRef.current = undefined;
-  }, [state.activeSessionId, replayedSessionIdRef]);
+  }, [state.activeSessionId, terminalApi.resize]);
 
   React.useEffect(() => {
     if (!state.activeSessionId) return;
@@ -95,7 +75,6 @@ export function useAppEffects(options: AppEffectsOptions): void {
       if (message.type === "focusTerminal") {
         terminalApi.focus();
       } else if (message.type === "state") {
-        activeSessionIdRef.current = message.activeSessionId;
         setState((previous) => ({
           repos: message.repos ?? [],
           activeSessionId: message.activeSessionId,
@@ -107,27 +86,14 @@ export function useAppEffects(options: AppEffectsOptions): void {
           webviewRenderTelemetry: message.webviewRenderTelemetry,
           profileMarkers: Boolean(message.profileMarkers),
         }));
-      } else if (
-        isActiveMessage(message, "replay", activeSessionIdRef.current)
-      ) {
-        replayedSessionIdRef.current = message.id;
-        setState((previous) => ({
-          ...previous,
-          activeOutput: message.data ?? "",
-        }));
-        terminalApi.clearAndWrite(message.data ?? "", () => {
+      } else if (message.type === "replay" && message.id) {
+        terminalApi.replay(message.id, message.data ?? "");
+      } else if (message.type === "output" && message.id) {
+        terminalApi.write(message.id, message.data ?? "", () => {
           vscode.postMessage({ type: "outputRendered", id: message.id });
         });
-      } else if (
-        isActiveMessage(message, "output", activeSessionIdRef.current)
-      ) {
-        terminalApi.write(message.data ?? "", () => {
-          vscode.postMessage({ type: "outputRendered", id: message.id });
-        });
-      } else if (
-        isActiveMessage(message, "clear", activeSessionIdRef.current)
-      ) {
-        terminalApi.clear();
+      } else if (message.type === "clear" && message.id) {
+        terminalApi.clear(message.id);
       } else if (message.type === "loadingDone") {
         setState((previous) => {
           const next = new Set(previous.loadingWorktrees);
@@ -140,7 +106,7 @@ export function useAppEffects(options: AppEffectsOptions): void {
     return () => {
       window.removeEventListener("message", handler);
     };
-  }, [state.activeSessionId, terminalApi, setState, replayedSessionIdRef]);
+  }, [state.activeSessionId, terminalApi, setState]);
 
   const renderSummary = useMemo(
     () => ({
@@ -195,14 +161,6 @@ function activeOutputForMessage(
 ): string {
   if (previous.activeSessionId !== message.activeSessionId) return "";
   return message.activeOutput ?? "";
-}
-
-function isActiveMessage(
-  message: WebviewMessage,
-  type: string,
-  activeSessionId: string | undefined,
-): boolean {
-  return message.type === type && message.id === activeSessionId;
 }
 
 function layoutOrder(

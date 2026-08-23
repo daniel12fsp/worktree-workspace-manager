@@ -53,9 +53,6 @@ export class EmbeddedTerminalViewProvider
   private async selectAdjacentTerminal(direction: -1 | 1): Promise<void> {
     const ordered = this.orderedSessions([...this.sessions.values()]);
     if (ordered.length > 0) {
-      if (this.activeSessionId) {
-        this.clearOutputDelivery(this.activeSessionId);
-      }
       const activeIndex = ordered.findIndex(
         (session) => session.id === this.activeSessionId,
       );
@@ -69,10 +66,7 @@ export class EmbeddedTerminalViewProvider
     }
 
     await this.revealTerminalView();
-    if (ordered.length > 0) {
-      await this.renderSessions();
-      await this.postActiveSessionReplay();
-    }
+    if (ordered.length > 0) await this.renderSessions();
     await this.requestTerminalFocus();
   }
 
@@ -139,9 +133,9 @@ export class EmbeddedTerminalViewProvider
     });
     this.view = webviewView;
     this.webviewReady = false;
+    this.webviewTerminalStateInitialized = false;
     this.fallbackRendered = false;
-    this.initialReplaySessionId = undefined;
-    this.initialReplayPending = Boolean(this.activeSessionId);
+    this.initialReplayPending = Boolean(this.sessions.size);
     webviewView.webview.options = {
       enableScripts: true,
       enableCommandUris: true,
@@ -199,7 +193,6 @@ export {
   fishActivityRc,
   fishQuote,
   shellActivityWrapper,
-  zshActivityRc,
 } from "./terminalShellWrapper";
 export {
   cleanupShellWrapper,
@@ -210,6 +203,7 @@ export {
   numberOrUndefined,
   ptyEnv,
   resolveTerminalFilePath,
+  resolvedTerminalProfile,
   safeEnv,
   sanitizedOutputForEditor,
   terminalAliasFromLabel,

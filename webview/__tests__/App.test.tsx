@@ -18,6 +18,7 @@ vi.mock("@xterm/xterm", () => ({
   Terminal: vi.fn().mockImplementation(() => ({
     open: vi.fn(),
     write: vi.fn(),
+    paste: vi.fn(),
     reset: vi.fn(),
     clear: vi.fn(),
     focus: vi.fn(),
@@ -69,6 +70,39 @@ const renderWithVsCode = (state: AppState, mockVsCode?: VsCodeApi) => {
     </VsCodeContext.Provider>,
   );
 };
+
+function twoSessionState(activeSessionId: string): AppState {
+  return {
+    repos: [
+      {
+        label: "project.git",
+        path: "/repos/project",
+        worktrees: [
+          {
+            name: "feat-login",
+            branch: "feat/login",
+            path: "/tmp/feat-login",
+            color: "#e6194b",
+            activeInExplorer: true,
+            sessions: ["s1", "s2"].map((id) => ({
+              id,
+              label: id,
+              state: "idle" as const,
+              displayName: id,
+              statusText: "idle",
+              preview: "",
+            })),
+          },
+        ],
+      },
+    ],
+    activeSessionId,
+    activeOutput: "",
+    hasWorkspace: true,
+    home: "/home/user",
+    loadingWorktrees: new Set(),
+  };
+}
 
 describe("App", () => {
   beforeEach(() => {
@@ -489,6 +523,32 @@ describe("App", () => {
     );
   });
 
+  it("lets xterm translate Home and End for the active keyboard mode", () => {
+    const vscode = createMockVsCode();
+    renderWithVsCode(twoSessionState("s1"), vscode);
+    const term = vi.mocked(Terminal).mock.results[0]?.value;
+    const handler = vi.mocked(term.attachCustomKeyEventHandler).mock
+      .calls[0]?.[0];
+
+    for (const key of ["Home", "End"]) {
+      expect(
+        handler({
+          type: "keydown",
+          key,
+          ctrlKey: false,
+          metaKey: false,
+          altKey: false,
+          shiftKey: false,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        }),
+      ).toBe(true);
+    }
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "input" }),
+    );
+  });
+
   it("does not forward fallback keyboard input from editable controls", async () => {
     const mockVsCode = createMockVsCode();
     renderWithVsCode(
@@ -702,6 +762,7 @@ describe("App", () => {
 
     const term = vi.mocked(Terminal).mock.results.at(-1)?.value as {
       attachCustomKeyEventHandler: ReturnType<typeof vi.fn>;
+      paste: ReturnType<typeof vi.fn>;
     };
     const handler = vi.mocked(term.attachCustomKeyEventHandler).mock
       .calls[0]?.[0];
@@ -720,12 +781,11 @@ describe("App", () => {
     expect(result).toBe(false);
 
     await waitFor(() => {
-      expect(mockVsCode.postMessage).toHaveBeenCalledWith({
-        type: "input",
-        id: "s1",
-        data: "pasted text",
-      });
+      expect(term.paste).toHaveBeenCalledWith("pasted text");
     });
+    expect(mockVsCode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "input", data: "pasted text" }),
+    );
 
     Object.defineProperty(navigator, "platform", {
       value: originalPlatform,
@@ -1110,118 +1170,52 @@ describe("App", () => {
     rafSpy.mockRestore();
   });
 
-  it("hydrates active terminal output only once", async () => {
-    const state: AppState = {
-      repos: [
-        {
-          label: "project.git",
-          path: "/repos/project",
-          worktrees: [
-            {
-              name: "feat-login",
-              branch: "feat/login",
-              path: "/tmp/feat-login",
-              color: "#e6194b",
-              activeInExplorer: true,
-              sessions: [
-                {
-                  id: "s1",
-                  label: "terminal 1",
-                  state: "idle",
-                  displayName: "terminal 1",
-                  statusText: "idle",
-                  preview: "",
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      activeSessionId: "s1",
-      activeOutput: "prompt > ",
-      hasWorkspace: true,
-      home: "/home/user",
-      loadingWorktrees: new Set(),
-    };
-    (globalThis as any).ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    };
+  it("routes inactive terminal protocol responses back to its own PTY", () => {
+    const vscode = createMockVsCode();
+    renderWithVsCode(twoSessionState("s1"), vscode);
+    const inactiveOnData = mockTerminalOnData.mock.calls[1]?.[0];
 
-    renderWithVsCode(state);
+    act(() => inactiveOnData?.("\x1b[?1;2c"));
 
-    await waitFor(() => {
-      const term = vi.mocked(Terminal).mock.results[0]?.value as {
-        reset: ReturnType<typeof vi.fn>;
-        write: ReturnType<typeof vi.fn>;
-      };
-      expect(term.reset).toHaveBeenCalledTimes(1);
-      expect(term.write).toHaveBeenCalledTimes(1);
-      expect(term.write).toHaveBeenCalledWith(
-        "prompt > ",
-        expect.any(Function),
-      );
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      type: "input",
+      id: "s2",
+      data: "\x1b[?1;2c",
     });
   });
 
-  it("clears terminal output when switching to a session with empty history", async () => {
-    const state: AppState = {
-      repos: [
-        {
-          label: "project.git",
-          path: "/repos/project",
-          worktrees: [
-            {
-              name: "feat-login",
-              branch: "feat/login",
-              path: "/tmp/feat-login",
-              color: "#e6194b",
-              activeInExplorer: true,
-              sessions: [
-                {
-                  id: "s1",
-                  label: "terminal 1",
-                  state: "idle",
-                  displayName: "terminal 1",
-                  statusText: "idle",
-                  preview: "",
-                },
-                {
-                  id: "s2",
-                  label: "terminal 2",
-                  state: "idle",
-                  displayName: "terminal 2",
-                  statusText: "idle",
-                  preview: "",
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      activeSessionId: "s1",
-      activeOutput: "old output",
-      hasWorkspace: true,
-      home: "/home/user",
-      loadingWorktrees: new Set(),
-    };
+  it("writes inactive output to that session's terminal emulator", async () => {
+    const state = twoSessionState("s1");
+    const vscode = createMockVsCode();
+    renderWithVsCode(state, vscode);
+    const firstTerm = vi.mocked(Terminal).mock.results[0]?.value;
+    const secondTerm = vi.mocked(Terminal).mock.results[1]?.value;
 
-    renderWithVsCode(state);
-
-    const term = vi.mocked(Terminal).mock.results[0]?.value as {
-      reset: ReturnType<typeof vi.fn>;
-      write: ReturnType<typeof vi.fn>;
-    };
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "output", id: "s2", data: "background output" },
+        }),
+      );
+    });
 
     await waitFor(() => {
-      expect(term.write).toHaveBeenCalledWith(
-        "old output",
+      expect(secondTerm.write).toHaveBeenCalledWith(
+        "background output",
         expect.any(Function),
       );
     });
-    term.reset.mockClear();
-    term.write.mockClear();
+    expect(firstTerm.write).not.toHaveBeenCalledWith(
+      "background output",
+      expect.any(Function),
+    );
+  });
+
+  it("switches visibility without resetting either terminal", async () => {
+    const state = twoSessionState("s1");
+    renderWithVsCode(state);
+    const firstTerm = vi.mocked(Terminal).mock.results[0]?.value;
+    const secondTerm = vi.mocked(Terminal).mock.results[1]?.value;
 
     act(() => {
       window.dispatchEvent(
@@ -1239,12 +1233,17 @@ describe("App", () => {
     });
 
     await waitFor(() => {
-      expect(term.reset).toHaveBeenCalledTimes(1);
+      expect(
+        document.querySelector<HTMLElement>('[data-session-id="s1"]')?.style
+          .display,
+      ).toBe("none");
+      expect(
+        document.querySelector<HTMLElement>('[data-session-id="s2"]')?.style
+          .display,
+      ).toBe("block");
     });
-    expect(term.write).not.toHaveBeenCalledWith(
-      "old output",
-      expect.any(Function),
-    );
+    expect(firstTerm.reset).not.toHaveBeenCalled();
+    expect(secondTerm.reset).not.toHaveBeenCalled();
   });
 
   it("renders app root", () => {
@@ -1474,7 +1473,7 @@ describe("App", () => {
     });
   });
 
-  it("writes mouse reset before replaying active session output", async () => {
+  it("replays raw session output without synthetic mode overrides", async () => {
     const state: AppState = {
       repos: [
         {
@@ -1524,6 +1523,10 @@ describe("App", () => {
     await waitFor(() => {
       expect(term.reset).toHaveBeenCalledTimes(1);
       expect(term.write).toHaveBeenCalledWith("hello", expect.any(Function));
+      expect(term.write).not.toHaveBeenCalledWith("\x1b[?25h");
+      expect(term.write).not.toHaveBeenCalledWith(
+        expect.stringContaining("\x1b[?1000l"),
+      );
     });
   });
 
@@ -1641,7 +1644,7 @@ describe("App", () => {
     window.dispatchEvent(event);
   });
 
-  it("replays output sent immediately after the active session changes", async () => {
+  it("routes replay output to the selected session's emulator", async () => {
     const first: AppState = {
       repos: [
         {
@@ -1690,7 +1693,7 @@ describe("App", () => {
     };
 
     renderWithVsCode(first);
-    const term = vi.mocked(Terminal).mock.results[0]?.value;
+    const term = vi.mocked(Terminal).mock.results[1]?.value;
     vi.mocked(term.write).mockClear();
 
     act(() => {
@@ -1715,9 +1718,6 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(term.write).toHaveBeenCalledWith("second", expect.any(Function));
-      expect(term.write).toHaveBeenCalledWith(
-        "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
-      );
     });
   });
 

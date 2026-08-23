@@ -26,9 +26,9 @@ export abstract class EmbeddedTerminalStore {
   protected terminalOrderSeq = 0;
   protected readonly terminalSeqByWorktree = new Map<string, number>();
   protected webviewReady = false;
+  protected webviewTerminalStateInitialized = false;
   protected fallbackRendered = false;
   protected initialReplayPending = false;
-  protected initialReplaySessionId: string | undefined;
   protected terminalCols = 80;
   protected terminalRows = 24;
   protected readonly terminalOrder = new Map<string, number>();
@@ -67,7 +67,7 @@ export abstract class EmbeddedTerminalStore {
     if (this.activeSessionId && !this.sessions.has(this.activeSessionId)) {
       this.activeSessionId = this.nextSessionId();
     }
-    void this.renderSessions().then(() => this.postActiveSessionReplay());
+    void this.renderSessions();
     return matches.length;
   }
 
@@ -166,23 +166,16 @@ export abstract class EmbeddedTerminalStore {
     await this.renderSessions();
   }
 
-  protected async postActiveSessionReplay(): Promise<void> {
-    if (!this.view || !this.activeSessionId) return;
-    const id = this.activeSessionId;
-    const session = this.sessions.get(id);
-    this.clearOutputDelivery(id);
-    this.outputInFlightSessionId = id;
-    let delivered = false;
-    try {
-      delivered = await this.view.webview.postMessage({
-        type: "replay",
-        id,
-        data: session?.output.join("") ?? "",
-      });
-    } finally {
-      if (!delivered && this.outputInFlightSessionId === id) {
-        this.clearOutputDelivery(id);
-      }
+  protected async postSessionReplays(): Promise<void> {
+    if (!this.view) return;
+    const replays = [...this.sessions.values()].map((session) => ({
+      type: "replay",
+      id: session.id,
+      data: session.output.join(""),
+    }));
+    for (const replay of replays) this.clearOutputDelivery(replay.id);
+    for (const replay of replays) {
+      await this.view.webview.postMessage(replay);
     }
   }
 

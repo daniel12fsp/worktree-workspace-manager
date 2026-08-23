@@ -3,8 +3,7 @@ import type { TerminalLike } from "./terminalTypes";
 import {
   terminalClipboardShortcutAction,
   writeTerminalSelectionToClipboard,
-  readClipboardToTerminal,
-  terminalNavigationInputSequence,
+  pasteClipboardToTerminal,
   terminalSessionNavigationDirection,
   type TerminalSessionNavigationDirection,
 } from "./terminalUtilsCore";
@@ -17,7 +16,6 @@ interface KeyHandlerOptions {
   readonly termRef: RefObject<TerminalLike | null>;
   readonly activeSessionIdRef: RefObject<string | undefined>;
   readonly hasFocusRef: RefObject<boolean>;
-  readonly onData: (data: string) => void;
   readonly onSelectAdjacent: (
     direction: TerminalSessionNavigationDirection,
   ) => void;
@@ -32,7 +30,7 @@ function handleClipboard(
   event.preventDefault();
   event.stopPropagation();
   if (action === "copy") void writeTerminalSelectionToClipboard(options.term);
-  else void readClipboardToTerminal(options.onData);
+  else void pasteClipboardToTerminal(options.term);
   return true;
 }
 
@@ -95,10 +93,5 @@ export function handleTerminalKeyEvent(
     options.onSelectAdjacent(sessionDirection);
     return false;
   }
-  const navigationInput = terminalNavigationInputSequence(event);
-  if (!navigationInput) return true;
-  event.preventDefault();
-  event.stopPropagation();
-  options.onData(navigationInput);
-  return false;
+  return true;
 }

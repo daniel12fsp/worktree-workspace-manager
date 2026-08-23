@@ -1,7 +1,6 @@
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import { Terminal } from "@xterm/xterm";
 import { handleTerminalKeyEvent } from "./terminalKeyHandler";
-import type { TerminalSessionNavigationDirection } from "./terminalUtilsCore";
 import { SearchAddon } from "@xterm/addon-search";
 import { FitAddon } from "@xterm/addon-fit";
 import type {
@@ -9,23 +8,34 @@ import type {
   SearchAddonLike,
   FitAddonLike,
   TerminalLike,
+  UseTerminalOptions,
+  WebviewTerminalSession,
 } from "./terminalTypes";
+import {
+  activeTerminalSession,
+  disposeTerminalSessions,
+  removeMissingTerminalSessions,
+} from "./terminalSessionLifecycle";
+import {
+  binaryStringToArrayBuffer,
+  focusTerminalNow,
+  registerTerminalLinkProvider,
+  updateFocusClasses,
+} from "./terminalUtils";
+
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
+  sessionIds: readonly string[],
   activeSessionId: string | undefined,
-  onData: (data: string | ArrayBuffer) => void,
-  onResize: (cols: number, rows: number) => void,
-  onSelectAdjacent: (direction: TerminalSessionNavigationDirection) => void,
+  options: UseTerminalOptions,
 ) {
+  const { onData, onResize, onSelectAdjacent } = options;
+  const sessionsRef = useRef(new Map<string, WebviewTerminalSession>());
+  const pendingWritesRef = useRef(
+    new Map<string, { data: string; onComplete?: () => void }[]>(),
+  );
   const termRef = useRef<TerminalLike | null>(null);
-  const searchAddonRef = useRef<SearchAddonLike | null>(null);
-  const fitAddonRef = useRef<FitAddonLike | null>(null);
   const hasFocusRef = useRef(false);
-  const previousSessionIdRef = useRef<string | undefined>(activeSessionId);
-  const replayDepthRef = useRef(0);
-  const cursorRestoreTimerRef = useRef<
-    ReturnType<typeof setTimeout> | undefined
-  >(undefined);
   const activeSessionIdRef = useRef(activeSessionId);
   activeSessionIdRef.current = activeSessionId;
   const onDataRef = useRef(onData);
@@ -34,262 +44,256 @@ export function useTerminal(
   onResizeRef.current = onResize;
   const onSelectAdjacentRef = useRef(onSelectAdjacent);
   onSelectAdjacentRef.current = onSelectAdjacent;
-  const attachExistingTerminal = useCallback(() => {
-    const term = termRef.current;
-    const container = containerRef.current;
-    const element = term?.element;
-    if (!term || !container || !element || container.contains(element)) return;
-    container.appendChild(element);
+
+  const activeSession = useCallback(() => {
+    const id = activeSessionIdRef.current;
+    return id ? sessionsRef.current.get(id) : undefined;
+  }, []);
+
+  const runSearch = useCallback(
+    (previous: boolean) => {
+      const session = activeSession();
+      if (!session) return;
+      const inputEl = document.getElementById(
+        "findInput",
+      ) as HTMLInputElement | null;
+      if (!inputEl) return;
+      const query = inputEl.value;
+      if (!query) {
+        session.searchAddon.clearDecorations();
+        return;
+      }
+      const options = {
+        decorations: {
+          activeMatchColorOverviewRuler: "#ffcc00",
+          matchOverviewRuler: "#d18616",
+        },
+        incremental: !previous,
+      };
+      if (previous) session.searchAddon.findPrevious(query, options);
+      else session.searchAddon.findNext(query, options);
+    },
+    [activeSession],
+  );
+
+  const createTerminal = useCallback(
+    (id: string): WebviewTerminalSession | undefined => {
+      const existing = sessionsRef.current.get(id);
+      if (existing) return existing;
+      const container = containerRef.current;
+      if (!container) return undefined;
+
+      try {
+        const term = new Terminal({
+          allowProposedApi: true,
+          cursorBlink: true,
+          fontFamily: "monospace",
+          scrollOnEraseInDisplay: true,
+          theme: { background: "#000000" },
+        }) as TerminalLike;
+        const searchAddon = new SearchAddon() as SearchAddonLike;
+        const fitAddon = new FitAddon() as FitAddonLike;
+        const host = document.createElement("div");
+        host.className = "terminalSession";
+        host.dataset.sessionId = id;
+        host.style.display =
+          id === activeSessionIdRef.current ? "block" : "none";
+        container.appendChild(host);
+
+        const session: WebviewTerminalSession = {
+          id,
+          term,
+          searchAddon,
+          fitAddon,
+          host,
+          replaying: false,
+        };
+        sessionsRef.current.set(id, session);
+        term.loadAddon(searchAddon);
+        term.loadAddon(fitAddon);
+        searchAddon.onDidChangeResults((event: SearchResults) => {
+          if (activeSessionIdRef.current !== id) return;
+          const resultEl = document.getElementById("findResult");
+          const inputEl = document.getElementById(
+            "findInput",
+          ) as HTMLInputElement | null;
+          if (!resultEl) return;
+          if (!inputEl?.value || event.resultCount <= 0) {
+            resultEl.textContent = inputEl?.value ? "0/0" : "";
+            return;
+          }
+          const current = event.resultIndex >= 0 ? event.resultIndex + 1 : "?";
+          resultEl.textContent = `${String(current)}/${String(event.resultCount)}`;
+        });
+        term.attachCustomKeyEventHandler((event: KeyboardEvent) =>
+          handleTerminalKeyEvent(event, {
+            term,
+            hasSelection: Boolean(term.hasSelection?.()),
+            runSearch,
+            termRef,
+            activeSessionIdRef,
+            hasFocusRef,
+            onSelectAdjacent: onSelectAdjacentRef.current,
+          }),
+        );
+        term.open(host);
+        term.element?.addEventListener("mouseenter", () => {
+          if (activeSessionIdRef.current === id) {
+            focusTerminalNow(term, id, hasFocusRef);
+          }
+        });
+        term.element?.addEventListener("focusin", () => {
+          if (activeSessionIdRef.current !== id) return;
+          hasFocusRef.current = true;
+          updateFocusClasses(true);
+        });
+        term.element?.addEventListener("focusout", () => {
+          setTimeout(() => {
+            if (activeSessionIdRef.current !== id) return;
+            hasFocusRef.current = Boolean(
+              term.element?.contains(document.activeElement),
+            );
+            updateFocusClasses(hasFocusRef.current);
+          }, 0);
+        });
+        term.onData((data: string) => {
+          if (!session.replaying) onDataRef.current(id, data);
+        });
+        term.onBinary((data: string) => {
+          if (!session.replaying) {
+            onDataRef.current(id, binaryStringToArrayBuffer(data));
+          }
+        });
+        registerTerminalLinkProvider(
+          term as unknown as Parameters<typeof registerTerminalLinkProvider>[0],
+        );
+
+        const pending = pendingWritesRef.current.get(id);
+        if (pending) {
+          pendingWritesRef.current.delete(id);
+          for (const write of pending) term.write(write.data, write.onComplete);
+        }
+        return session;
+      } catch (error) {
+        console.error("Failed to init terminal:", error);
+        return undefined;
+      }
+    },
+    [containerRef, runSearch],
+  );
+
+  const focus = useCallback(() => {
+    focusTerminalNow(
+      activeSession()?.term ?? null,
+      activeSessionIdRef.current,
+      hasFocusRef,
+    );
+  }, [activeSession]);
+
+  const replay = useCallback(
+    (id: string, data: string, onComplete?: () => void) => {
+      const session = createTerminal(id);
+      if (!session) {
+        const pending = pendingWritesRef.current.get(id) ?? [];
+        pending.push({ data, onComplete });
+        pendingWritesRef.current.set(id, pending);
+        return;
+      }
+      session.replaying = true;
+      session.term.reset();
+      session.term.write(data, () => {
+        session.replaying = false;
+        onComplete?.();
+      });
+    },
+    [createTerminal],
+  );
+
+  const write = useCallback(
+    (id: string, data: string, onComplete?: () => void) => {
+      const session = createTerminal(id);
+      if (session) {
+        session.term.write(data, onComplete);
+        return;
+      }
+      const pending = pendingWritesRef.current.get(id) ?? [];
+      pending.push({ data, onComplete });
+      pendingWritesRef.current.set(id, pending);
+    },
+    [createTerminal],
+  );
+
+  const clear = useCallback(
+    (id: string) => {
+      createTerminal(id)?.term.clear();
+    },
+    [createTerminal],
+  );
+
+  const resize = useCallback(() => {
+    const id = activeSessionIdRef.current;
+    const session = id ? sessionsRef.current.get(id) : undefined;
+    if (!id || !session || !containerRef.current) return;
+    session.fitAddon.fit();
+    const dimensions = session.fitAddon.proposeDimensions() ?? {
+      cols: session.term.cols ?? 80,
+      rows: session.term.rows ?? 24,
+    };
+    onResizeRef.current(id, dimensions.cols, dimensions.rows);
+  }, [containerRef]);
+
+  useEffect(() => {
+    for (const id of sessionIds) createTerminal(id);
+    removeMissingTerminalSessions(
+      sessionsRef.current,
+      pendingWritesRef.current,
+      new Set(sessionIds),
+    );
+  }, [sessionIds, createTerminal]);
+
+  useEffect(() => {
+    const session = activeTerminalSession(sessionsRef.current, activeSessionId);
+    termRef.current = session?.term ?? null;
+    if (!session) return;
     requestAnimationFrame(() => {
-      fitAddonRef.current?.fit();
+      resize();
       updateFocusClasses(hasFocusRef.current);
     });
-  }, [containerRef]);
-  const initTerminal = useCallback(() => {
-    if (termRef.current) {
-      attachExistingTerminal();
-      return;
-    }
-    if (!containerRef.current) return;
-    try {
-      const term = new Terminal({
-        allowProposedApi: true,
-        cursorBlink: true,
-        fontFamily: "monospace",
-        scrollOnEraseInDisplay: true,
-        theme: { background: "#000000" },
-      });
-      const searchAddon = new SearchAddon();
-      term.loadAddon(searchAddon);
-      searchAddonRef.current = searchAddon;
-      const fitAddon = new FitAddon();
-      term.loadAddon(fitAddon);
-      fitAddonRef.current = fitAddon;
-      searchAddon.onDidChangeResults((event: SearchResults) => {
-        const resultEl = document.getElementById("findResult");
-        const inputEl = document.getElementById(
-          "findInput",
-        ) as HTMLInputElement | null;
-        if (!resultEl) return;
-        if (!inputEl?.value || event.resultCount <= 0) {
-          resultEl.textContent = inputEl?.value ? "0/0" : "";
-          return;
-        }
-        const current = event.resultIndex >= 0 ? event.resultIndex + 1 : "?";
-        resultEl.textContent = `${String(current)}/${String(event.resultCount)}`;
-      });
-      term.attachCustomKeyEventHandler((event: KeyboardEvent) =>
-        handleTerminalKeyEvent(event, {
-          term,
-          hasSelection: term.hasSelection(),
-          runSearch,
-          termRef,
-          activeSessionIdRef,
-          hasFocusRef,
-          onData: onDataRef.current,
-          onSelectAdjacent: onSelectAdjacentRef.current,
-        }),
-      );
-      term.open(containerRef.current);
-      const terminalElement = term.element;
-      terminalElement?.addEventListener("mouseenter", () => {
-        focusTerminalNow(
-          termRef.current,
-          activeSessionIdRef.current,
-          hasFocusRef,
-        );
-      });
-      terminalElement?.addEventListener("focusin", () => {
-        hasFocusRef.current = true;
-        updateFocusClasses(true);
-      });
-      terminalElement?.addEventListener("focusout", () => {
-        setTimeout(() => {
-          hasFocusRef.current = terminalElement.contains(
-            document.activeElement,
-          );
-          updateFocusClasses(hasFocusRef.current);
-        }, 0);
-      });
-      term.onData((data: string) => {
-        const sid = activeSessionIdRef.current;
-        if (!sid || replayDepthRef.current > 0) return;
-        onDataRef.current(data);
-      });
-      term.onBinary((data: string) => {
-        const sid = activeSessionIdRef.current;
-        if (!sid || replayDepthRef.current > 0) return;
-        onDataRef.current(binaryStringToArrayBuffer(data));
-      });
-      term.element?.addEventListener("focus", () => {
-        hasFocusRef.current = true;
-        updateFocusClasses(true);
-      });
-      term.element?.addEventListener("blur", () => {
-        hasFocusRef.current = false;
-        updateFocusClasses(false);
-      });
-      registerTerminalLinkProvider(term);
-      termRef.current = term;
-      fitAddon.fit();
-      const dimensions = fitAddon.proposeDimensions() ?? {
-        cols: term.cols,
-        rows: term.rows,
-      };
-      onResizeRef.current(dimensions.cols, dimensions.rows);
-    } catch (error) {
-      console.error("Failed to init terminal:", error);
-    }
-  }, [containerRef, attachExistingTerminal]);
-  const runSearch = useCallback((previous: boolean) => {
-    if (!activeSessionIdRef.current || !searchAddonRef.current) return;
-    const inputEl = document.getElementById(
-      "findInput",
-    ) as HTMLInputElement | null;
-    if (!inputEl) return;
-    const query = inputEl.value;
-    if (!query) {
-      searchAddonRef.current.clearDecorations();
-      return;
-    }
-    const options = {
-      decorations: {
-        activeMatchColorOverviewRuler: "#ffcc00",
-        matchOverviewRuler: "#d18616",
-      },
-      incremental: !previous,
-    };
-    if (previous) {
-      searchAddonRef.current.findPrevious(query, options);
-    } else {
-      searchAddonRef.current.findNext(query, options);
-    }
-  }, []);
-  const focus = useCallback(() => {
-    focusTerminalNow(termRef.current, activeSessionIdRef.current, hasFocusRef);
-  }, []);
-  const clearAndWrite = useCallback((data: string, onComplete?: () => void) => {
-    if (!termRef.current) {
-      onComplete?.();
-      return;
-    }
-    replayDepthRef.current += 1;
-    termRef.current.reset();
-    const replaySafeData = sanitizeReplayedTerminalOutput(data);
-    if (!replaySafeData) {
-      replayDepthRef.current = Math.max(0, replayDepthRef.current - 1);
-      writeTerminalCursorShow(termRef.current);
-      onComplete?.();
-      return;
-    }
-    termRef.current.write(replaySafeData, () => {
-      replayDepthRef.current = Math.max(0, replayDepthRef.current - 1);
-      writeTerminalCursorShow(termRef.current);
-      onComplete?.();
-    });
-  }, []);
-  const write = useCallback((data: string, onComplete?: () => void) => {
-    if (!termRef.current) {
-      onComplete?.();
-      return;
-    }
-    termRef.current.write(data, onComplete);
-    updateTerminalCursorRestoreTimer(
-      data,
-      termRef.current,
-      cursorRestoreTimerRef,
-    );
-  }, []);
-  const clear = useCallback(() => {
-    if (!termRef.current) return;
-    termRef.current.clear();
-    writeTerminalCursorShow(termRef.current);
-  }, []);
-  const resize = useCallback(() => {
-    if (!termRef.current || !containerRef.current) return;
-    if (fitAddonRef.current) {
-      fitAddonRef.current.fit();
-      const dims = fitAddonRef.current.proposeDimensions();
-      const dimensions = dims ?? {
-        cols: termRef.current.cols ?? 80,
-        rows: termRef.current.rows ?? 24,
-      };
-      onResizeRef.current(dimensions.cols, dimensions.rows);
-    } else {
-      const cols = Math.max(
-        20,
-        Math.floor(containerRef.current.clientWidth / 9),
-      );
-      const rows = Math.max(
-        5,
-        Math.floor(containerRef.current.clientHeight / 18),
-      );
-      termRef.current.resize(cols, rows);
-      onResizeRef.current(cols, rows);
-    }
-  }, [containerRef]);
+  }, [activeSessionId, sessionIds, resize]);
+
   useEffect(() => {
-    initTerminal();
-    attachExistingTerminal();
-  }, [initTerminal, attachExistingTerminal, activeSessionId]);
-  useEffect(() => {
-    const term = termRef.current;
-    const previousSessionId = previousSessionIdRef.current;
-    if (term && previousSessionId !== activeSessionId) {
-      writeTerminalMouseReset(term);
-      writeTerminalCursorShow(term);
-      if (!activeSessionId) term.clear();
-    }
-    previousSessionIdRef.current = activeSessionId;
-  }, [activeSessionId]);
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const ro = new ResizeObserver(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
       resize();
     });
-    ro.observe(containerRef.current);
+    observer.observe(container);
     return () => {
-      ro.disconnect();
+      observer.disconnect();
     };
-  }, [containerRef, resize, activeSessionId]);
+  }, [containerRef, resize]);
+
   useEffect(
     () => () => {
-      if (cursorRestoreTimerRef.current) {
-        clearTimeout(cursorRestoreTimerRef.current);
-        cursorRestoreTimerRef.current = undefined;
-      }
-      if (termRef.current) {
-        writeTerminalMouseReset(termRef.current);
-        writeTerminalCursorShow(termRef.current);
-        termRef.current.dispose();
-        termRef.current = null;
-      }
+      disposeTerminalSessions(sessionsRef.current, pendingWritesRef.current);
+      termRef.current = null;
     },
     [],
   );
+
   return useMemo(
     () => ({
       termRef,
-      searchAddonRef,
       focus,
-      clearAndWrite,
+      replay,
       write,
       clear,
       resize,
       runSearch,
       hasFocusRef,
     }),
-    [focus, clearAndWrite, write, clear, resize, runSearch],
+    [focus, replay, write, clear, resize, runSearch],
   );
 }
-import {
-  focusTerminalNow,
-  registerTerminalLinkProvider,
-  sanitizeReplayedTerminalOutput,
-  writeTerminalCursorShow,
-  writeTerminalMouseReset,
-  updateTerminalCursorRestoreTimer,
-  updateFocusClasses,
-  binaryStringToArrayBuffer,
-} from "./terminalUtils";
+
 export * from "./terminalUtils";

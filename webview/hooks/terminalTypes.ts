@@ -12,6 +12,21 @@ export interface FitAddonLike {
   fit(): void;
   proposeDimensions(): { cols: number; rows: number } | undefined;
 }
+export interface UseTerminalOptions {
+  onData: (id: string, data: string | ArrayBuffer) => void;
+  onResize: (id: string, cols: number, rows: number) => void;
+  onSelectAdjacent: (direction: -1 | 1) => void;
+}
+
+export interface WebviewTerminalSession {
+  readonly id: string;
+  readonly term: TerminalLike;
+  readonly searchAddon: SearchAddonLike;
+  readonly fitAddon: FitAddonLike;
+  readonly host: HTMLDivElement;
+  replaying: boolean;
+}
+
 export interface TerminalLike {
   getSelection?: () => string;
   element?: HTMLElement;
@@ -24,6 +39,7 @@ export interface TerminalLike {
   onBinary(callback: (data: string) => void): void;
   loadAddon(addon: unknown): void;
   write(data: string, callback?: () => void): void;
+  paste(data: string): void;
   reset(): void;
   clear(): void;
   resize(cols: number, rows: number): void;

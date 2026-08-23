@@ -6,9 +6,9 @@ interface Props {
   containerRef: React.RefObject<HTMLDivElement | null>;
   terminalApi: {
     focus: () => void;
-    clearAndWrite: (data: string) => void;
-    write: (data: string) => void;
-    clear: () => void;
+    replay: (id: string, data: string) => void;
+    write: (id: string, data: string) => void;
+    clear: (id: string) => void;
     resize: () => void;
   } | null;
 }
@@ -72,7 +72,12 @@ export function TerminalEmbed({
       onMouseDown={handleFocusTerminal}
       onClick={handleFocusTerminal}
     >
-      <div ref={containerRef} id="terminal" style={{ height: "100%" }} />
+      <div
+        ref={containerRef}
+        id="terminal"
+        className="terminalSessions"
+        style={{ height: "100%" }}
+      />
     </div>
   );
 }

@@ -11,12 +11,8 @@ export abstract class EmbeddedTerminalSessionMessages extends EmbeddedTerminalWe
   ): Partial<Record<string, WebviewMessageHandler>> {
     return {
       select: async () => {
-        if (this.activeSessionId) {
-          this.clearOutputDelivery(this.activeSessionId);
-        }
         this.activeSessionId = String(message.id);
         await this.renderSessions();
-        await this.postActiveSessionReplay();
       },
       outputRendered: () => {
         this.terminalOutputRendered(String(message.id));
@@ -31,10 +27,7 @@ export abstract class EmbeddedTerminalSessionMessages extends EmbeddedTerminalWe
       },
       closeSession: async () => {
         const closed = this.closeSessionById(String(message.id));
-        if (closed) {
-          await this.renderSessions();
-          await this.postActiveSessionReplay();
-        }
+        if (closed) await this.renderSessions();
       },
       setTerminalAlias: async () => {
         await this.setTerminalAliasForSession(String(message.id));
@@ -62,18 +55,13 @@ export abstract class EmbeddedTerminalSessionMessages extends EmbeddedTerminalWe
         );
         await this.renderSessions();
       },
-      resize: async () => {
+      resize: () => {
         this.terminalCols = positiveInteger(message.cols) ?? this.terminalCols;
         this.terminalRows = positiveInteger(message.rows) ?? this.terminalRows;
         const id = typeof message.id === "string" ? message.id : undefined;
         const session = id ? this.sessions.get(id) : undefined;
         if (session) {
           session.process.resize(this.terminalCols, this.terminalRows);
-        }
-        if (this.initialReplayPending && id === this.activeSessionId) {
-          this.initialReplayPending = false;
-          this.initialReplaySessionId = id;
-          await this.postActiveSessionReplay();
         }
       },
       create: async () => {

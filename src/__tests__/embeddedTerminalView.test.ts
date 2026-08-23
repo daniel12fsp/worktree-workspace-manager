@@ -12,10 +12,10 @@ import {
   validatedConfiguredTerminalShell,
   terminalShell,
   fishQuote,
-  zshActivityRc,
   bashActivityRc,
   fishActivityRc,
   ptyEnv,
+  resolvedTerminalProfile,
   safeEnv,
   consumeActivityMarkers,
   shellActivityWrapper,
@@ -379,6 +379,37 @@ describe("defaultShell", () => {
     expect(typeof terminalShell()).toBe("string");
   });
 
+  it("honors the VS Code default terminal profile", () => {
+    mockExistsSync.mockReturnValue(true);
+    mockStatSync.mockReturnValue({ mode: 0o755, isFile: () => true } as any);
+    (vscode as any).__setConfig(
+      "terminal.integrated.defaultProfile.linux",
+      "zsh login",
+    );
+    (vscode as any).__setConfig("terminal.integrated.profiles.linux", {
+      "zsh login": {
+        path: "/bin/zsh",
+        args: ["-l"],
+        env: { PROFILE_VALUE: "profile", REMOVE_ME: null },
+      },
+    });
+    (vscode as any).__setConfig("terminal.integrated.env.linux", {
+      INTEGRATED_VALUE: "integrated",
+      PROFILE_VALUE: "base",
+    });
+
+    expect(resolvedTerminalProfile("linux")).toEqual({
+      shell: "/bin/zsh",
+      args: ["-l"],
+      env: {
+        INTEGRATED_VALUE: "integrated",
+        PROFILE_VALUE: "profile",
+        REMOVE_ME: null,
+      },
+      source: "profile",
+    });
+  });
+
   it("reads configured terminals layout order", () => {
     expect(configuredTerminalsLayoutOrder()).toBe("terminalFirst");
     (vscode as any).__setConfig(
@@ -414,35 +445,6 @@ describe("fishQuote", () => {
 
   it("escapes single quotes", () => {
     expect(fishQuote("it's")).toBe("'it'\\''s'");
-  });
-});
-
-describe("zshActivityRc", () => {
-  it("returns a string with preexec hook", () => {
-    const rc = zshActivityRc();
-    expect(rc).toContain("preexec");
-    expect(rc).toContain("777;wtwm");
-  });
-
-  it("restores the normal user history file when ZDOTDIR is temporary", () => {
-    const rc = zshActivityRc();
-    expect(rc).toContain('"$HISTFILE" == "$ZDOTDIR"/*');
-    expect(rc).toContain('HISTFILE="$HOME/.zsh_history"');
-  });
-
-  it("emits an error marker with the previous command when it fails", () => {
-    const rc = zshActivityRc();
-    expect(rc).toContain('typeset -g __wtwm_last_command=""');
-    expect(rc).toContain('__wtwm_last_command="$1"');
-    expect(rc).toContain('if [[ "$exit_code" -ne 0 ]]');
-    expect(rc).toContain("777;wtwm;error;%s;%s");
-  });
-
-  it("reports the worktree branch after each command", () => {
-    const rc = zshActivityRc();
-    expect(rc).toContain('git -C "$WTWM_WORKTREE_PATH" symbolic-ref');
-    expect(rc).toContain("777;wtwm;branch;%s");
-    expect(rc).toContain('return "$exit_code"');
   });
 });
 
@@ -527,6 +529,19 @@ describe("ptyEnv", () => {
     expect(
       ptyEnv({ TERM: "custom-term", ZDOTDIR: "/tmp/wrapper" }),
     ).toMatchObject({ TERM: "custom-term", ZDOTDIR: "/tmp/wrapper" });
+  });
+
+  it("removes inherited variables disabled by a terminal profile", () => {
+    const previous = process.env.WTWM_REMOVE_ME;
+    process.env.WTWM_REMOVE_ME = "inherited";
+    try {
+      expect(ptyEnv({ WTWM_REMOVE_ME: null })).not.toHaveProperty(
+        "WTWM_REMOVE_ME",
+      );
+    } finally {
+      if (previous === undefined) delete process.env.WTWM_REMOVE_ME;
+      else process.env.WTWM_REMOVE_ME = previous;
+    }
   });
 });
 
@@ -714,9 +729,9 @@ describe("shellActivityWrapper", () => {
   });
 
   it("returns base wrapper for unknown shell", () => {
-    const wrapper = shellActivityWrapper("/bin/unknown-shell");
+    const wrapper = shellActivityWrapper("/bin/unknown-shell", ["--login"]);
     expect(wrapper.shell).toBe("/bin/unknown-shell");
-    expect(wrapper.args).toEqual([]);
+    expect(wrapper.args).toEqual(["--login"]);
     expect(wrapper.env).toEqual({});
     expect(wrapper.cleanupPaths).toEqual([]);
   });
@@ -730,17 +745,19 @@ describe("shellActivityWrapper", () => {
     Object.defineProperty(process, "platform", { value: originalPlatform });
   });
 
-  it("wraps zsh with ZDOTDIR", () => {
-    const wrapper = shellActivityWrapper("/bin/zsh");
-    expect(wrapper.env).toEqual({ ZDOTDIR: "/tmp/test-dir" });
-    expect(wrapper.cleanupPaths).toEqual(["/tmp/test-dir"]);
-    expect(mockWriteFileSync).toHaveBeenCalled();
+  it("does not alter zsh startup semantics", () => {
+    const wrapper = shellActivityWrapper("/bin/zsh", ["-l"]);
+    expect(wrapper.args).toEqual(["-l"]);
+    expect(wrapper.env).toEqual({});
+    expect(wrapper.cleanupPaths).toEqual([]);
+    expect(mockWriteFileSync).not.toHaveBeenCalled();
   });
 
   it("wraps bash with --rcfile", () => {
-    const wrapper = shellActivityWrapper("/bin/bash");
-    expect(wrapper.args[0]).toBe("--rcfile");
-    expect(wrapper.args[2]).toBe("-i");
+    const wrapper = shellActivityWrapper("/bin/bash", ["--login"]);
+    expect(wrapper.args[0]).toBe("--login");
+    expect(wrapper.args[1]).toBe("--rcfile");
+    expect(wrapper.args[3]).toBe("-i");
     expect(wrapper.cleanupPaths).toEqual(["/tmp/test-dir"]);
   });
 
@@ -755,7 +772,7 @@ describe("shellActivityWrapper", () => {
     mockMkdtempSync.mockImplementation(() => {
       throw new Error("mkdtemp failed");
     });
-    const wrapper = shellActivityWrapper("/bin/zsh");
+    const wrapper = shellActivityWrapper("/bin/bash");
     expect(wrapper.env).toEqual({});
     expect(wrapper.cleanupPaths).toEqual([]);
   });
@@ -836,9 +853,6 @@ describe("EmbeddedTerminalViewProvider", () => {
     (provider as any).terminalOrder.set("second", 2);
     (provider as any).activeSessionId = "first";
     vi.spyOn(provider as any, "renderSessions").mockResolvedValue(undefined);
-    vi.spyOn(provider as any, "postActiveSessionReplay").mockResolvedValue(
-      undefined,
-    );
 
     await provider.selectPreviousTerminal();
     expect((provider as any).activeSessionId).toBe("second");
@@ -1084,7 +1098,7 @@ describe("EmbeddedTerminalViewProvider", () => {
     expect(mockWebview.postMessage).toHaveBeenCalled();
   });
 
-  it("resizes before replaying the active session after ready", async () => {
+  it("replays existing state on ready and then streams live output", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const onDataCallbacks: Array<(data: string) => void> = [];
     mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
@@ -1120,13 +1134,15 @@ describe("EmbeddedTerminalViewProvider", () => {
     mockListAllWorktrees.mockResolvedValue(new Map());
 
     await messageHandler!({ type: "ready" });
-    onDataCallbacks[0]?.(" world");
-
-    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "replay" }),
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "replay", data: "hello" }),
     );
-    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "output" }),
+
+    mockWebview.postMessage.mockClear();
+    onDataCallbacks[0]?.(" world");
+    (provider as any).flushTerminalOutput();
+    expect(mockWebview.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "output", data: " world" }),
     );
 
     const sessionId = (provider as any).activeSessionId;
@@ -1136,17 +1152,7 @@ describe("EmbeddedTerminalViewProvider", () => {
       cols: 120,
       rows: 40,
     });
-
     expect(mockPtyResize).toHaveBeenCalledWith(120, 40);
-    expect(mockWebview.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "replay", data: "hello world" }),
-    );
-    expect(mockPtyResize.mock.invocationCallOrder[0]).toBeLessThan(
-      mockWebview.postMessage.mock.invocationCallOrder.find(
-        (_order: number, index: number) =>
-          mockWebview.postMessage.mock.calls[index]?.[0]?.type === "replay",
-      )!,
-    );
 
     mockWebview.postMessage.mockClear();
     await messageHandler!({ type: "ready" });
@@ -1296,6 +1302,7 @@ describe("EmbeddedTerminalViewProvider", () => {
       repo: { label: "project.git", fsPath: "/repos/project" },
     } as any;
     await provider.openTerminal(worktree);
+    await (provider as any).handleWebviewMessage({ type: "ready" });
     mockWebview.postMessage.mockClear();
 
     onDataCallbacks[0]?.("hel");
@@ -1342,6 +1349,7 @@ describe("EmbeddedTerminalViewProvider", () => {
       repo: { label: "project.git", fsPath: "/repos/project" },
     } as any);
     const sessionId = [...(provider as any).sessions.keys()][0];
+    await messageHandler!({ type: "ready" });
     mockWebview.postMessage.mockClear();
 
     onDataCallbacks[0]?.("x".repeat(600_000));
@@ -1373,7 +1381,7 @@ describe("EmbeddedTerminalViewProvider", () => {
     vi.useRealTimers();
   });
 
-  it("does not stream inactive terminal output before replay", async () => {
+  it("streams inactive terminal output without selecting it", async () => {
     vi.useFakeTimers();
     let messageHandler: ((msg: any) => void) | undefined;
     const onDataCallbacks: Array<(data: string) => void> = [];
@@ -1408,20 +1416,15 @@ describe("EmbeddedTerminalViewProvider", () => {
     await provider.openTerminal(worktreeA);
     await provider.openTerminal(worktreeB);
     const firstSessionId = [...(provider as any).sessions.keys()][0];
+    await messageHandler!({ type: "ready" });
     mockWebview.postMessage.mockClear();
 
     onDataCallbacks[0]?.("inactive output");
     await vi.advanceTimersByTimeAsync(16);
 
-    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: "output" }),
-    );
-
-    await messageHandler!({ type: "select", id: firstSessionId });
-
     expect(mockWebview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "replay",
+        type: "output",
         id: firstSessionId,
         data: "inactive output",
       }),

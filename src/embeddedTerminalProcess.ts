@@ -17,7 +17,7 @@ import { consumeActivityMarkers } from "./terminalActivity";
 import {
   cleanupShellWrapper,
   ptyEnv,
-  resolvedTerminalShell,
+  resolvedTerminalProfile,
 } from "./terminalEnvironment";
 import { appendOutputChunk } from "./terminalOutput";
 import { shellActivityWrapper } from "./terminalShellWrapper";
@@ -40,9 +40,13 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
     const generated = this.nextTerminalLabel(worktree);
     const label = options.label ?? generated.label;
     const terminalNumber = generated.terminalNumber;
-    const shellResolution = resolvedTerminalShell();
-    const wrapper = shellActivityWrapper(shellResolution.shell);
+    const shellResolution = resolvedTerminalProfile();
+    const wrapper = shellActivityWrapper(
+      shellResolution.shell,
+      shellResolution.args,
+    );
     const env = ptyEnv({
+      ...shellResolution.env,
       ...options.env,
       WTWM_WORKTREE_PATH: worktree.path,
       ...wrapper.env,
@@ -157,7 +161,7 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
       if (this.activeSessionId === id) {
         this.activeSessionId = this.nextSessionId();
       }
-      void this.renderSessions().then(() => this.postActiveSessionReplay());
+      void this.renderSessions();
     });
     this.sessions.set(id, session);
     this.addSessionToWorktreeIndex(session);
@@ -248,8 +252,7 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
   }
 
   protected postTerminalOutput(id: string, data: string): void {
-    if (id !== this.activeSessionId || !this.view || this.initialReplayPending)
-      return;
+    if (!this.view || !this.webviewReady) return;
 
     let pending = this.pendingOutputBySession.get(id);
     if (!pending) {
@@ -266,7 +269,7 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
       this.sessions.get(id)?.process.pause();
       this.outputPausedSessionIds.add(id);
     }
-    this.scheduleOutputFlush();
+    if (!this.initialReplayPending) this.scheduleOutputFlush();
   }
 
   protected flushTerminalOutput(): void {
@@ -278,8 +281,17 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
     }
     if (this.outputInFlightSessionId) return;
 
-    const id = this.activeSessionId;
-    if (!id || !this.sessions.has(id)) return;
+    const ids = [
+      ...(this.activeSessionId ? [this.activeSessionId] : []),
+      ...this.pendingOutputBySession.keys(),
+    ];
+    const id = ids.find(
+      (candidate, index) =>
+        ids.indexOf(candidate) === index &&
+        this.sessions.has(candidate) &&
+        Boolean(this.pendingOutputBySession.get(candidate)?.charCount),
+    );
+    if (!id) return;
     const pending = this.pendingOutputBySession.get(id);
     if (!pending) return;
     const data = dequeueOutput(pending, MAX_OUTPUT_MESSAGE_CHARS);

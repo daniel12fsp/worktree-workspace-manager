@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useMemo, useRef } from "react";
 import { useVsCode } from "./hooks/useVsCode";
 import { useTerminal } from "./hooks/useTerminal";
 import type { RepoData, TerminalsLayoutOrder } from "./types";
@@ -34,34 +34,22 @@ export function App({ initialState }: Props) {
   const terminalPanePercentRef = useRef(terminalPanePercent);
   terminalPanePercentRef.current = terminalPanePercent;
   const [, forceRender] = useState(0);
-  const replayedSessionIdRef = useRef<string | undefined>(undefined);
   const renderTelemetryCountRef = useRef(0);
   const renderStartedAt = performance.now();
   webviewProfileMark(state.profileMarkers, "App.render.start");
 
   const handleTerminalData = useCallback(
-    (data: string | ArrayBuffer) => {
-      if (state.activeSessionId) {
-        vscode.postMessage({
-          type: "input",
-          id: state.activeSessionId,
-          data,
-        });
-      }
+    (id: string, data: string | ArrayBuffer) => {
+      vscode.postMessage({ type: "input", id, data });
     },
-    [state.activeSessionId, vscode],
+    [vscode],
   );
 
   const handleTerminalResize = useCallback(
-    (cols: number, rows: number) => {
-      vscode.postMessage({
-        type: "resize",
-        ...(state.activeSessionId ? { id: state.activeSessionId } : {}),
-        cols,
-        rows,
-      });
+    (id: string, cols: number, rows: number) => {
+      vscode.postMessage({ type: "resize", id, cols, rows });
     },
-    [state.activeSessionId, vscode],
+    [vscode],
   );
 
   const sendTerminalInput = useCallback(
@@ -87,12 +75,24 @@ export function App({ initialState }: Props) {
   );
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
+  const terminalSessionIds = useMemo(
+    () =>
+      state.repos.flatMap((repo) =>
+        repo.worktrees.flatMap((worktree) =>
+          worktree.sessions.map((session) => session.id),
+        ),
+      ),
+    [state.repos],
+  );
   const terminalApi = useTerminal(
     terminalContainerRef,
+    terminalSessionIds,
     state.activeSessionId,
-    handleTerminalData,
-    handleTerminalResize,
-    handleSelectAdjacent,
+    {
+      onData: handleTerminalData,
+      onResize: handleTerminalResize,
+      onSelectAdjacent: handleSelectAdjacent,
+    },
   );
 
   const handleSelect = useCallback(
@@ -250,7 +250,6 @@ export function App({ initialState }: Props) {
     terminalApi,
     vscode,
     terminalContainerRef,
-    replayedSessionIdRef,
     renderTelemetryCountRef,
     renderStartedAt,
     sendTerminalInput,

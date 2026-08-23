@@ -8,6 +8,10 @@ import type {
   TerminalsLayoutOrder,
 } from "./embeddedTerminalTypes";
 import { stripTerminalControlSequences } from "./terminalControl";
+import {
+  resolveTerminalProfile,
+  type ResolvedTerminalProfile,
+} from "./terminalProfile";
 
 export function cleanupShellWrapper(session: EmbeddedSession): void {
   for (const cleanupPath of session.wrapperCleanupPaths) {
@@ -87,21 +91,22 @@ function isUsableShellPath(shellPath: string): boolean {
   }
 }
 
+export function resolvedTerminalProfile(
+  platform: NodeJS.Platform = process.platform,
+): ResolvedTerminalProfile {
+  return resolveTerminalProfile({
+    configuredShell: validatedConfiguredTerminalShell(),
+    defaultShell: defaultShell(),
+    platform,
+  });
+}
+
 export function resolvedTerminalShell(): {
   shell: string;
-  source: "configuration" | "environment" | "default";
+  source: ResolvedTerminalProfile["source"];
 } {
-  const configuredShell = validatedConfiguredTerminalShell();
-  if (configuredShell) {
-    return { shell: configuredShell, source: "configuration" };
-  }
-
-  const envShell = safeEnv("SHELL");
-  if (envShell) {
-    return { shell: envShell, source: "environment" };
-  }
-
-  return { shell: defaultShell(), source: "default" };
+  const profile = resolvedTerminalProfile();
+  return { shell: profile.shell, source: profile.source };
 }
 
 export function terminalShell(): string {
@@ -109,7 +114,7 @@ export function terminalShell(): string {
 }
 
 export function ptyEnv(
-  extra: Record<string, string> | undefined,
+  extra: Record<string, string | null | undefined> | undefined,
 ): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -117,7 +122,8 @@ export function ptyEnv(
   }
   env.TERM = "xterm-256color";
   for (const [key, value] of Object.entries(extra ?? {})) {
-    env[key] = value;
+    if (typeof value === "string") env[key] = value;
+    else if (value === null) Reflect.deleteProperty(env, key);
   }
   return env;
 }

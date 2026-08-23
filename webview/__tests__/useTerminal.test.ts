@@ -11,10 +11,6 @@ import {
   sanitizeReplayedTerminalOutput,
   TerminalControlSanitizer,
   TerminalInputSanitizer,
-  terminalMouseResetSequence,
-  terminalCursorShowSequence,
-  lastCursorVisibilityControl,
-  terminalNavigationInputSequence,
   terminalSessionNavigationDirection,
   terminalClipboardShortcutAction,
   detectTerminalLinksInBuffer,
@@ -323,59 +319,6 @@ describe("terminalSessionNavigationDirection", () => {
   });
 });
 
-describe("terminalNavigationInputSequence", () => {
-  it.each([
-    ["Home", "\x1b[H"],
-    ["End", "\x1b[F"],
-    ["PageUp", "\x1b[5~"],
-    ["PageDown", "\x1b[6~"],
-  ])("maps %s to a terminal input sequence", (key, expected) => {
-    expect(
-      terminalNavigationInputSequence({
-        type: "keydown",
-        key,
-        ctrlKey: false,
-        metaKey: false,
-        altKey: false,
-        shiftKey: false,
-      }),
-    ).toBe(expected);
-  });
-
-  it("ignores keyup and modified navigation shortcuts", () => {
-    expect(
-      terminalNavigationInputSequence({
-        type: "keyup",
-        key: "Home",
-        ctrlKey: false,
-        metaKey: false,
-        altKey: false,
-        shiftKey: false,
-      }),
-    ).toBeUndefined();
-    expect(
-      terminalNavigationInputSequence({
-        type: "keydown",
-        key: "PageUp",
-        ctrlKey: false,
-        metaKey: false,
-        altKey: false,
-        shiftKey: true,
-      }),
-    ).toBeUndefined();
-    expect(
-      terminalNavigationInputSequence({
-        type: "keydown",
-        key: "End",
-        ctrlKey: true,
-        metaKey: false,
-        altKey: false,
-        shiftKey: false,
-      }),
-    ).toBeUndefined();
-  });
-});
-
 describe("terminalClipboardShortcutAction", () => {
   it("copies on macOS cmd+c when selection exists", () => {
     expect(
@@ -535,23 +478,6 @@ describe("sanitizeReplayedTerminalOutput", () => {
   it("removes replayed terminal size and DEC mode queries", () => {
     const input = "a\x1b[18t\x1b[?2004$pb";
     expect(sanitizeReplayedTerminalOutput(input)).toBe("ab");
-  });
-
-  it("exports the expected mouse reset sequence", () => {
-    expect(terminalMouseResetSequence()).toBe(
-      "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1016l",
-    );
-  });
-
-  it("exports the expected cursor show sequence", () => {
-    expect(terminalCursorShowSequence()).toBe("\x1b[?25h");
-  });
-
-  it("finds the last cursor visibility control in terminal output", () => {
-    expect(lastCursorVisibilityControl("a\x1b[?25lb")).toBe("hide");
-    expect(lastCursorVisibilityControl("a\x1b[?25l\x1b[?25hc")).toBe("show");
-    expect(lastCursorVisibilityControl("a\x9b?25lc")).toBe("hide");
-    expect(lastCursorVisibilityControl("plain text")).toBeUndefined();
   });
 });
 

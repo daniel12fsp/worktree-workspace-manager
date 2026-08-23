@@ -226,7 +226,9 @@ body {
   box-shadow: 0 0 0 1px var(--vscode-terminal-ansiYellow, #ffcc00);
 }
 
-#terminal {
+#terminal,
+.terminalSession {
+  width: 100%;
   height: 100%;
 }
 

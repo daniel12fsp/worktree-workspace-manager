@@ -1009,7 +1009,7 @@ describe("TerminalEmbed", () => {
     const containerRef = { current: document.createElement("div") };
     const terminalApi = {
       focus: vi.fn(),
-      clearAndWrite: vi.fn(),
+      replay: vi.fn(),
       write: vi.fn(),
       clear: vi.fn(),
       resize: vi.fn(),
@@ -1037,7 +1037,7 @@ describe("TerminalEmbed", () => {
     const containerRef = { current: document.createElement("div") };
     const terminalApi = {
       focus: vi.fn(),
-      clearAndWrite: vi.fn(),
+      replay: vi.fn(),
       write: vi.fn(),
       clear: vi.fn(),
       resize: vi.fn(),
@@ -1070,7 +1070,7 @@ describe("TerminalEmbed", () => {
     const containerRef = { current: document.createElement("div") };
     const terminalApi = {
       focus: vi.fn(),
-      clearAndWrite: vi.fn(),
+      replay: vi.fn(),
       write: vi.fn(),
       clear: vi.fn(),
       resize: vi.fn(),
@@ -1095,7 +1095,7 @@ describe("TerminalEmbed", () => {
     const containerRef = { current: document.createElement("div") };
     const terminalApi = {
       focus: vi.fn(),
-      clearAndWrite: vi.fn(),
+      replay: vi.fn(),
       write: vi.fn(),
       clear: vi.fn(),
       resize: vi.fn(),

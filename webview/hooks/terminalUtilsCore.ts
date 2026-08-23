@@ -1,13 +1,4 @@
-import {
-  isMouseReport,
-  isCursorVisibilityHide,
-  isCursorVisibilityShow,
-} from "./terminalFilters";
-import type { RefObject } from "react";
-const TERMINAL_MOUSE_RESET =
-  "\x1b[?1000l" + "\x1b[?1002l" + "\x1b[?1003l" + "\x1b[?1006l" + "\x1b[?1016l";
-const TERMINAL_CURSOR_SHOW = "\x1b[?25h";
-const CURSOR_RESTORE_DELAY_MS = 250;
+import { isMouseReport } from "./terminalFilters";
 type ClipboardShortcutAction = "copy" | "paste";
 export type TerminalSessionNavigationDirection = -1 | 1;
 export interface TerminalRange {
@@ -26,6 +17,7 @@ export interface TerminalLike {
   element?: HTMLElement;
   hasSelection?(): boolean;
   write(data: string, callback?: () => void): void;
+  paste(data: string): void;
   reset(): void;
   clear(): void;
   focus(): void;
@@ -54,34 +46,6 @@ export function terminalSessionNavigationDirection(
   return event.key === "ArrowDown" ? 1 : undefined;
 }
 
-export function terminalNavigationInputSequence(
-  event: Pick<
-    KeyboardEvent,
-    "type" | "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
-  >,
-): string | undefined {
-  if (
-    event.type !== "keydown" ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.altKey ||
-    event.shiftKey
-  ) {
-    return undefined;
-  }
-  switch (event.key) {
-    case "Home":
-      return "\x1b[H";
-    case "End":
-      return "\x1b[F";
-    case "PageUp":
-      return "\x1b[5~";
-    case "PageDown":
-      return "\x1b[6~";
-    default:
-      return undefined;
-  }
-}
 function validClipboardModifier(
   event: Pick<KeyboardEvent, "ctrlKey" | "metaKey" | "shiftKey">,
   isMac: boolean,
@@ -108,55 +72,6 @@ export function terminalClipboardShortcutAction(
 export function stripMouseReports(data: string): string {
   return sanitizeTerminalStream(data, isMouseReport).output;
 }
-export function terminalMouseResetSequence(): string {
-  return TERMINAL_MOUSE_RESET;
-}
-export function terminalCursorShowSequence(): string {
-  return TERMINAL_CURSOR_SHOW;
-}
-export function writeTerminalMouseReset(term: { write(data: string): void }) {
-  term.write(TERMINAL_MOUSE_RESET);
-}
-export function writeTerminalCursorShow(
-  term: { write(data: string): void } | null,
-) {
-  term?.write(TERMINAL_CURSOR_SHOW);
-}
-export function updateTerminalCursorRestoreTimer(
-  data: string,
-  term: { write(data: string): void },
-  timerRef: RefObject<ReturnType<typeof setTimeout> | undefined>,
-) {
-  const visibility = lastCursorVisibilityControl(data);
-  if (!visibility) return;
-  if (timerRef.current) {
-    clearTimeout(timerRef.current);
-    timerRef.current = undefined;
-  }
-  if (visibility === "show") return;
-  timerRef.current = setTimeout(() => {
-    timerRef.current = undefined;
-    writeTerminalCursorShow(term);
-  }, CURSOR_RESTORE_DELAY_MS);
-}
-export function lastCursorVisibilityControl(
-  data: string,
-): "hide" | "show" | undefined {
-  let visibility: "hide" | "show" | undefined;
-  let index = 0;
-  while (index < data.length) {
-    const sequence = readTerminalSequence(data, index);
-    if (!sequence) {
-      index += 1;
-      continue;
-    }
-    if (!sequence.complete) break;
-    if (isCursorVisibilityHide(sequence.value)) visibility = "hide";
-    if (isCursorVisibilityShow(sequence.value)) visibility = "show";
-    index = sequence.end;
-  }
-  return visibility;
-}
 export async function writeTerminalSelectionToClipboard(term: {
   getSelection?: () => string;
 }) {
@@ -164,10 +79,12 @@ export async function writeTerminalSelectionToClipboard(term: {
   if (!selection) return;
   await navigator.clipboard.writeText(selection);
 }
-export async function readClipboardToTerminal(onData: (data: string) => void) {
+export async function pasteClipboardToTerminal(term: {
+  paste(data: string): void;
+}) {
   const text = await navigator.clipboard.readText();
   if (!text) return;
-  onData(text);
+  term.paste(text);
 }
 export class TerminalInputSanitizer {
   write(data: string): string {
