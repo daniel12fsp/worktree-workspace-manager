@@ -13,6 +13,9 @@ export interface EmbeddedSession {
   readonly process: pty.IPty;
   readonly output: string[];
   outputCharCount: number;
+  outputStartOffset: number;
+  outputEndOffset: number;
+  terminalSnapshot: TerminalStateSnapshot | undefined;
   preview: string;
   state: TerminalActivityState;
   statusText: string;
@@ -37,6 +40,12 @@ export interface PendingTerminalOutput {
   readonly chunks: string[];
   head: number;
   charCount: number;
+  startOffset: number;
+}
+
+export interface TerminalStateSnapshot {
+  readonly data: string;
+  readonly outputOffset: number;
 }
 
 export interface WorkspaceTerminalState {

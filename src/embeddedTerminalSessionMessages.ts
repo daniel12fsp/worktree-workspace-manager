@@ -17,6 +17,24 @@ export abstract class EmbeddedTerminalSessionMessages extends EmbeddedTerminalWe
       outputRendered: () => {
         this.terminalOutputRendered(String(message.id));
       },
+      terminalSnapshot: () => {
+        const session = this.sessions.get(String(message.id));
+        const outputOffset = nonNegativeInteger(message.outputOffset);
+        // SerializeAddon does not preserve every live application protocol
+        // setting, so only cache snapshots taken at a shell-idle boundary.
+        if (
+          !session ||
+          session.state === "running" ||
+          typeof message.data !== "string" ||
+          outputOffset === undefined ||
+          outputOffset < session.outputStartOffset ||
+          outputOffset > session.outputEndOffset ||
+          outputOffset < (session.terminalSnapshot?.outputOffset ?? 0)
+        ) {
+          return;
+        }
+        session.terminalSnapshot = { data: message.data, outputOffset };
+      },
       input: () => {
         if (typeof message.data === "string") {
           this.writeInput(String(message.id), message.data);
@@ -82,4 +100,11 @@ function terminalInputBytes(value: unknown): Buffer | undefined {
 function positiveInteger(value: unknown): number | undefined {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? Math.floor(number) : undefined;
+}
+
+function nonNegativeInteger(value: unknown): number | undefined {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0
+    ? Math.floor(number)
+    : undefined;
 }

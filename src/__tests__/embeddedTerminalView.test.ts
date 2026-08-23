@@ -172,6 +172,9 @@ describe("outputPreview", () => {
     const session = {
       output: [],
       outputCharCount: 0,
+      outputStartOffset: 0,
+      outputEndOffset: 0,
+      terminalSnapshot: undefined,
       preview: "",
       previewLineRemainder: "",
       previewPendingCarriageReturn: false,
@@ -188,6 +191,10 @@ describe("outputPreview", () => {
     }
 
     expect(session.outputCharCount).toBeLessThanOrEqual(200_000);
+    expect(session.outputEndOffset).toBe(250_000);
+    expect(session.outputStartOffset).toBe(
+      session.outputEndOffset - session.outputCharCount,
+    );
     expect(session.output.join("")).not.toContain("000xxx");
     expect(session.output.join("")).toContain("249xxx");
     expect(session.preview).toBe(`249${"x".repeat(137)}`);
@@ -567,6 +574,9 @@ describe("consumeActivityMarkers", () => {
     process: {} as any,
     output: [],
     outputCharCount: 0,
+    outputStartOffset: 0,
+    outputEndOffset: 0,
+    terminalSnapshot: undefined,
     preview: "",
     state: "idle",
     statusText: "idle",
@@ -1161,6 +1171,61 @@ describe("EmbeddedTerminalViewProvider", () => {
     );
   });
 
+  it("restores a serialized terminal snapshot plus only its output delta", async () => {
+    const onDataCallbacks: Array<(data: string) => void> = [];
+    mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
+      onDataCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    }) as any);
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn(() => ({ dispose: vi.fn() })),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    const mockView = { visible: true, webview: mockWebview } as any;
+    provider.resolveWebviewView(mockView);
+    const worktree = {
+      name: "feat-login",
+      path: "/tmp/feat-login",
+      color: "#fff",
+      branch: "main",
+      repo: { label: "project.git", fsPath: "/repos/project" },
+    } as any;
+    await provider.openTerminal(worktree);
+    const sessionId = (provider as any).activeSessionId as string;
+
+    const historicalVimModes = "\x1b[?1003hvim\x1b[?1003l";
+    onDataCallbacks[0]?.(historicalVimModes);
+    const session = (provider as any).sessions.get(sessionId);
+    const snapshot = {
+      type: "terminalSnapshot",
+      id: sessionId,
+      data: "serialized mouseTrackingMode=none",
+      outputOffset: historicalVimModes.length,
+    };
+    session.state = "running";
+    await (provider as any).handleWebviewMessage(snapshot);
+    expect(session.terminalSnapshot).toBeUndefined();
+
+    session.state = "idle";
+    await (provider as any).handleWebviewMessage(snapshot);
+    onDataCallbacks[0]?.("prompt");
+    mockWebview.postMessage.mockClear();
+
+    await (provider as any).postSessionReplays();
+
+    expect(mockWebview.postMessage).toHaveBeenCalledWith({
+      type: "replay",
+      id: sessionId,
+      data: "serialized mouseTrackingMode=none",
+      delta: "prompt",
+      outputOffset: historicalVimModes.length + "prompt".length,
+    });
+  });
+
   it("reuses cached workspace state for terminal activity renders", async () => {
     const onDataCallbacks: Array<(data: string) => void> = [];
     mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
@@ -1317,6 +1382,7 @@ describe("EmbeddedTerminalViewProvider", () => {
       type: "output",
       id: expect.any(String),
       data: "hello",
+      outputOffset: 5,
     });
     vi.useRealTimers();
   });
@@ -3252,6 +3318,9 @@ function makeSession(
     process: {} as any,
     output: [],
     outputCharCount: 0,
+    outputStartOffset: 0,
+    outputEndOffset: 0,
+    terminalSnapshot: undefined,
     preview: "",
     state: "idle",
     statusText: "idle",

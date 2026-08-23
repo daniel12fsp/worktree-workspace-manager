@@ -994,7 +994,7 @@ describe("TerminalEmbed", () => {
     document.body.innerHTML = "";
   });
 
-  it("renders null when no active session", () => {
+  it("keeps the terminal container mounted when no session is active", () => {
     const { container } = renderWithVsCode(
       <TerminalEmbed
         activeSessionId={undefined}
@@ -1002,7 +1002,10 @@ describe("TerminalEmbed", () => {
         terminalApi={null}
       />,
     );
-    expect(container.innerHTML).toBe("");
+    expect(container.querySelector("#terminal")).toBeTruthy();
+    expect(
+      container.querySelector(".terminalInline")?.getAttribute("aria-hidden"),
+    ).toBe("true");
   });
 
   it("renders terminal container when active session exists", () => {

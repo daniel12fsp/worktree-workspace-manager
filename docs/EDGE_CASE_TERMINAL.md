@@ -46,15 +46,13 @@ Reset:
 ### Repro C: closer to real bug with Vim
 
 1.  Open embedded terminal.
-2.  Run:  
-
+2.  Run:
 
 ```sh
   vim
 ```
 
-3.  In Vim, enable mouse if needed:  
-
+3.  In Vim, enable mouse if needed:
 
 ```vim
   :set mouse=a
@@ -66,3 +64,15 @@ Reset:
 6.  Move mouse over terminal.
 7.  Check for visible garbage like 0;276;0c or mouse escape  
     sequences.
+
+### Expected results
+
+- A live device-attribute query may generate an xterm response, and that
+  response is forwarded to the PTY.
+- A query restored from historical terminal state must not write a response
+  into the live PTY.
+- Live mouse tracking works while an application requests it.
+- After Vim exits, `terminal.modes.mouseTrackingMode` remains `none` across
+  session switches and view hide/show cycles.
+- Restoring a recreated webview must not print device responses or mouse
+  reports into the shell.

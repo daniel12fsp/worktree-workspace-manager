@@ -118,6 +118,9 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
       process: proc,
       output: [],
       outputCharCount: 0,
+      outputStartOffset: 0,
+      outputEndOffset: 0,
+      terminalSnapshot: undefined,
       preview: "",
       state: "idle",
       statusText: "idle",
@@ -256,7 +259,13 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
 
     let pending = this.pendingOutputBySession.get(id);
     if (!pending) {
-      pending = { chunks: [], head: 0, charCount: 0 };
+      const session = this.sessions.get(id);
+      pending = {
+        chunks: [],
+        head: 0,
+        charCount: 0,
+        startOffset: (session?.outputEndOffset ?? data.length) - data.length,
+      };
       this.pendingOutputBySession.set(id, pending);
     }
     pending.chunks.push(data);
@@ -294,23 +303,30 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
     if (!id) return;
     const pending = this.pendingOutputBySession.get(id);
     if (!pending) return;
-    const data = dequeueOutput(pending, MAX_OUTPUT_MESSAGE_CHARS);
+    const output = dequeueOutput(pending, MAX_OUTPUT_MESSAGE_CHARS);
     if (pending.charCount === 0) this.pendingOutputBySession.delete(id);
-    if (!data) return;
+    if (!output.data) return;
 
     this.outputInFlightSessionId = id;
-    void this.view.webview.postMessage({ type: "output", id, data }).then(
-      (delivered) => {
-        if (!delivered && this.outputInFlightSessionId === id) {
-          this.clearOutputDelivery(id);
-        }
-      },
-      () => {
-        if (this.outputInFlightSessionId === id) {
-          this.clearOutputDelivery(id);
-        }
-      },
-    );
+    void this.view.webview
+      .postMessage({
+        type: "output",
+        id,
+        data: output.data,
+        outputOffset: output.outputOffset,
+      })
+      .then(
+        (delivered) => {
+          if (!delivered && this.outputInFlightSessionId === id) {
+            this.clearOutputDelivery(id);
+          }
+        },
+        () => {
+          if (this.outputInFlightSessionId === id) {
+            this.clearOutputDelivery(id);
+          }
+        },
+      );
   }
 
   protected terminalOutputRendered(id: string): void {
@@ -342,7 +358,7 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
 function dequeueOutput(
   pending: PendingTerminalOutput,
   maximumChars: number,
-): string {
+): { data: string; outputOffset: number } {
   const parts: string[] = [];
   let remaining = maximumChars;
 
@@ -365,5 +381,7 @@ function dequeueOutput(
     pending.chunks.splice(0, pending.head);
     pending.head = 0;
   }
-  return parts.join("");
+  const data = parts.join("");
+  pending.startOffset += data.length;
+  return { data, outputOffset: pending.startOffset };
 }

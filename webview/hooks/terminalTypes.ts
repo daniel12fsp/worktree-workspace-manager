@@ -2,6 +2,17 @@ export interface SearchResults {
   readonly resultCount: number;
   readonly resultIndex: number;
 }
+export interface SerializeAddonLike {
+  serialize(): string;
+}
+
+export interface TerminalParserLike {
+  registerCsiHandler(
+    identifier: { readonly prefix?: string; readonly final: string },
+    callback: (params: (number | number[])[]) => boolean | Promise<boolean>,
+  ): { dispose(): void };
+}
+
 export interface SearchAddonLike {
   findPrevious(query: string, options: Record<string, unknown>): void;
   findNext(query: string, options: Record<string, unknown>): void;
@@ -16,6 +27,14 @@ export interface UseTerminalOptions {
   onData: (id: string, data: string | ArrayBuffer) => void;
   onResize: (id: string, cols: number, rows: number) => void;
   onSelectAdjacent: (direction: -1 | 1) => void;
+  onSnapshot: (id: string, data: string, outputOffset: number) => void;
+}
+
+export interface TerminalWriteOperation {
+  readonly kind: "live" | "restore";
+  readonly data: string;
+  readonly outputOffset: number;
+  readonly onComplete?: () => void;
 }
 
 export interface WebviewTerminalSession {
@@ -23,8 +42,14 @@ export interface WebviewTerminalSession {
   readonly term: TerminalLike;
   readonly searchAddon: SearchAddonLike;
   readonly fitAddon: FitAddonLike;
+  readonly serializeAddon: SerializeAddonLike;
   readonly host: HTMLDivElement;
-  replaying: boolean;
+  readonly writes: TerminalWriteOperation[];
+  writing: boolean;
+  forwardingInput: boolean;
+  outputOffset: number;
+  lastSnapshotOffset: number;
+  snapshotDirty: boolean;
 }
 
 export interface TerminalLike {
@@ -46,4 +71,5 @@ export interface TerminalLike {
   focus(): void;
   dispose(): void;
   registerLinkProvider?(provider: unknown): void;
+  readonly parser?: TerminalParserLike;
 }

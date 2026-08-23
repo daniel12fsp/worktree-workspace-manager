@@ -41,12 +41,15 @@ export interface OutputMessage {
   type: "output";
   id: string;
   data: string;
+  outputOffset: number;
 }
 
 export interface ReplayMessage {
   type: "replay";
   id: string;
   data: string;
+  delta: string;
+  outputOffset: number;
 }
 
 export interface ClearMessage {

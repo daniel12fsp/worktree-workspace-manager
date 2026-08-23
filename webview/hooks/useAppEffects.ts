@@ -16,6 +16,8 @@ interface WebviewMessage {
   webviewRenderTelemetry?: AppState["webviewRenderTelemetry"];
   profileMarkers?: boolean;
   data?: string;
+  delta?: string;
+  outputOffset?: number;
   path?: string;
 }
 
@@ -87,9 +89,17 @@ export function useAppEffects(options: AppEffectsOptions): void {
           profileMarkers: Boolean(message.profileMarkers),
         }));
       } else if (message.type === "replay" && message.id) {
-        terminalApi.replay(message.id, message.data ?? "");
+        const data = message.data ?? "";
+        const delta = message.delta ?? "";
+        terminalApi.replay(
+          message.id,
+          data,
+          delta,
+          message.outputOffset ?? data.length + delta.length,
+        );
       } else if (message.type === "output" && message.id) {
-        terminalApi.write(message.id, message.data ?? "", () => {
+        const data = message.data ?? "";
+        terminalApi.write(message.id, data, message.outputOffset, () => {
           vscode.postMessage({ type: "outputRendered", id: message.id });
         });
       } else if (message.type === "clear" && message.id) {

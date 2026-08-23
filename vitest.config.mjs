@@ -37,6 +37,7 @@ export default defineConfig({
             "@xterm/xterm": path.resolve(__dirname, "src/__mocks__/xterm.ts"),
             "@xterm/addon-search": path.resolve(__dirname, "src/__mocks__/xterm-search.ts"),
             "@xterm/addon-fit": path.resolve(__dirname, "src/__mocks__/xterm-fit.ts"),
+            "@xterm/addon-serialize": path.resolve(__dirname, "src/__mocks__/xterm-serialize.ts"),
         },
     },
 });

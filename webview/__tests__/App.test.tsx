@@ -8,11 +8,18 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Terminal } from "@xterm/xterm";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { App, AppState } from "../App";
 import { VsCodeContext, VsCodeApi } from "../hooks/useVsCode";
 
 const mockTerminalOnData = vi.fn();
 const mockTerminalOnBinary = vi.fn();
+const mockRegisterCsiHandler = vi.fn(
+  (
+    _identifier: { prefix?: string; final: string },
+    _callback: (params: (number | number[])[]) => boolean | Promise<boolean>,
+  ) => ({ dispose: vi.fn() }),
+);
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: vi.fn().mockImplementation(() => ({
@@ -29,6 +36,7 @@ vi.mock("@xterm/xterm", () => ({
     onBlur: vi.fn(() => ({ dispose: vi.fn() })),
     loadAddon: vi.fn(),
     registerLinkProvider: vi.fn(),
+    parser: { registerCsiHandler: mockRegisterCsiHandler },
     buffer: { active: { getLine: vi.fn() } },
     attachCustomKeyEventHandler: vi.fn(),
     hasSelection: vi.fn(() => false),
@@ -52,6 +60,13 @@ vi.mock("@xterm/addon-fit", () => ({
   FitAddon: vi.fn().mockImplementation(() => ({
     fit: vi.fn(),
     proposeDimensions: vi.fn(() => ({ cols: 80, rows: 24 })),
+    dispose: vi.fn(),
+  })),
+}));
+
+vi.mock("@xterm/addon-serialize", () => ({
+  SerializeAddon: vi.fn().mockImplementation(() => ({
+    serialize: vi.fn(() => "serialized terminal state"),
     dispose: vi.fn(),
   })),
 }));
@@ -117,6 +132,9 @@ describe("App", () => {
     });
     mockTerminalOnData.mockImplementation(() => ({ dispose: vi.fn() }));
     mockTerminalOnBinary.mockImplementation(() => ({ dispose: vi.fn() }));
+    mockRegisterCsiHandler.mockImplementation((_identifier, _callback) => ({
+      dispose: vi.fn(),
+    }));
     (globalThis as any).ResizeObserver = class {
       observe() {}
       unobserve() {}
@@ -1184,6 +1202,135 @@ describe("App", () => {
     });
   });
 
+  it("drops terminal-generated input during restore and forwards it afterward", () => {
+    const vscode = createMockVsCode();
+    renderWithVsCode(twoSessionState("s1"), vscode);
+    const term = vi.mocked(Terminal).mock.results[0]?.value;
+    const onData = mockTerminalOnData.mock.calls[0]?.[0];
+    const onBinary = mockTerminalOnBinary.mock.calls[0]?.[0];
+    vi.mocked(vscode.postMessage).mockClear();
+
+    const secondaryDeviceAttributesHandler =
+      mockRegisterCsiHandler.mock.calls.find(
+        ([identifier]) => identifier.prefix === ">" && identifier.final === "c",
+      )?.[1];
+    expect(secondaryDeviceAttributesHandler?.([])).toBe(false);
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: "replay",
+            id: "s1",
+            data: "\x1b[>c",
+            delta: "",
+            outputOffset: 4,
+          },
+        }),
+      );
+    });
+    expect(secondaryDeviceAttributesHandler?.([])).toBe(true);
+    act(() => onData?.("\x1b[>0;276;0c"));
+    act(() => onBinary?.("\x00\xff"));
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "input" }),
+    );
+
+    const restoreComplete = vi.mocked(term.write).mock.calls.at(-1)?.[1];
+    act(() => restoreComplete?.());
+    expect(secondaryDeviceAttributesHandler?.([])).toBe(false);
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      type: "terminalSnapshot",
+      id: "s1",
+      data: "serialized terminal state",
+      outputOffset: 4,
+    });
+
+    act(() => onData?.("\x1b[>0;276;0c"));
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      type: "input",
+      id: "s1",
+      data: "\x1b[>0;276;0c",
+    });
+  });
+
+  it("keeps a restore queued before terminal creation input-isolated", async () => {
+    const vscode = createMockVsCode();
+    renderWithVsCode(
+      {
+        repos: [],
+        activeSessionId: undefined,
+        activeOutput: "",
+        hasWorkspace: true,
+        home: "/home/user",
+        loadingWorktrees: new Set(),
+      },
+      vscode,
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: "replay",
+            id: "s1",
+            data: "\x1b[>c",
+            delta: "",
+            outputOffset: 4,
+          },
+        }),
+      );
+      const state = twoSessionState("s1");
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: { type: "state", ...state },
+        }),
+      );
+    });
+
+    await waitFor(() => expect(vi.mocked(Terminal)).toHaveBeenCalled());
+    const onData = mockTerminalOnData.mock.calls[0]?.[0];
+    vi.mocked(vscode.postMessage).mockClear();
+    act(() => onData?.("\x1b[>0;276;0c"));
+
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "input" }),
+    );
+  });
+
+  it("snapshots parsed terminal state with its rendered output offset", () => {
+    const vscode = createMockVsCode();
+    renderWithVsCode(twoSessionState("s1"), vscode);
+    const term = vi.mocked(Terminal).mock.results[0]?.value;
+
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            type: "output",
+            id: "s1",
+            data: "prompt",
+            outputOffset: 42,
+          },
+        }),
+      );
+    });
+    const writeComplete = vi.mocked(term.write).mock.calls.at(-1)?.[1];
+    act(() => writeComplete?.());
+    vi.mocked(vscode.postMessage).mockClear();
+
+    act(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+
+    const serializeAddon = vi.mocked(SerializeAddon).mock.results[0]?.value;
+    expect(serializeAddon.serialize).toHaveBeenCalledTimes(1);
+    expect(vscode.postMessage).toHaveBeenCalledWith({
+      type: "terminalSnapshot",
+      id: "s1",
+      data: "serialized terminal state",
+      outputOffset: 42,
+    });
+  });
+
   it("writes inactive output to that session's terminal emulator", async () => {
     const state = twoSessionState("s1");
     const vscode = createMockVsCode();
@@ -1209,6 +1356,15 @@ describe("App", () => {
       "background output",
       expect.any(Function),
     );
+  });
+
+  it("keeps terminal hosts mounted when no session is selected", () => {
+    const state = { ...twoSessionState("s1"), activeSessionId: undefined };
+    renderWithVsCode(state);
+
+    expect(document.getElementById("terminal")).toBeTruthy();
+    expect(document.querySelectorAll(".terminalSession")).toHaveLength(2);
+    expect(vi.mocked(Terminal)).toHaveBeenCalledTimes(2);
   });
 
   it("switches visibility without resetting either terminal", async () => {

@@ -1,13 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from "react";
-import { Terminal } from "@xterm/xterm";
-import { handleTerminalKeyEvent } from "./terminalKeyHandler";
-import { SearchAddon } from "@xterm/addon-search";
-import { FitAddon } from "@xterm/addon-fit";
 import type {
-  SearchResults,
-  SearchAddonLike,
-  FitAddonLike,
   TerminalLike,
+  TerminalWriteOperation,
   UseTerminalOptions,
   WebviewTerminalSession,
 } from "./terminalTypes";
@@ -16,12 +10,12 @@ import {
   disposeTerminalSessions,
   removeMissingTerminalSessions,
 } from "./terminalSessionLifecycle";
+import { focusTerminalNow, updateFocusClasses } from "./terminalUtils";
+import { createWebviewTerminalSession } from "./terminalSessionFactory";
 import {
-  binaryStringToArrayBuffer,
-  focusTerminalNow,
-  registerTerminalLinkProvider,
-  updateFocusClasses,
-} from "./terminalUtils";
+  enqueueTerminalWrite,
+  snapshotTerminalSession,
+} from "./terminalStateLifecycle";
 
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
@@ -29,11 +23,9 @@ export function useTerminal(
   activeSessionId: string | undefined,
   options: UseTerminalOptions,
 ) {
-  const { onData, onResize, onSelectAdjacent } = options;
+  const { onData, onResize, onSelectAdjacent, onSnapshot } = options;
   const sessionsRef = useRef(new Map<string, WebviewTerminalSession>());
-  const pendingWritesRef = useRef(
-    new Map<string, { data: string; onComplete?: () => void }[]>(),
-  );
+  const pendingWritesRef = useRef(new Map<string, TerminalWriteOperation[]>());
   const termRef = useRef<TerminalLike | null>(null);
   const hasFocusRef = useRef(false);
   const activeSessionIdRef = useRef(activeSessionId);
@@ -44,6 +36,24 @@ export function useTerminal(
   onResizeRef.current = onResize;
   const onSelectAdjacentRef = useRef(onSelectAdjacent);
   onSelectAdjacentRef.current = onSelectAdjacent;
+  const onSnapshotRef = useRef(onSnapshot);
+  onSnapshotRef.current = onSnapshot;
+
+  const snapshotSession = useCallback(
+    (session: WebviewTerminalSession, force = false) => {
+      snapshotTerminalSession(session, onSnapshotRef.current, force);
+    },
+    [],
+  );
+
+  const enqueueWrite = useCallback(
+    (session: WebviewTerminalSession, operation: TerminalWriteOperation) => {
+      enqueueTerminalWrite(session, operation, (forceSnapshot) => {
+        snapshotSession(session, forceSnapshot);
+      });
+    },
+    [snapshotSession],
+  );
 
   const activeSession = useCallback(() => {
     const id = activeSessionIdRef.current;
@@ -79,99 +89,35 @@ export function useTerminal(
   const createTerminal = useCallback(
     (id: string): WebviewTerminalSession | undefined => {
       const existing = sessionsRef.current.get(id);
-      if (existing) return existing;
       const container = containerRef.current;
+      if (existing) {
+        if (container && existing.host.parentElement !== container) {
+          container.appendChild(existing.host);
+        }
+        return existing;
+      }
       if (!container) return undefined;
 
       try {
-        const term = new Terminal({
-          allowProposedApi: true,
-          cursorBlink: true,
-          fontFamily: "monospace",
-          scrollOnEraseInDisplay: true,
-          theme: { background: "#000000" },
-        }) as TerminalLike;
-        const searchAddon = new SearchAddon() as SearchAddonLike;
-        const fitAddon = new FitAddon() as FitAddonLike;
-        const host = document.createElement("div");
-        host.className = "terminalSession";
-        host.dataset.sessionId = id;
-        host.style.display =
-          id === activeSessionIdRef.current ? "block" : "none";
-        container.appendChild(host);
-
-        const session: WebviewTerminalSession = {
+        const session = createWebviewTerminalSession({
           id,
-          term,
-          searchAddon,
-          fitAddon,
-          host,
-          replaying: false,
-        };
+          container,
+          activeSessionIdRef,
+          hasFocusRef,
+          termRef,
+          runSearch,
+          onData: (sessionId, data) => {
+            onDataRef.current(sessionId, data);
+          },
+          onSelectAdjacent: (direction) => {
+            onSelectAdjacentRef.current(direction);
+          },
+        });
         sessionsRef.current.set(id, session);
-        term.loadAddon(searchAddon);
-        term.loadAddon(fitAddon);
-        searchAddon.onDidChangeResults((event: SearchResults) => {
-          if (activeSessionIdRef.current !== id) return;
-          const resultEl = document.getElementById("findResult");
-          const inputEl = document.getElementById(
-            "findInput",
-          ) as HTMLInputElement | null;
-          if (!resultEl) return;
-          if (!inputEl?.value || event.resultCount <= 0) {
-            resultEl.textContent = inputEl?.value ? "0/0" : "";
-            return;
-          }
-          const current = event.resultIndex >= 0 ? event.resultIndex + 1 : "?";
-          resultEl.textContent = `${String(current)}/${String(event.resultCount)}`;
-        });
-        term.attachCustomKeyEventHandler((event: KeyboardEvent) =>
-          handleTerminalKeyEvent(event, {
-            term,
-            hasSelection: Boolean(term.hasSelection?.()),
-            runSearch,
-            termRef,
-            activeSessionIdRef,
-            hasFocusRef,
-            onSelectAdjacent: onSelectAdjacentRef.current,
-          }),
-        );
-        term.open(host);
-        term.element?.addEventListener("mouseenter", () => {
-          if (activeSessionIdRef.current === id) {
-            focusTerminalNow(term, id, hasFocusRef);
-          }
-        });
-        term.element?.addEventListener("focusin", () => {
-          if (activeSessionIdRef.current !== id) return;
-          hasFocusRef.current = true;
-          updateFocusClasses(true);
-        });
-        term.element?.addEventListener("focusout", () => {
-          setTimeout(() => {
-            if (activeSessionIdRef.current !== id) return;
-            hasFocusRef.current = Boolean(
-              term.element?.contains(document.activeElement),
-            );
-            updateFocusClasses(hasFocusRef.current);
-          }, 0);
-        });
-        term.onData((data: string) => {
-          if (!session.replaying) onDataRef.current(id, data);
-        });
-        term.onBinary((data: string) => {
-          if (!session.replaying) {
-            onDataRef.current(id, binaryStringToArrayBuffer(data));
-          }
-        });
-        registerTerminalLinkProvider(
-          term as unknown as Parameters<typeof registerTerminalLinkProvider>[0],
-        );
-
         const pending = pendingWritesRef.current.get(id);
         if (pending) {
           pendingWritesRef.current.delete(id);
-          for (const write of pending) term.write(write.data, write.onComplete);
+          for (const operation of pending) enqueueWrite(session, operation);
         }
         return session;
       } catch (error) {
@@ -179,7 +125,7 @@ export function useTerminal(
         return undefined;
       }
     },
-    [containerRef, runSearch],
+    [containerRef, enqueueWrite, runSearch],
   );
 
   const focus = useCallback(() => {
@@ -191,43 +137,65 @@ export function useTerminal(
   }, [activeSession]);
 
   const replay = useCallback(
-    (id: string, data: string, onComplete?: () => void) => {
+    (
+      id: string,
+      data: string,
+      delta = "",
+      outputOffset = data.length + delta.length,
+      onComplete?: () => void,
+    ) => {
+      const operation: TerminalWriteOperation = {
+        kind: "restore",
+        data: data + delta,
+        outputOffset,
+        onComplete,
+      };
       const session = createTerminal(id);
-      if (!session) {
+      if (session) enqueueWrite(session, operation);
+      else {
         const pending = pendingWritesRef.current.get(id) ?? [];
-        pending.push({ data, onComplete });
+        pending.push(operation);
         pendingWritesRef.current.set(id, pending);
-        return;
       }
-      session.replaying = true;
-      session.term.reset();
-      session.term.write(data, () => {
-        session.replaying = false;
-        onComplete?.();
-      });
     },
-    [createTerminal],
+    [createTerminal, enqueueWrite],
   );
 
   const write = useCallback(
-    (id: string, data: string, onComplete?: () => void) => {
+    (
+      id: string,
+      data: string,
+      outputOffset?: number,
+      onComplete?: () => void,
+    ) => {
       const session = createTerminal(id);
-      if (session) {
-        session.term.write(data, onComplete);
-        return;
+      const operation: TerminalWriteOperation = {
+        kind: "live",
+        data,
+        outputOffset:
+          outputOffset ?? (session?.outputOffset ?? 0) + data.length,
+        onComplete,
+      };
+      if (session) enqueueWrite(session, operation);
+      else {
+        const pending = pendingWritesRef.current.get(id) ?? [];
+        pending.push(operation);
+        pendingWritesRef.current.set(id, pending);
       }
-      const pending = pendingWritesRef.current.get(id) ?? [];
-      pending.push({ data, onComplete });
-      pendingWritesRef.current.set(id, pending);
     },
-    [createTerminal],
+    [createTerminal, enqueueWrite],
   );
 
   const clear = useCallback(
     (id: string) => {
-      createTerminal(id)?.term.clear();
+      const session = createTerminal(id);
+      session?.term.clear();
+      if (session) {
+        session.snapshotDirty = true;
+        snapshotSession(session, true);
+      }
     },
-    [createTerminal],
+    [createTerminal, snapshotSession],
   );
 
   const resize = useCallback(() => {
@@ -272,6 +240,23 @@ export function useTerminal(
       observer.disconnect();
     };
   }, [containerRef, resize]);
+
+  useEffect(() => {
+    const snapshotAll = () => {
+      for (const session of sessionsRef.current.values()) {
+        snapshotSession(session, true);
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") snapshotAll();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", snapshotAll);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", snapshotAll);
+    };
+  }, [snapshotSession]);
 
   useEffect(
     () => () => {

@@ -21,6 +21,7 @@ export function appendOutputChunk(
 ): void {
   session.output.push(chunk);
   session.outputCharCount += chunk.length;
+  session.outputEndOffset += chunk.length;
   const previewState = updateOutputPreviewState(session, chunk);
   session.preview = previewState.preview;
   if (session.outputCharCount > MAX_SESSION_OUTPUT_CHARS) {
@@ -118,6 +119,7 @@ function applyPreviewChunk(
 
 function compactOutputHistory(session: EmbeddedSession): void {
   let charsToRemove = session.outputCharCount - COMPACTED_SESSION_OUTPUT_CHARS;
+  const originalCharsToRemove = charsToRemove;
   let removeCount = 0;
 
   while (
@@ -136,6 +138,7 @@ function compactOutputHistory(session: EmbeddedSession): void {
     (total, output) => total + output.length,
     0,
   );
+  session.outputStartOffset += originalCharsToRemove;
 }
 
 function finalizePreviewLine(line: string, previousPreview: string): string {

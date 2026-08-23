@@ -52,6 +52,13 @@ export function App({ initialState }: Props) {
     [vscode],
   );
 
+  const handleTerminalSnapshot = useCallback(
+    (id: string, data: string, outputOffset: number) => {
+      vscode.postMessage({ type: "terminalSnapshot", id, data, outputOffset });
+    },
+    [vscode],
+  );
+
   const sendTerminalInput = useCallback(
     (data: string) => {
       if (!state.activeSessionId) return;
@@ -92,6 +99,7 @@ export function App({ initialState }: Props) {
       onData: handleTerminalData,
       onResize: handleTerminalResize,
       onSelectAdjacent: handleSelectAdjacent,
+      onSnapshot: handleTerminalSnapshot,
     },
   );
 

@@ -155,6 +155,8 @@ export abstract class EmbeddedTerminalStore {
 
     session.output.splice(0, session.output.length);
     session.outputCharCount = 0;
+    session.outputStartOffset = session.outputEndOffset;
+    session.terminalSnapshot = undefined;
     session.preview = "";
     session.previewLineRemainder = "";
     session.previewPendingCarriageReturn = false;
@@ -168,11 +170,18 @@ export abstract class EmbeddedTerminalStore {
 
   protected async postSessionReplays(): Promise<void> {
     if (!this.view) return;
-    const replays = [...this.sessions.values()].map((session) => ({
-      type: "replay",
-      id: session.id,
-      data: session.output.join(""),
-    }));
+    const replays = [...this.sessions.values()].map((session) => {
+      const snapshot = validTerminalSnapshot(session);
+      return {
+        type: "replay",
+        id: session.id,
+        data: snapshot?.data ?? session.output.join(""),
+        delta: snapshot
+          ? retainedOutputFromOffset(session, snapshot.outputOffset)
+          : "",
+        outputOffset: session.outputEndOffset,
+      };
+    });
     for (const replay of replays) this.clearOutputDelivery(replay.id);
     for (const replay of replays) {
       await this.view.webview.postMessage(replay);
@@ -227,4 +236,24 @@ export abstract class EmbeddedTerminalStore {
   protected worktreeKey(worktree: Worktree): string {
     return path.resolve(worktree.path);
   }
+}
+
+function validTerminalSnapshot(session: EmbeddedSession) {
+  const snapshot = session.terminalSnapshot;
+  if (
+    !snapshot ||
+    snapshot.outputOffset < session.outputStartOffset ||
+    snapshot.outputOffset > session.outputEndOffset
+  ) {
+    return undefined;
+  }
+  return snapshot;
+}
+
+function retainedOutputFromOffset(
+  session: EmbeddedSession,
+  outputOffset: number,
+): string {
+  const retained = session.output.join("");
+  return retained.slice(outputOffset - session.outputStartOffset);
 }

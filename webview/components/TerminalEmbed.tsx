@@ -6,8 +6,13 @@ interface Props {
   containerRef: React.RefObject<HTMLDivElement | null>;
   terminalApi: {
     focus: () => void;
-    replay: (id: string, data: string) => void;
-    write: (id: string, data: string) => void;
+    replay: (
+      id: string,
+      data: string,
+      delta?: string,
+      outputOffset?: number,
+    ) => void;
+    write: (id: string, data: string, outputOffset?: number) => void;
     clear: (id: string) => void;
     resize: () => void;
   } | null;
@@ -63,12 +68,11 @@ export function TerminalEmbed({
     };
   }, [terminalApi]);
 
-  if (!activeSessionId) return null;
-
   return (
     <div
       ref={wrapperRef}
-      className="terminalInline active"
+      className={`terminalInline${activeSessionId ? " active" : ""}`}
+      aria-hidden={!activeSessionId}
       onMouseDown={handleFocusTerminal}
       onClick={handleFocusTerminal}
     >
