@@ -76,12 +76,46 @@ export function validatedConfiguredTerminalShell(): string | undefined {
 }
 
 function isUsableShellPath(shellPath: string): boolean {
-  if (process.platform === "win32") return true;
+  if (process.platform === "win32") {
+    return windowsShellCandidates(shellPath).some((candidate) =>
+      isUsableShellFile(candidate, false),
+    );
+  }
+  return isUsableShellFile(shellPath, true);
+}
+
+function windowsShellCandidates(shellPath: string): string[] {
+  if (path.win32.isAbsolute(shellPath) || /[\\/]/.test(shellPath)) {
+    return [shellPath];
+  }
+
+  const pathValue = safeEnv("PATH") ?? safeEnv("Path") ?? "";
+  const extensions = path.win32.extname(shellPath)
+    ? [""]
+    : (safeEnv("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
+        .split(";")
+        .map((extension) => extension.trim())
+        .filter(Boolean);
+  return pathValue
+    .split(";")
+    .map((directory) => directory.trim().replace(/^"|"$/g, ""))
+    .filter(Boolean)
+    .flatMap((directory) =>
+      extensions.map((extension) =>
+        path.win32.join(directory, `${shellPath}${extension}`),
+      ),
+    );
+}
+
+function isUsableShellFile(
+  shellPath: string,
+  requireExecutableBit: boolean,
+): boolean {
   try {
     if (!fs.existsSync(shellPath)) return false;
     const stat = fs.statSync(shellPath);
     const isFile = typeof stat.isFile === "function" ? stat.isFile() : true;
-    return isFile && (stat.mode & 0o111) !== 0;
+    return isFile && (!requireExecutableBit || (stat.mode & 0o111) !== 0);
   } catch (error) {
     logError("failed to inspect configured terminal shell", {
       shell: shellPath,

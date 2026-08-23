@@ -290,15 +290,24 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
     }
     if (this.outputInFlightSessionId) return;
 
-    const ids = [
-      ...(this.activeSessionId ? [this.activeSessionId] : []),
-      ...this.pendingOutputBySession.keys(),
-    ];
-    const id = ids.find(
-      (candidate, index) =>
-        ids.indexOf(candidate) === index &&
-        this.sessions.has(candidate) &&
-        Boolean(this.pendingOutputBySession.get(candidate)?.charCount),
+    const orderedIds = this.orderedSessions([...this.sessions.values()]).map(
+      (session) => session.id,
+    );
+    const lastIndex = this.lastOutputDeliverySessionId
+      ? orderedIds.indexOf(this.lastOutputDeliverySessionId)
+      : -1;
+    const ids =
+      lastIndex >= 0
+        ? [
+            ...orderedIds.slice(lastIndex + 1),
+            ...orderedIds.slice(0, lastIndex + 1),
+          ]
+        : [
+            ...(this.activeSessionId ? [this.activeSessionId] : []),
+            ...orderedIds,
+          ];
+    const id = ids.find((candidate) =>
+      Boolean(this.pendingOutputBySession.get(candidate)?.charCount),
     );
     if (!id) return;
     const pending = this.pendingOutputBySession.get(id);
@@ -308,6 +317,7 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
     if (!output.data) return;
 
     this.outputInFlightSessionId = id;
+    this.lastOutputDeliverySessionId = id;
     void this.view.webview
       .postMessage({
         type: "output",

@@ -39,6 +39,7 @@ export abstract class EmbeddedTerminalStore {
   >();
   protected readonly outputPausedSessionIds = new Set<string>();
   protected outputInFlightSessionId: string | undefined;
+  protected lastOutputDeliverySessionId: string | undefined;
   protected outputFlushTimer: ReturnType<typeof setTimeout> | undefined;
   protected renderSessionsPromise: Promise<void> | undefined;
   protected renderSessionsAgain = false;
@@ -192,6 +193,9 @@ export abstract class EmbeddedTerminalStore {
     this.pendingOutputBySession.delete(id);
     if (this.outputInFlightSessionId === id) {
       this.outputInFlightSessionId = undefined;
+    }
+    if (this.lastOutputDeliverySessionId === id) {
+      this.lastOutputDeliverySessionId = undefined;
     }
     if (this.outputPausedSessionIds.delete(id)) {
       this.sessions.get(id)?.process.resume();

@@ -11,7 +11,9 @@ export abstract class EmbeddedTerminalSessionMessages extends EmbeddedTerminalWe
   ): Partial<Record<string, WebviewMessageHandler>> {
     return {
       select: async () => {
-        this.activeSessionId = String(message.id);
+        const id = String(message.id);
+        if (!this.sessions.has(id)) return;
+        this.activeSessionId = id;
         await this.renderSessions();
       },
       outputRendered: () => {

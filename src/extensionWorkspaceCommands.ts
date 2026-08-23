@@ -150,11 +150,13 @@ export async function removeWorktree(
     "Remove",
   );
   if (confirmed !== "Remove") return;
-  terminalProvider.killWorktreeTerminals(worktree);
-  await runGit(
+  const removed = await runGit(
     ["--git-dir", worktree.repo.gitDir, "worktree", "remove", worktree.path],
     `Removed ${worktree.name}`,
   );
+  if (!removed) return;
+
+  terminalProvider.killWorktreeTerminals(worktree);
   invalidateModelCache();
   await removeWorktreeExcludePatterns(worktree);
 }
@@ -187,8 +189,11 @@ export async function runRepoGit(
   await runGit(["--git-dir", repo.gitDir, ...args], success);
 }
 
-export async function runGit(args: string[], success: string): Promise<void> {
-  await vscode.window.withProgress(
+export async function runGit(
+  args: string[],
+  success: string,
+): Promise<boolean> {
+  return vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
       title: "Worktree Manager",
@@ -198,9 +203,11 @@ export async function runGit(args: string[], success: string): Promise<void> {
         const { stderr } = await execFileAsync("git", args);
         log("git ok", { args });
         void vscode.window.showInformationMessage(stderr.trim() || success);
+        return true;
       } catch (error) {
         logError("git failed", { args, error });
         void vscode.window.showErrorMessage(gitErrorMessage(error));
+        return false;
       }
     },
   );

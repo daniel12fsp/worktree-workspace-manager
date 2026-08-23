@@ -375,6 +375,91 @@ describe("defaultShell", () => {
     expect(validatedConfiguredTerminalShell()).toBeUndefined();
   });
 
+  it("accepts an existing absolute Windows shell path", () => {
+    const originalPlatform = process.platform;
+    try {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      mockExistsSync.mockImplementation(
+        (candidate) => candidate === "C:\\Program Files\\PowerShell\\pwsh.exe",
+      );
+      mockStatSync.mockReturnValue({
+        mode: 0,
+        isFile: () => true,
+      } as any);
+      (vscode as any).__setConfig(
+        "worktreeManager.terminalShell",
+        "C:\\Program Files\\PowerShell\\pwsh.exe",
+      );
+
+      expect(validatedConfiguredTerminalShell()).toBe(
+        "C:\\Program Files\\PowerShell\\pwsh.exe",
+      );
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    }
+  });
+
+  it("rejects a missing absolute Windows shell path", () => {
+    const originalPlatform = process.platform;
+    try {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      (vscode as any).__setConfig(
+        "worktreeManager.terminalShell",
+        "C:\\Missing\\pwsh.exe",
+      );
+
+      expect(validatedConfiguredTerminalShell()).toBeUndefined();
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    }
+  });
+
+  it("resolves a bare Windows shell command through PATH", () => {
+    const originalPlatform = process.platform;
+    const originalPath = process.env.PATH;
+    const originalPathExt = process.env.PATHEXT;
+    try {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      process.env.PATH = '"C:\\Program Files\\PowerShell";C:\\Windows';
+      process.env.PATHEXT = ".EXE;.CMD";
+      mockExistsSync.mockImplementation(
+        (candidate) => candidate === "C:\\Program Files\\PowerShell\\pwsh.EXE",
+      );
+      mockStatSync.mockReturnValue({
+        mode: 0,
+        isFile: () => true,
+      } as any);
+      (vscode as any).__setConfig("worktreeManager.terminalShell", "pwsh");
+
+      expect(validatedConfiguredTerminalShell()).toBe("pwsh");
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+      if (originalPathExt === undefined) delete process.env.PATHEXT;
+      else process.env.PATHEXT = originalPathExt;
+    }
+  });
+
+  it("rejects a bare Windows shell command missing from PATH", () => {
+    const originalPlatform = process.platform;
+    const originalPath = process.env.PATH;
+    try {
+      Object.defineProperty(process, "platform", { value: "win32" });
+      process.env.PATH = "C:\\Windows";
+      (vscode as any).__setConfig(
+        "worktreeManager.terminalShell",
+        "powersehll.exe",
+      );
+
+      expect(validatedConfiguredTerminalShell()).toBeUndefined();
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+  });
+
   it("ignores non-string configured terminal shell", () => {
     (vscode as any).__setConfig("worktreeManager.terminalShell", 42);
     expect(configuredTerminalShell()).toBeUndefined();
@@ -1447,6 +1532,65 @@ describe("EmbeddedTerminalViewProvider", () => {
     vi.useRealTimers();
   });
 
+  it("round-robins output from two backpressured sessions", async () => {
+    vi.useFakeTimers();
+    let messageHandler: ((msg: any) => void) | undefined;
+    const onDataCallbacks: Array<(data: string) => void> = [];
+    mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
+      onDataCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    }) as any);
+    const mockWebview = {
+      options: {} as any,
+      onDidReceiveMessage: vi.fn((cb: any) => {
+        messageHandler = cb;
+        return { dispose: vi.fn() };
+      }),
+      html: "",
+      postMessage: vi.fn(async () => true),
+      cspSource: "csp",
+      asWebviewUri: vi.fn((uri: any) => uri),
+    };
+    provider.resolveWebviewView({ visible: true, webview: mockWebview } as any);
+    const worktreeA = {
+      name: "feat-login",
+      path: "/tmp/feat-login",
+      color: "#fff",
+      branch: "main",
+      repo: { label: "project.git", fsPath: "/repos/project" },
+    } as any;
+    const worktreeB = { ...worktreeA, name: "feat-api", path: "/tmp/api" };
+    await provider.openTerminal(worktreeA);
+    await provider.openTerminal(worktreeB);
+    const [backgroundSessionId, activeSessionId] = [
+      ...(provider as any).sessions.keys(),
+    ];
+    await messageHandler!({ type: "ready" });
+    mockWebview.postMessage.mockClear();
+
+    onDataCallbacks[0]?.("a".repeat(600_000));
+    onDataCallbacks[1]?.("b".repeat(600_000));
+    expect(mockPtyPause).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(16);
+
+    const outputMessages = () =>
+      mockWebview.postMessage.mock.calls.filter(
+        ([message]) => message.type === "output",
+      );
+    expect(outputMessages()[0][0].id).toBe(activeSessionId);
+
+    onDataCallbacks[1]?.("b".repeat(64_000));
+    await messageHandler!({ type: "outputRendered", id: activeSessionId });
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(
+      outputMessages()
+        .slice(0, 2)
+        .map(([message]) => message.id),
+    ).toEqual([activeSessionId, backgroundSessionId]);
+    vi.useRealTimers();
+  });
+
   it("streams inactive terminal output without selecting it", async () => {
     vi.useFakeTimers();
     let messageHandler: ((msg: any) => void) | undefined;
@@ -1498,7 +1642,7 @@ describe("EmbeddedTerminalViewProvider", () => {
     vi.useRealTimers();
   });
 
-  it("handleWebviewMessage select sets active session", async () => {
+  it("ignores stale terminal selections and keeps the valid active session", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
@@ -1516,9 +1660,26 @@ describe("EmbeddedTerminalViewProvider", () => {
       webview: mockWebview,
     } as any;
     provider.resolveWebviewView(mockView);
-    mockListAllWorktrees.mockResolvedValue(new Map());
+    const worktree = {
+      name: "feat-login",
+      path: "/tmp/feat-login",
+      color: "#fff",
+      branch: "main",
+      repo: { label: "project.git", fsPath: "/repos/project" },
+    } as any;
+    await provider.openTerminal(worktree);
+    await provider.openTerminal({
+      ...worktree,
+      name: "feat-api",
+      path: "/tmp/api",
+    });
+    const firstSessionId = [...(provider as any).sessions.keys()][0];
+
+    await messageHandler!({ type: "select", id: firstSessionId });
+    expect((provider as any).activeSessionId).toBe(firstSessionId);
+
     await messageHandler!({ type: "select", id: "some-id" });
-    // Should not throw
+    expect((provider as any).activeSessionId).toBe(firstSessionId);
   });
 
   it("handleWebviewMessage collapseAll clears active", async () => {
