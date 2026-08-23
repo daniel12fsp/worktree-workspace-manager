@@ -9,7 +9,6 @@ const TERMINAL_MOUSE_RESET =
 const TERMINAL_CURSOR_SHOW = "\x1b[?25h";
 const CURSOR_RESTORE_DELAY_MS = 250;
 type ClipboardShortcutAction = "copy" | "paste";
-type TerminalInputEncoding = "text" | "binary";
 export type TerminalSessionNavigationDirection = -1 | 1;
 export interface TerminalRange {
   start: { x: number; y: number };
@@ -165,9 +164,7 @@ export async function writeTerminalSelectionToClipboard(term: {
   if (!selection) return;
   await navigator.clipboard.writeText(selection);
 }
-export async function readClipboardToTerminal(
-  onData: (data: string, encoding?: TerminalInputEncoding) => void,
-) {
+export async function readClipboardToTerminal(onData: (data: string) => void) {
   const text = await navigator.clipboard.readText();
   if (!text) return;
   onData(text);

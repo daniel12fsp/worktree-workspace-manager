@@ -506,10 +506,27 @@ describe("ptyEnv", () => {
     expect(env.MY_VAR).toBe("hello");
   });
 
-  it("includes standard env vars when available", () => {
-    const env = ptyEnv(undefined);
-    // PATH should typically be available in test environment
-    expect(typeof env).toBe("object");
+  it("inherits developer environment variables and forces terminal type", () => {
+    const previousSocket = process.env.SSH_AUTH_SOCK;
+    const previousTerm = process.env.TERM;
+    process.env.SSH_AUTH_SOCK = "/tmp/test-agent.sock";
+    process.env.TERM = "dumb";
+    try {
+      const env = ptyEnv(undefined);
+      expect(env.SSH_AUTH_SOCK).toBe("/tmp/test-agent.sock");
+      expect(env.TERM).toBe("xterm-256color");
+    } finally {
+      if (previousSocket === undefined) delete process.env.SSH_AUTH_SOCK;
+      else process.env.SSH_AUTH_SOCK = previousSocket;
+      if (previousTerm === undefined) delete process.env.TERM;
+      else process.env.TERM = previousTerm;
+    }
+  });
+
+  it("applies explicit and wrapper environment overrides last", () => {
+    expect(
+      ptyEnv({ TERM: "custom-term", ZDOTDIR: "/tmp/wrapper" }),
+    ).toMatchObject({ TERM: "custom-term", ZDOTDIR: "/tmp/wrapper" });
   });
 });
 
@@ -1067,7 +1084,7 @@ describe("EmbeddedTerminalViewProvider", () => {
     expect(mockWebview.postMessage).toHaveBeenCalled();
   });
 
-  it("handleWebviewMessage ready posts replay for active session", async () => {
+  it("resizes before replaying the active session after ready", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const onDataCallbacks: Array<(data: string) => void> = [];
     mockPtyOnData.mockImplementation(((cb: (data: string) => void) => {
@@ -1103,9 +1120,38 @@ describe("EmbeddedTerminalViewProvider", () => {
     mockListAllWorktrees.mockResolvedValue(new Map());
 
     await messageHandler!({ type: "ready" });
+    onDataCallbacks[0]?.(" world");
 
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "replay" }),
+    );
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "output" }),
+    );
+
+    const sessionId = (provider as any).activeSessionId;
+    await messageHandler!({
+      type: "resize",
+      id: sessionId,
+      cols: 120,
+      rows: 40,
+    });
+
+    expect(mockPtyResize).toHaveBeenCalledWith(120, 40);
     expect(mockWebview.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "replay", data: "hello" }),
+      expect.objectContaining({ type: "replay", data: "hello world" }),
+    );
+    expect(mockPtyResize.mock.invocationCallOrder[0]).toBeLessThan(
+      mockWebview.postMessage.mock.invocationCallOrder.find(
+        (_order: number, index: number) =>
+          mockWebview.postMessage.mock.calls[index]?.[0]?.type === "replay",
+      )!,
+    );
+
+    mockWebview.postMessage.mockClear();
+    await messageHandler!({ type: "ready" });
+    expect(mockWebview.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "replay" }),
     );
   });
 
@@ -1695,7 +1741,7 @@ describe("EmbeddedTerminalViewProvider", () => {
     await messageHandler!({ type: "input", id: "nonexistent", data: "ls\n" });
   });
 
-  it("handleWebviewMessage binary input writes buffer to session", async () => {
+  it("handleWebviewMessage binary input writes exact bytes to session", async () => {
     let messageHandler: ((msg: any) => void) | undefined;
     const mockWebview = {
       options: {} as any,
@@ -1734,13 +1780,10 @@ describe("EmbeddedTerminalViewProvider", () => {
     await messageHandler!({
       type: "input",
       id: sessionId,
-      data: "\u001b[M`p!",
-      encoding: "binary",
+      data: Uint8Array.from([0, 127, 128, 255]).buffer,
     });
 
-    expect(mockPtyWrite).toHaveBeenCalledWith(
-      Buffer.from("\u001b[M`p!", "binary"),
-    );
+    expect(mockPtyWrite).toHaveBeenCalledWith(Buffer.from([0, 127, 128, 255]));
   });
 
   it("handleWebviewMessage create opens terminal for path", async () => {
@@ -2685,6 +2728,17 @@ describe("EmbeddedTerminalViewProvider", () => {
         rows: 40,
       });
     }
+    expect(mockPtyResize).toHaveBeenCalledWith(120, 40);
+
+    await provider.openTerminal({
+      ...worktree,
+      name: "feat-settings",
+      path: "/tmp/feat-settings",
+    });
+    expect(vi.mocked(pty.spawn).mock.calls.at(-1)?.[2]).toMatchObject({
+      cols: 120,
+      rows: 40,
+    });
   });
 
   it("closeSession closes matching session", async () => {

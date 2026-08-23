@@ -140,6 +140,8 @@ export class EmbeddedTerminalViewProvider
     this.view = webviewView;
     this.webviewReady = false;
     this.fallbackRendered = false;
+    this.initialReplaySessionId = undefined;
+    this.initialReplayPending = Boolean(this.activeSessionId);
     webviewView.webview.options = {
       enableScripts: true,
       enableCommandUris: true,

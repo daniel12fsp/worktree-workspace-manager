@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useRef } from "react";
 import { useVsCode } from "./hooks/useVsCode";
 import { useTerminal } from "./hooks/useTerminal";
-import type { TerminalInputEncoding } from "./hooks/useTerminal";
 import type { RepoData, TerminalsLayoutOrder } from "./types";
 import { AppLayout } from "./components/AppLayout";
 import { Welcome } from "./components/Welcome";
@@ -41,13 +40,12 @@ export function App({ initialState }: Props) {
   webviewProfileMark(state.profileMarkers, "App.render.start");
 
   const handleTerminalData = useCallback(
-    (data: string, encoding: TerminalInputEncoding = "text") => {
+    (data: string | ArrayBuffer) => {
       if (state.activeSessionId) {
         vscode.postMessage({
           type: "input",
           id: state.activeSessionId,
           data,
-          encoding,
         });
       }
     },
@@ -56,14 +54,12 @@ export function App({ initialState }: Props) {
 
   const handleTerminalResize = useCallback(
     (cols: number, rows: number) => {
-      if (state.activeSessionId) {
-        vscode.postMessage({
-          type: "resize",
-          id: state.activeSessionId,
-          cols,
-          rows,
-        });
-      }
+      vscode.postMessage({
+        type: "resize",
+        ...(state.activeSessionId ? { id: state.activeSessionId } : {}),
+        cols,
+        rows,
+      });
     },
     [state.activeSessionId, vscode],
   );
@@ -75,7 +71,6 @@ export function App({ initialState }: Props) {
         type: "input",
         id: state.activeSessionId,
         data,
-        encoding: "text",
       });
     },
     [state.activeSessionId, vscode],

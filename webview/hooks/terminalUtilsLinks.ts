@@ -5,7 +5,14 @@ import {
 } from "./terminalFilters";
 import { sanitizeTerminalStream, type TerminalLike } from "./terminalUtilsCore";
 
-export type TerminalInputEncoding = "text" | "binary";
+export function binaryStringToArrayBuffer(data: string): ArrayBuffer {
+  const bytes = new Uint8Array(data.length);
+  for (let index = 0; index < data.length; index += 1) {
+    bytes[index] = data.charCodeAt(index) & 0xff;
+  }
+  return bytes.buffer;
+}
+
 export function sanitizeReplayedTerminalOutput(data: string): string {
   return sanitizeTerminalStream(data, shouldStripReplayedOutput).output;
 }

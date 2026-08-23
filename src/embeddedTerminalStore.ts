@@ -27,6 +27,10 @@ export abstract class EmbeddedTerminalStore {
   protected readonly terminalSeqByWorktree = new Map<string, number>();
   protected webviewReady = false;
   protected fallbackRendered = false;
+  protected initialReplayPending = false;
+  protected initialReplaySessionId: string | undefined;
+  protected terminalCols = 80;
+  protected terminalRows = 24;
   protected readonly terminalOrder = new Map<string, number>();
   protected readonly sessionIdsByWorktree = new Map<string, Set<string>>();
   protected readonly pendingOutputBySession = new Map<

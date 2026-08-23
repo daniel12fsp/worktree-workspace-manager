@@ -22,11 +22,12 @@ export abstract class EmbeddedTerminalSessionMessages extends EmbeddedTerminalWe
         this.terminalOutputRendered(String(message.id));
       },
       input: () => {
-        if (message.encoding === "binary") {
-          this.writeBinaryInput(String(message.id), String(message.data));
-        } else {
-          this.writeInput(String(message.id), String(message.data));
+        if (typeof message.data === "string") {
+          this.writeInput(String(message.id), message.data);
+          return;
         }
+        const bytes = terminalInputBytes(message.data);
+        if (bytes) this.writeBinaryInput(String(message.id), bytes);
       },
       closeSession: async () => {
         const closed = this.closeSessionById(String(message.id));
@@ -61,13 +62,18 @@ export abstract class EmbeddedTerminalSessionMessages extends EmbeddedTerminalWe
         );
         await this.renderSessions();
       },
-      resize: () => {
-        const session = this.sessions.get(String(message.id));
+      resize: async () => {
+        this.terminalCols = positiveInteger(message.cols) ?? this.terminalCols;
+        this.terminalRows = positiveInteger(message.rows) ?? this.terminalRows;
+        const id = typeof message.id === "string" ? message.id : undefined;
+        const session = id ? this.sessions.get(id) : undefined;
         if (session) {
-          session.process.resize(
-            Number(message.cols) || 80,
-            Number(message.rows) || 24,
-          );
+          session.process.resize(this.terminalCols, this.terminalRows);
+        }
+        if (this.initialReplayPending && id === this.activeSessionId) {
+          this.initialReplayPending = false;
+          this.initialReplaySessionId = id;
+          await this.postActiveSessionReplay();
         }
       },
       create: async () => {
@@ -78,4 +84,14 @@ export abstract class EmbeddedTerminalSessionMessages extends EmbeddedTerminalWe
       },
     };
   }
+}
+
+function terminalInputBytes(value: unknown): Buffer | undefined {
+  if (!(value instanceof ArrayBuffer)) return undefined;
+  return Buffer.from(value);
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : undefined;
 }

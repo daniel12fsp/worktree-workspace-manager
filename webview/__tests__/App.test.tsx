@@ -312,7 +312,6 @@ describe("App", () => {
         type: "input",
         id: "s1",
         data: "a",
-        encoding: "text",
       });
     });
   });
@@ -477,7 +476,6 @@ describe("App", () => {
       type: "input",
       id: "s1",
       data: "terminal text",
-      encoding: "text",
     });
 
     vi.mocked(mockVsCode.postMessage).mockClear();
@@ -513,7 +511,7 @@ describe("App", () => {
     );
   });
 
-  it("posts binary terminal input with binary encoding", async () => {
+  it("posts binary terminal input as exact bytes", async () => {
     let onBinaryCallback: ((data: string) => void) | undefined;
     mockTerminalOnBinary.mockImplementation(
       (callback: (data: string) => void) => {
@@ -559,15 +557,19 @@ describe("App", () => {
     renderWithVsCode(state, mockVsCode);
 
     expect(onBinaryCallback).toBeTypeOf("function");
-    onBinaryCallback!("\u001b[M`p!");
+    onBinaryCallback!("\u0000\u007f\u0080\u00ff");
 
     await waitFor(() => {
-      expect(mockVsCode.postMessage).toHaveBeenCalledWith({
-        type: "input",
-        id: "s1",
-        data: "\u001b[M`p!",
-        encoding: "binary",
-      });
+      const inputMessage = vi
+        .mocked(mockVsCode.postMessage)
+        .mock.calls.map(([message]) => message)
+        .find((message) => message.type === "input");
+      expect(inputMessage).toMatchObject({ type: "input", id: "s1" });
+      expect(inputMessage?.data).toBeInstanceOf(ArrayBuffer);
+      expect([...new Uint8Array(inputMessage?.data as ArrayBuffer)]).toEqual([
+        0, 127, 128, 255,
+      ]);
+      expect(inputMessage).not.toHaveProperty("encoding");
     });
   });
 
@@ -722,7 +724,6 @@ describe("App", () => {
         type: "input",
         id: "s1",
         data: "pasted text",
-        encoding: "text",
       });
     });
 

@@ -112,26 +112,10 @@ export function ptyEnv(
   extra: Record<string, string> | undefined,
 ): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const key of [
-    "PATH",
-    "HOME",
-    "USER",
-    "USERNAME",
-    "SHELL",
-    "COMSPEC",
-    "SystemRoot",
-    "WINDIR",
-    "TEMP",
-    "TMP",
-    "LANG",
-    "LC_ALL",
-  ]) {
-    const value = safeEnv(key);
-    if (typeof value === "string") {
-      env[key] = value;
-    }
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value === "string") env[key] = value;
   }
-  if (!env.TERM) env.TERM = "xterm-256color";
+  env.TERM = "xterm-256color";
   for (const [key, value] of Object.entries(extra ?? {})) {
     env[key] = value;
   }

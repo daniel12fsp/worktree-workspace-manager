@@ -9,13 +9,11 @@ import type {
   SearchAddonLike,
   FitAddonLike,
   TerminalLike,
-  TerminalInputEncoding,
 } from "./terminalTypes";
-export type { TerminalInputEncoding } from "./terminalTypes";
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   activeSessionId: string | undefined,
-  onData: (data: string, encoding?: TerminalInputEncoding) => void,
+  onData: (data: string | ArrayBuffer) => void,
   onResize: (cols: number, rows: number) => void,
   onSelectAdjacent: (direction: TerminalSessionNavigationDirection) => void,
 ) {
@@ -121,7 +119,7 @@ export function useTerminal(
       term.onBinary((data: string) => {
         const sid = activeSessionIdRef.current;
         if (!sid || replayDepthRef.current > 0) return;
-        onDataRef.current(data, "binary");
+        onDataRef.current(binaryStringToArrayBuffer(data));
       });
       term.element?.addEventListener("focus", () => {
         hasFocusRef.current = true;
@@ -134,6 +132,11 @@ export function useTerminal(
       registerTerminalLinkProvider(term);
       termRef.current = term;
       fitAddon.fit();
+      const dimensions = fitAddon.proposeDimensions() ?? {
+        cols: term.cols,
+        rows: term.rows,
+      };
+      onResizeRef.current(dimensions.cols, dimensions.rows);
     } catch (error) {
       console.error("Failed to init terminal:", error);
     }
@@ -207,9 +210,11 @@ export function useTerminal(
     if (fitAddonRef.current) {
       fitAddonRef.current.fit();
       const dims = fitAddonRef.current.proposeDimensions();
-      if (dims) {
-        onResizeRef.current(dims.cols, dims.rows);
-      }
+      const dimensions = dims ?? {
+        cols: termRef.current.cols ?? 80,
+        rows: termRef.current.rows ?? 24,
+      };
+      onResizeRef.current(dimensions.cols, dimensions.rows);
     } else {
       const cols = Math.max(
         20,
@@ -285,5 +290,6 @@ import {
   writeTerminalMouseReset,
   updateTerminalCursorRestoreTimer,
   updateFocusClasses,
+  binaryStringToArrayBuffer,
 } from "./terminalUtils";
 export * from "./terminalUtils";

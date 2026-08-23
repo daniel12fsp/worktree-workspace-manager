@@ -19,11 +19,14 @@ export abstract class EmbeddedTerminalWebviewMessages extends EmbeddedTerminalAc
       ready: async () => {
         this.webviewReady = true;
         this.fallbackRendered = false;
+        this.initialReplayPending = Boolean(
+          this.activeSessionId &&
+          this.initialReplaySessionId !== this.activeSessionId,
+        );
         log("Terminals by Worktree webview ready", {
           sessionCount: this.sessions.size,
         });
         await this.renderSessions();
-        await this.postActiveSessionReplay();
       },
       webviewBootstrap: () => {
         this.webviewReady = true;

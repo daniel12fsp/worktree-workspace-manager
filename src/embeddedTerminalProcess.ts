@@ -66,8 +66,8 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
         name: "xterm-256color",
         cwd: worktree.path,
         env,
-        cols: 80,
-        rows: 24,
+        cols: this.terminalCols,
+        rows: this.terminalRows,
       });
     } catch (error) {
       for (const cleanupPath of wrapper.cleanupPaths) {
@@ -240,15 +240,16 @@ export abstract class EmbeddedTerminalProcess extends EmbeddedTerminalStore {
     session.process.write(data);
   }
 
-  protected writeBinaryInput(id: string, data: string): void {
+  protected writeBinaryInput(id: string, data: Buffer): void {
     const session = this.sessions.get(id);
     if (!session) return;
 
-    session.process.write(Buffer.from(data, "binary"));
+    session.process.write(data);
   }
 
   protected postTerminalOutput(id: string, data: string): void {
-    if (id !== this.activeSessionId || !this.view) return;
+    if (id !== this.activeSessionId || !this.view || this.initialReplayPending)
+      return;
 
     let pending = this.pendingOutputBySession.get(id);
     if (!pending) {

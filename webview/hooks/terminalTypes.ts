@@ -15,6 +15,8 @@ export interface FitAddonLike {
 export interface TerminalLike {
   getSelection?: () => string;
   element?: HTMLElement;
+  readonly cols?: number;
+  readonly rows?: number;
   hasSelection?(): boolean;
   attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean): void;
   open(container: HTMLElement): void;
@@ -29,4 +31,3 @@ export interface TerminalLike {
   dispose(): void;
   registerLinkProvider?(provider: unknown): void;
 }
-export type TerminalInputEncoding = "text" | "binary";
