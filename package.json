@@ -75,7 +75,8 @@
     "test:watch": "vitest --config vitest.config.mts",
     "test:coverage": "vitest run --config vitest.config.mts --coverage",
     "lint": "eslint . --ext .ts,.tsx",
-    "stress:terminal-output": "node scripts/terminal-output-stress.js"
+    "stress:terminal-output": "node scripts/terminal-output-stress.js",
+    "stress:terminal-scrollback": "node scripts/terminal-scrollback-redraw.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

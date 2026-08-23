@@ -58,6 +58,7 @@ export function useTerminal(
         allowProposedApi: true,
         cursorBlink: true,
         fontFamily: "monospace",
+        scrollOnEraseInDisplay: true,
         theme: { background: "#000000" },
       });
       const searchAddon = new SearchAddon();

@@ -972,6 +972,9 @@ describe("App", () => {
     expect(
       document.querySelector(".terminalPane .terminalInline"),
     ).toBeTruthy();
+    expect(Terminal).toHaveBeenCalledWith(
+      expect.objectContaining({ scrollOnEraseInDisplay: true }),
+    );
   });
 
   it("resizes terminal and tree panes by dragging the divider", () => {

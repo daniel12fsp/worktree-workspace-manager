@@ -128,6 +128,17 @@ Embedded terminals are not restored after the extension or VS Code stops. On
 shutdown, running foreground commands are interrupted and their shells receive
 a hangup signal. Detached commands such as `nohup` jobs may continue running.
 
+### Validating terminal scrollback
+
+Run the fixed clear-screen redraw fixture inside an embedded terminal:
+
+```bash
+npm run stress:terminal-scrollback
+```
+
+After screen 12 appears, scroll upward. Screens 1 through 11 should remain in
+the terminal history even though each update clears and redraws the viewport.
+
 ---
 
 ## Settings
