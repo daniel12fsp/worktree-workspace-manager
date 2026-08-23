@@ -25,8 +25,8 @@ vi.mock("../model", () => ({
   listAllWorktrees: vi.fn(async () => new Map()),
   updateWorktreeColor: vi.fn(async () => {}),
   invalidateModelCache: vi.fn(),
-  normalizeConfiguredRepositoryPath: vi.fn((p: string) => p),
-  resolveGitDir: vi.fn((p: string) => p),
+  normalizeConfiguredRepositoryPath: vi.fn(async (p: string) => p),
+  resolveGitDir: vi.fn(async (p: string) => p),
 }));
 vi.mock("../embeddedTerminalView", () => ({
   EmbeddedTerminalViewProvider: vi.fn().mockImplementation(() => ({
@@ -300,18 +300,22 @@ describe("workspaceFolderMatchesRepository", () => {
     label: "project",
   };
 
-  it("matches repository root workspace folder", () => {
-    expect(workspaceFolderMatchesRepository("/repos/project", repo)).toBe(true);
+  it("matches repository root workspace folder", async () => {
+    await expect(
+      workspaceFolderMatchesRepository("/repos/project", repo),
+    ).resolves.toBe(true);
   });
 
-  it("matches legacy .git workspace folder", () => {
-    expect(workspaceFolderMatchesRepository("/repos/project.git", repo)).toBe(
-      true,
-    );
+  it("matches legacy .git workspace folder", async () => {
+    await expect(
+      workspaceFolderMatchesRepository("/repos/project.git", repo),
+    ).resolves.toBe(true);
   });
 
-  it("does not match another workspace folder", () => {
-    expect(workspaceFolderMatchesRepository("/repos/other", repo)).toBe(false);
+  it("does not match another workspace folder", async () => {
+    await expect(
+      workspaceFolderMatchesRepository("/repos/other", repo),
+    ).resolves.toBe(false);
   });
 });
 

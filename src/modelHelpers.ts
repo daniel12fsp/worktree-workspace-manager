@@ -1,7 +1,8 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { WORKTREE_COLOR_PALETTE } from "./constants";
 import { log } from "./logger";
-import { palette, BareRepository, Worktree, WorktreeColors } from "./model";
+import { BareRepository, Worktree, WorktreeColors } from "./model";
 
 interface RepositoriesCache {
   readonly signature: string;
@@ -117,7 +118,9 @@ export function shortBranch(ref?: string): string | undefined {
 }
 
 export function colorForName(name: string): string {
-  return palette[Math.abs(hash(name)) % palette.length];
+  return WORKTREE_COLOR_PALETTE[
+    Math.abs(hash(name)) % WORKTREE_COLOR_PALETTE.length
+  ];
 }
 
 export function colorKeyForWorktree(

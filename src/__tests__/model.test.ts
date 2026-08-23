@@ -33,18 +33,19 @@ vi.mock("../logger", () => ({
   logError: vi.fn(),
 }));
 
-const mockExistsSync = vi.fn();
-const mockStatSync = vi.fn();
-const mockReadFileSync = vi.fn();
+const mockStat = vi.fn();
+const mockReadFile = vi.fn();
 
 vi.mock("node:fs", () => ({
-  existsSync: (...args: any[]) => mockExistsSync(...args),
-  statSync: (...args: any[]) => mockStatSync(...args),
-  readFileSync: (...args: any[]) => mockReadFileSync(...args),
+  promises: {
+    stat: (...args: any[]) => mockStat(...args),
+    readFile: (...args: any[]) => mockReadFile(...args),
+  },
   default: {
-    existsSync: (...args: any[]) => mockExistsSync(...args),
-    statSync: (...args: any[]) => mockStatSync(...args),
-    readFileSync: (...args: any[]) => mockReadFileSync(...args),
+    promises: {
+      stat: (...args: any[]) => mockStat(...args),
+      readFile: (...args: any[]) => mockReadFile(...args),
+    },
   },
 }));
 
@@ -79,6 +80,9 @@ vi.mock("node:util", () => ({
         });
       }),
 }));
+
+const missingPathError = (): NodeJS.ErrnoException =>
+  Object.assign(new Error("missing path"), { code: "ENOENT" });
 
 const makeRepo = (overrides: Partial<BareRepository> = {}): BareRepository => ({
   configPath: "/repos/project.git",
@@ -311,46 +315,44 @@ describe("dotIcon", () => {
 describe("normalizeConfiguredRepositoryPath", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(false);
+    mockStat.mockRejectedValue(missingPathError());
   });
 
-  it("returns path unchanged when .bare exists", () => {
-    mockExistsSync.mockImplementation(
-      (p: string) => p === "/repos/project/.bare",
-    );
-    expect(normalizeConfiguredRepositoryPath("/repos/project")).toBe(
-      "/repos/project",
-    );
+  it("returns path unchanged when .bare exists", async () => {
+    mockStat.mockResolvedValue({ isDirectory: () => true } as any);
+    await expect(
+      normalizeConfiguredRepositoryPath("/repos/project"),
+    ).resolves.toBe("/repos/project");
   });
 
-  it("strips .git suffix when root has .bare", () => {
-    mockExistsSync.mockImplementation(
-      (p: string) => p === "/repos/project/.bare",
-    );
-    expect(normalizeConfiguredRepositoryPath("/repos/project.git")).toBe(
-      "/repos/project",
-    );
+  it("strips .git suffix when root has .bare", async () => {
+    mockStat.mockImplementation(async (p: string) => {
+      if (p === "/repos/project/.bare") {
+        return { isDirectory: () => true } as any;
+      }
+      throw missingPathError();
+    });
+    await expect(
+      normalizeConfiguredRepositoryPath("/repos/project.git"),
+    ).resolves.toBe("/repos/project");
   });
 
-  it("returns path unchanged when neither .bare nor .git", () => {
-    mockExistsSync.mockReturnValue(false);
-    expect(normalizeConfiguredRepositoryPath("/repos/project")).toBe(
-      "/repos/project",
-    );
+  it("returns path unchanged when neither .bare nor .git", async () => {
+    await expect(
+      normalizeConfiguredRepositoryPath("/repos/project"),
+    ).resolves.toBe("/repos/project");
   });
 
-  it("returns .git path when root has no .bare", () => {
-    mockExistsSync.mockReturnValue(false);
-    expect(normalizeConfiguredRepositoryPath("/repos/project.git")).toBe(
-      "/repos/project.git",
-    );
+  it("returns .git path when root has no .bare", async () => {
+    await expect(
+      normalizeConfiguredRepositoryPath("/repos/project.git"),
+    ).resolves.toBe("/repos/project.git");
   });
 });
 
 describe("configuredColors", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(false);
   });
 
   it("returns empty object when no colors configured", () => {
@@ -418,7 +420,7 @@ describe("getWorkspaceRepositories", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     invalidateModelCache();
-    mockExistsSync.mockReturnValue(false);
+    mockStat.mockRejectedValue(missingPathError());
     (vscode.workspace as any).workspaceFolders = null;
     (vscode as any).__resetConfig();
   });
@@ -434,10 +436,12 @@ describe("getWorkspaceRepositories", () => {
     (vscode.workspace as any).workspaceFolders = [
       { name: "project", uri: { fsPath: "/repos/project" } },
     ];
-    mockExistsSync.mockImplementation(
-      (p: string) => p === "/repos/project/.bare",
-    );
-    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+    mockStat.mockImplementation(async (p: string) => {
+      if (p === "/repos/project/.bare") {
+        return { isDirectory: () => true } as any;
+      }
+      throw missingPathError();
+    });
     const repos = await getWorkspaceRepositories();
     expect(repos).toHaveLength(1);
     expect(repos[0].label).toBe("project");
@@ -447,10 +451,12 @@ describe("getWorkspaceRepositories", () => {
     (vscode.workspace as any).workspaceFolders = [
       { name: "project", uri: { fsPath: "/repos/project" } },
     ];
-    mockExistsSync.mockImplementation(
-      (p: string) => p === "/repos/project/.bare",
-    );
-    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+    mockStat.mockImplementation(async (p: string) => {
+      if (p === "/repos/project/.bare") {
+        return { isDirectory: () => true } as any;
+      }
+      throw missingPathError();
+    });
 
     await Promise.all([getWorkspaceRepositories(), getWorkspaceRepositories()]);
     await getWorkspaceRepositories();
@@ -469,66 +475,97 @@ describe("getWorkspaceRepositories", () => {
 describe("resolveGitDir", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockExistsSync.mockReturnValue(false);
+    mockStat.mockRejectedValue(missingPathError());
   });
 
-  it("returns .bare dir when it exists", () => {
-    mockExistsSync.mockImplementation((p: string) => p.endsWith("/.bare"));
-    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
-    expect(resolveGitDir("/repos/project")).toBe("/repos/project/.bare");
+  it("returns .bare dir when it exists", async () => {
+    mockStat.mockImplementation(async (p: string) => {
+      if (p.endsWith("/.bare")) {
+        return { isDirectory: () => true } as any;
+      }
+      throw missingPathError();
+    });
+    await expect(resolveGitDir("/repos/project")).resolves.toBe(
+      "/repos/project/.bare",
+    );
   });
 
-  it("returns parsed gitdir from .git file", () => {
-    mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
-    mockStatSync.mockReturnValue({
-      isDirectory: () => false,
-      isFile: () => true,
-    } as any);
-    mockReadFileSync.mockReturnValue("gitdir: /other/location/.git\n");
-    expect(resolveGitDir("/repos/project")).toBe("/other/location/.git");
+  it("returns parsed gitdir from .git file", async () => {
+    mockStat.mockImplementation(async (p: string) => {
+      if (p.endsWith("/.git")) {
+        return { isDirectory: () => false, isFile: () => true } as any;
+      }
+      throw missingPathError();
+    });
+    mockReadFile.mockResolvedValue("gitdir: /other/location/.git\n");
+    await expect(resolveGitDir("/repos/project")).resolves.toBe(
+      "/other/location/.git",
+    );
   });
 
-  it("returns .git dir when it exists as a directory", () => {
-    mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
-    mockStatSync.mockReturnValue({
-      isDirectory: () => true,
-      isFile: () => false,
-    } as any);
-    expect(resolveGitDir("/repos/project")).toBe("/repos/project/.git");
+  it("returns .git dir when it exists as a directory", async () => {
+    mockStat.mockImplementation(async (p: string) => {
+      if (p.endsWith("/.git")) {
+        return { isDirectory: () => true, isFile: () => false } as any;
+      }
+      throw missingPathError();
+    });
+    await expect(resolveGitDir("/repos/project")).resolves.toBe(
+      "/repos/project/.git",
+    );
   });
 
-  it("resolves relative gitdir", () => {
-    mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
-    mockStatSync.mockReturnValue({
-      isDirectory: () => false,
-      isFile: () => true,
-    } as any);
-    mockReadFileSync.mockReturnValue("gitdir: ../sibling/.git\n");
-    expect(resolveGitDir("/repos/project")).toContain("sibling/.git");
+  it("resolves relative gitdir", async () => {
+    mockStat.mockImplementation(async (p: string) => {
+      if (p.endsWith("/.git")) {
+        return { isDirectory: () => false, isFile: () => true } as any;
+      }
+      throw missingPathError();
+    });
+    mockReadFile.mockResolvedValue("gitdir: ../sibling/.git\n");
+    await expect(resolveGitDir("/repos/project")).resolves.toContain(
+      "sibling/.git",
+    );
   });
 
-  it("returns fsPath when no .bare and no .git", () => {
-    mockExistsSync.mockReturnValue(false);
-    expect(resolveGitDir("/repos/project")).toBe("/repos/project");
+  it("returns fsPath when no .bare and no .git", async () => {
+    await expect(resolveGitDir("/repos/project")).resolves.toBe(
+      "/repos/project",
+    );
   });
 
-  it("returns fsPath when .git exists but is not a file", () => {
-    mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
-    mockStatSync.mockReturnValue({
-      isDirectory: () => false,
-      isFile: () => false,
-    } as any);
-    expect(resolveGitDir("/repos/project")).toBe("/repos/project");
+  it("returns fsPath when .git exists but is not a file", async () => {
+    mockStat.mockImplementation(async (p: string) => {
+      if (p.endsWith("/.git")) {
+        return { isDirectory: () => false, isFile: () => false } as any;
+      }
+      throw missingPathError();
+    });
+    await expect(resolveGitDir("/repos/project")).resolves.toBe(
+      "/repos/project",
+    );
   });
 
-  it("returns fsPath when .git file has no gitdir line", () => {
-    mockExistsSync.mockImplementation((p: string) => p.endsWith("/.git"));
-    mockStatSync.mockReturnValue({
-      isDirectory: () => false,
-      isFile: () => true,
-    } as any);
-    mockReadFileSync.mockReturnValue("some other content\n");
-    expect(resolveGitDir("/repos/project")).toBe("/repos/project");
+  it("returns fsPath when .git file has no gitdir line", async () => {
+    mockStat.mockImplementation(async (p: string) => {
+      if (p.endsWith("/.git")) {
+        return { isDirectory: () => false, isFile: () => true } as any;
+      }
+      throw missingPathError();
+    });
+    mockReadFile.mockResolvedValue("some other content\n");
+    await expect(resolveGitDir("/repos/project")).resolves.toBe(
+      "/repos/project",
+    );
+  });
+
+  it("propagates unexpected filesystem errors", async () => {
+    mockStat.mockRejectedValue(
+      Object.assign(new Error("permission denied"), { code: "EACCES" }),
+    );
+    await expect(resolveGitDir("/repos/project")).rejects.toThrow(
+      "permission denied",
+    );
   });
 });
 
@@ -536,37 +573,48 @@ describe("listAllWorktrees", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     invalidateModelCache();
-    mockExistsSync.mockReturnValue(false);
+    mockStat.mockRejectedValue(missingPathError());
     (vscode.workspace as any).workspaceFolders = null;
     (vscode as any).__resetConfig();
   });
+
+  const configureBareWorkspace = () => {
+    (vscode.workspace as any).workspaceFolders = [
+      { name: "project", uri: { fsPath: "/repos/project" } },
+    ];
+    mockStat.mockImplementation(async (p: string) => {
+      if (p === "/repos/project/.bare") {
+        return { isDirectory: () => true } as any;
+      }
+      throw missingPathError();
+    });
+  };
 
   it("returns a map", async () => {
     const result = await listAllWorktrees();
     expect(result).toBeInstanceOf(Map);
   });
 
-  it("handles error from listWorktrees gracefully", async () => {
-    (vscode.workspace as any).workspaceFolders = [
-      { name: "project", uri: { fsPath: "/repos/project" } },
-    ];
-    mockExistsSync.mockImplementation(
-      (p: string) => p === "/repos/project/.bare",
-    );
-    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
-    vi.mocked(vscode.window.showWarningMessage).mockClear();
+  it("formats listWorktrees errors without object placeholders", async () => {
+    configureBareWorkspace();
+    vi.mocked(execFile)
+      .mockImplementationOnce((...args: any[]) => {
+        args.at(-1)(null, "true\n", "");
+      })
+      .mockImplementationOnce((...args: any[]) => {
+        args.at(-1)({ message: "plain failure" }, "", "");
+      });
+
     const result = await listAllWorktrees();
+
     expect(result).toBeInstanceOf(Map);
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      "Failed to list worktrees for /repos/project: plain failure",
+    );
   });
 
   it("reuses cached worktree lists for the same workspace folders", async () => {
-    (vscode.workspace as any).workspaceFolders = [
-      { name: "project", uri: { fsPath: "/repos/project" } },
-    ];
-    mockExistsSync.mockImplementation(
-      (p: string) => p === "/repos/project/.bare",
-    );
-    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+    configureBareWorkspace();
 
     await Promise.all([listAllWorktrees(), listAllWorktrees()]);
     await listAllWorktrees();

@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 import { EmbeddedTerminalViewProvider } from "./embeddedTerminalView";
+import { formatErrorMessage } from "./errorMessage";
 import { log, logError } from "./logger";
 import {
   BareRepository,
@@ -45,7 +46,7 @@ export async function removeBareRepository(
   if (confirmed !== "Remove") return;
 
   await closeEditorsForRepository(repo);
-  const removedFromExplorer = removeBareRepositoryFromExplorer(repo);
+  const removedFromExplorer = await removeBareRepositoryFromExplorer(repo);
   if (!removedFromExplorer) {
     void vscode.window.showInformationMessage(
       `${repo.label} was not a workspace folder`,
@@ -58,14 +59,20 @@ export async function removeBareRepository(
   );
 }
 
-export function removeBareRepositoryFromExplorer(
+export async function removeBareRepositoryFromExplorer(
   repo: BareRepository,
-): boolean {
+): Promise<boolean> {
   const folders = vscode.workspace.workspaceFolders;
-  const index = folders?.findIndex((folder) =>
-    workspaceFolderMatchesRepository(folder.uri.fsPath, repo),
-  );
-  if (index === undefined || index < 0) return false;
+  if (!folders) return false;
+
+  let index = -1;
+  for (const [candidateIndex, folder] of folders.entries()) {
+    if (await workspaceFolderMatchesRepository(folder.uri.fsPath, repo)) {
+      index = candidateIndex;
+      break;
+    }
+  }
+  if (index < 0) return false;
 
   const removed = vscode.workspace.updateWorkspaceFolders(index, 1);
   if (!removed) {
@@ -76,15 +83,15 @@ export function removeBareRepositoryFromExplorer(
   return removed;
 }
 
-export function workspaceFolderMatchesRepository(
+export async function workspaceFolderMatchesRepository(
   folderPath: string,
   repo: BareRepository,
-): boolean {
+): Promise<boolean> {
   const expanded = path.resolve(expandMaybeHome(folderPath));
   const targets = repositoryPathTargets(repo);
   return (
     targets.has(expanded) ||
-    normalizeConfiguredRepositoryPath(expanded) === repo.fsPath
+    (await normalizeConfiguredRepositoryPath(expanded)) === repo.fsPath
   );
 }
 
@@ -235,7 +242,7 @@ export function gitErrorMessage(error: unknown): string {
     const message = (error as { message?: unknown }).message;
     if (typeof message === "string" && message.trim()) return message.trim();
   }
-  return String(error);
+  return formatErrorMessage(error);
 }
 
 export function menuItems(

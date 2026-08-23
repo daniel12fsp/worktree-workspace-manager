@@ -4,6 +4,8 @@ import * as fs from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
+import { WORKTREE_COLOR_PALETTE } from "./constants";
+import { formatErrorMessage } from "./errorMessage";
 import { log, logError } from "./logger";
 import { profileAsync } from "./performance";
 import {
@@ -34,32 +36,7 @@ export interface WorktreeColorConfig {
   readonly color: string;
 }
 export type WorktreeColors = Partial<Record<string, WorktreeColorConfig>>;
-export const palette = [
-  "#e6194b",
-  "#3cb44b",
-  "#ffe119",
-  "#4363d8",
-  "#f58231",
-  "#911eb4",
-  "#46f0f0",
-  "#f032e6",
-  "#bcf60c",
-  "#fabebe",
-  "#008080",
-  "#e6beff",
-  "#9a6324",
-  "#fffac8",
-  "#800000",
-  "#aaffc3",
-  "#808000",
-  "#ffd8b1",
-  "#000075",
-  "#808080",
-  "#ff6f00",
-  "#8dd3c7",
-  "#b15928",
-  "#6a3d9a",
-];
+export const palette = WORKTREE_COLOR_PALETTE;
 export function expandHome(input: string): string {
   if (input === "~") {
     return os.homedir();
@@ -70,34 +47,33 @@ export function expandHome(input: string): string {
   return input;
 }
 
-export function resolveGitDir(fsPath: string): string {
+export async function resolveGitDir(fsPath: string): Promise<string> {
   const bareDir = path.join(fsPath, ".bare");
-  if (fs.existsSync(bareDir) && fs.statSync(bareDir).isDirectory()) {
-    return bareDir;
-  }
+  const bareStat = await statIfExists(bareDir);
+  if (bareStat?.isDirectory()) return bareDir;
 
   const gitFile = path.join(fsPath, ".git");
-  if (!fs.existsSync(gitFile)) {
-    return fsPath;
-  }
-
-  const gitStat = fs.statSync(gitFile);
-  if (gitStat.isDirectory()) {
-    return gitFile;
-  }
-
-  if (!gitStat.isFile()) {
-    return fsPath;
-  }
+  const gitStat = await statIfExists(gitFile);
+  if (!gitStat) return fsPath;
+  if (gitStat.isDirectory()) return gitFile;
+  if (!gitStat.isFile()) return fsPath;
 
   const match = /^gitdir:\s*(.+)$/i.exec(
-    fs.readFileSync(gitFile, "utf8").trim(),
+    (await fs.promises.readFile(gitFile, "utf8")).trim(),
   );
-  if (!match) {
-    return fsPath;
-  }
+  if (!match) return fsPath;
 
   return path.isAbsolute(match[1]) ? match[1] : path.resolve(fsPath, match[1]);
+}
+
+async function statIfExists(fsPath: string): Promise<fs.Stats | undefined> {
+  try {
+    return await fs.promises.stat(fsPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    throw error;
+  }
 }
 
 export async function getWorkspaceRepositories(): Promise<BareRepository[]> {
@@ -118,8 +94,10 @@ export async function getWorkspaceRepositories(): Promise<BareRepository[]> {
 
     const entries = await Promise.all(
       folders.map(async (folder) => {
-        const fsPath = normalizeConfiguredRepositoryPath(folder.uri.fsPath);
-        const gitDir = resolveGitDir(fsPath);
+        const fsPath = await normalizeConfiguredRepositoryPath(
+          folder.uri.fsPath,
+        );
+        const gitDir = await resolveGitDir(fsPath);
         const label = folder.name || path.basename(fsPath);
         log("workspace repository candidate", { label, fsPath, gitDir });
 
@@ -198,14 +176,14 @@ async function isBareRepository(
   }
 }
 
-export function normalizeConfiguredRepositoryPath(fsPath: string): string {
-  if (fs.existsSync(path.join(fsPath, ".bare"))) {
-    return fsPath;
-  }
+export async function normalizeConfiguredRepositoryPath(
+  fsPath: string,
+): Promise<string> {
+  if (await statIfExists(path.join(fsPath, ".bare"))) return fsPath;
 
   if (fsPath.endsWith(".git")) {
     const repoRoot = fsPath.slice(0, -".git".length);
-    if (fs.existsSync(path.join(repoRoot, ".bare"))) {
+    if (await statIfExists(path.join(repoRoot, ".bare"))) {
       log("normalized legacy .git config path to .bare repo root", {
         configPath: fsPath,
         repoRoot,
@@ -262,7 +240,7 @@ export async function listAllWorktrees(): Promise<
             error,
           });
           void vscode.window.showWarningMessage(
-            `Failed to list worktrees for ${repo.configPath}: ${String(error)}`,
+            `Failed to list worktrees for ${repo.configPath}: ${formatErrorMessage(error)}`,
           );
           return [repo, [] as Worktree[]] as const;
         }

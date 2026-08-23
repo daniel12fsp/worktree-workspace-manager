@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { EmbeddedTerminalViewProvider } from "./embeddedTerminalView";
-import { disposeLogger, log } from "./logger";
+import { disposeLogger, log, logError } from "./logger";
 import { profileAsync, profileMark } from "./performance";
+import { createRefreshCoordinator } from "./refreshCoordinator";
 import { BareRepository, Worktree, invalidateModelCache } from "./model";
 
 import { RepoNode, WorktreeNode, WorktreeProvider } from "./worktreeView";
@@ -69,14 +70,21 @@ export function activate(context: vscode.ExtensionContext): void {
   let selectedRepo: BareRepository | undefined;
   let suppressTerminalRefreshUntil = 0;
 
-  const refreshAll = () => {
+  const scheduleRefresh = createRefreshCoordinator(async () => {
     invalidateModelCache();
-    void profileAsync("extension.refreshAll", async () => {
-      worktreeProvider.refresh();
-      await updateStatus(status);
-      await hideBareRepositoryFolders();
-      await updateWorktreeViewContexts();
-    });
+    try {
+      await profileAsync("extension.refreshAll", async () => {
+        worktreeProvider.refresh();
+        await updateStatus(status);
+        await hideBareRepositoryFolders();
+        await updateWorktreeViewContexts();
+      });
+    } catch (error) {
+      logError("extension refresh failed", { error });
+    }
+  });
+  const refreshAll = () => {
+    void scheduleRefresh();
   };
 
   const refreshTerminalsUnlessSuppressed = () => {
@@ -119,7 +127,6 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
-      invalidateModelCache();
       refreshAll();
       refreshTerminalsUnlessSuppressed();
     }),
